@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+clang -O3 \
+      -c \
+      -fno-asynchronous-unwind-tables \
+      -fno-jump-tables \
+      -fno-pic \
+      -fno-stack-protector \
+      -mcmodel=large \
+      -std=gnu11 \
+      -I"$JULIA_INCLUDE" \
+      $1
+
+# comments from CPython/Tools/jit/build.py
+# # FA: remove SHT_X86_64_UNWIND sections (using -O3 alone does not remove them)
+# "-fno-asynchronous-unwind-tables",
+# # SET_FUNCTION_ATTRIBUTE on 32-bit Windows debug builds:
+# "-fno-jump-tables",
+# # Position-independent code adds indirection to every load and jump:
+# "-fno-pic",
+# # Don't make calls to weird stack-smashing canaries:
+# "-fno-stack-protector",
+# # We have three options for code model:
+# # - "small": the default, assumes that code and data reside in the lowest
+# #   2GB of memory (128MB on aarch64)
+# # - "medium": assumes that code resides in the lowest 2GB of memory, and
+# #   makes no assumptions about data (not available on aarch64)
+# # - "large": makes no assumptions about either code or data
+# "-mcmodel=large",

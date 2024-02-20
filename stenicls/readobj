@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+llvm-readobj --elf-output-style=JSON \
+             --expand-relocs \
+             --section-data \
+             --section-relocations \
+             --section-symbols \
+             --sections \
+             $1
+             # --symbols \
+             # --demangle \
+             # --pretty-print \
+             # --section-details \
+             # --section-headers \
+             # --section-mapping \
