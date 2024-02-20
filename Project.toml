@@ -1,6 +1,6 @@
 name = "CopyAndPatch"
 uuid = "02537dc1-634c-4c89-8c69-618d836b5e10"
-authors = ["flo "]
+authors = ["Florian Atteneder"]
 version = "0.1.0"
 
 [deps]
