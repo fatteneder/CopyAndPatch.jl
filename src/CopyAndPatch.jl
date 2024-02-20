@@ -1,26 +1,28 @@
 module CopyAndPatch
 
 
-using Mmap
-using JuliaInterpreter
-using JSON
+import Mmap: mmap
+# using JuliaInterpreter
+import JSON: parsefile
+import Base.Libc.Libdl: dlpath, dlopen
 
 
 TODO() = error("Not implemented yet")
 TODO(msg) = error("Not implemented yet: $msg")
 
 
-function jit!(frame::Frame)
-    pc = JuliaInterpreter.pc_expr(frame)
-    if JuliaInterpreter.is_ReturnNode(pc)
-        return pc.val
-    else
-        TODO(pc)
-    end
-    return pc
-end
+# function jit!(frame::Frame)
+#     pc = JuliaInterpreter.pc_expr(frame)
+#     if JuliaInterpreter.is_ReturnNode(pc)
+#         return pc.val
+#     else
+#         TODO(pc)
+#     end
+#     return pc
+# end
 
 
+include("utils.jl")
 include("bytevector.jl")
 include("machinecode.jl")
 include("stencil.jl")

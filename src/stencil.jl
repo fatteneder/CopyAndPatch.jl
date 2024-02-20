@@ -210,7 +210,8 @@ function emit_global_offset_table!(group)
 end
 
 
-function build(json::Vector{Any})
+StencilGroup(path::AbstractString) = StencilGroup(parsefile(string(path)))
+function StencilGroup(json::Vector{Any})
     group = StencilGroup(Stencil(), Stencil(), Dict())
     for sec in json[1]["Sections"]
         handle_section(sec["Section"], group)
@@ -248,3 +249,8 @@ function build(json::Vector{Any})
 
     return group
 end
+
+
+holes(g::StencilGroup) = g.code.relocations
+patch!(m::MachineCode, g::Hole, p::Ptr) = m.buf[g.offset+1] = p
+# patchlibs!(m::MachineCode, g::Hole)

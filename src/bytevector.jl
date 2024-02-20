@@ -1,6 +1,3 @@
-is_little_endian() = ENDIAN_BOM == 0x04030201
-
-
 struct ByteVector <: AbstractVector{UInt8}
     d::Vector{UInt8}
     ByteVector(v::AbstractVector{UInt8}) = new(v)
