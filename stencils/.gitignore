@@ -1,2 +1,4 @@
 *.json
 *.o
+mwes/*.json
+mwes/*.o

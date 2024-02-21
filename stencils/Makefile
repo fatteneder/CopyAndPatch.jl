@@ -1,11 +1,10 @@
-# flags obtained from running the julia-config.jl script
-
 SRC=$(wildcard *.c)
+SRC+=$(wildcard mwes/*.c)
 OBJ=$(SRC:.c=.o)
 JSON=$(SRC:.c=.json)
 
 %.o: %.c compile
-	./compile $<
+	./compile $< $*.o
 
 %.json: %.o readobj
 	./readobj $< > $*.json
@@ -14,5 +13,5 @@ JSON=$(SRC:.c=.json)
 all: $(JSON)
 
 clean:
-	rm *.json
-	rm *.o
+	rm -f $(JSON)
+	rm -f $(OBJ)

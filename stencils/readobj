@@ -2,6 +2,7 @@
 
 llvm-readobj --elf-output-style=JSON \
              --expand-relocs \
+             --pretty-print \
              --section-data \
              --section-relocations \
              --section-symbols \
@@ -9,7 +10,6 @@ llvm-readobj --elf-output-style=JSON \
              $1
              # --symbols \
              # --demangle \
-             # --pretty-print \
              # --section-details \
              # --section-headers \
              # --section-mapping \
