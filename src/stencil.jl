@@ -1,3 +1,5 @@
+const hexfmt = Format("%02x")
+
 function stencil_files()
     dir = normpath(joinpath(@__DIR__,"..","stencils"))
     files = readdir(dir, join=true)
@@ -44,7 +46,6 @@ end
 
 
 function handle_section(section, group::StencilGroup)
-    # display(section)
     section_type = section["Type"]["Name"] # build.py uses Value instead of Name, why?
     flags = [ flag["Name"] for flag in section["Flags"]["Flags"] ]
     if section_type == "SHT_RELA"
@@ -67,7 +68,7 @@ function handle_section(section, group::StencilGroup)
         end
         if "SHF_EXECINSTR" in flags
             stencil = group.code
-        else
+        else # ???
             stencil = group.data
         end
         stencil.offsets[section["Index"]] = length(stencil.body)
@@ -124,8 +125,10 @@ function pad!(s::Stencil, alignment::Int64)
     offset = length(s.body)
     # TODO Is max-ing here ok?
     padding = max(-offset % alignment, 0)
-    append!(s.disassembly, "$(UInt8(offset)): $(join(("00" for _ in 1:padding), " "))")
-    push!(s.disassembly, repeat([UInt8(0)], padding))
+    push!(s.disassembly, "$(UInt8(offset)): $(join(("00" for _ in 1:padding), ' '))")
+    if padding > 0
+        push!(s.disassembly, repeat([UInt8(0)], padding))
+    end
 end
 
 function process_relocations(stencil::Stencil, group::StencilGroup)
@@ -204,7 +207,9 @@ function emit_global_offset_table!(group)
                 value_part *= " + "
             end
         end
-        append!(group.data.disassembly, "$(UInt8(length(group.data.body))): $(value_part)$(addend_part)")
+        @show(value_part)
+        @show(addend_part)
+        push!(group.data.disassembly, "$(UInt8(length(group.data.body))): $(value_part)$(addend_part)")
         push!(group.data.body, repeat([UInt8(0)], padding))
     end
 end
@@ -219,8 +224,10 @@ function StencilGroup(json::Vector{Any})
 
     @assert group.code.symbols["_JIT_ENTRY"] == 0
     if length(group.data.body) > 0
-        line = "0: $(group.data.body)"
-        append!(group.data.disassembly, line)
+        @assert length(group.data.body) == 1
+        body = UInt8.(group.data.body[1])
+        line = "0: $(join(format.(Ref(hexfmt), body), ' '))"
+        push!(group.data.disassembly, line)
     end
 
     pad!(group.data, 8)

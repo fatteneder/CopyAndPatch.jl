@@ -5,6 +5,7 @@ import Mmap: mmap
 # using JuliaInterpreter
 import JSON: parsefile
 import Base.Libc.Libdl: dlpath, dlopen
+import Printf: Format, format
 
 
 TODO() = error("Not implemented yet")

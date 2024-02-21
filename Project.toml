@@ -8,9 +8,11 @@ JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 JuliaInterpreter = "aa1ae85d-cabe-5617-a682-6adf51b2e16a"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
 [compat]
 JSON = "0.21.4"
 JuliaInterpreter = "0.9.28"
 MacroTools = "0.5.13"
 Mmap = "1.11.0"
+Printf = "1.11.0"
