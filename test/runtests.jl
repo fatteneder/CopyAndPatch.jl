@@ -23,7 +23,7 @@ import CopyAndPatch: ByteVector, MachineCode, is_little_endian
 
     n = 10
     for T in (UInt8,UInt32,UInt64)
-        fill!(bvec,0)
+        fill!(bvec,T(0))
         sz = sizeof(T)
         for i = 1:n
             bvec[(i-1)*sz+1] = T(i)
