@@ -1,4 +1,6 @@
 *.json
 *.o
+*.so
 mwes/*.json
 mwes/*.o
+mwes/*.so
