@@ -17,8 +17,12 @@ MachineCode(bvec, rettype, argtypes) = MachineCode(ByteVector(bvec), rettype, ar
     for t in ArgTypes.types
         push!(argtype_ex.args, Symbol(t))
     end
-    arg_ex = [ :(args[$i]) for i in 1:length(args) ]
+    nargs = length(ArgTypes.types)
+    arg_ex = [ :(args[$i]) for i in 1:nargs ]
     ex = quote
+        if length($args) != $nargs
+            throw(MethodError($(code),$(args)))
+        end
         ccall(code.ptr, $rettype_ex, $argtype_ex, $(arg_ex...))
     end
     return ex
