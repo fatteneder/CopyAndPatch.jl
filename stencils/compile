@@ -9,6 +9,7 @@ clang -O3 \
       -mcmodel=large \
       -std=gnu11 \
       -I"$JULIA_INCLUDE" \
+      -I"./" \
       -o $2 \
       $1
 
