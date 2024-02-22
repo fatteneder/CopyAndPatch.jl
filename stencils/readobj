@@ -2,12 +2,12 @@
 
 llvm-readobj --elf-output-style=JSON \
              --expand-relocs \
-             --pretty-print \
              --section-data \
              --section-relocations \
              --section-symbols \
              --sections \
              $1
+             # --pretty-print \
              # --symbols \
              # --demangle \
              # --section-details \

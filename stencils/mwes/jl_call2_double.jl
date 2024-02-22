@@ -32,7 +32,7 @@ for h in holes
     if startswith(h.symbol, ".rodata")
         p = pointer(bvec_data.d, h.addend+1)
     else
-        local p = get(patches, h.symbol) do
+        p = get(patches, h.symbol) do
             CopyAndPatch.TODO(h.symbol)
         end
     end
