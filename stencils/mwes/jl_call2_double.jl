@@ -9,19 +9,24 @@ libc = dlopen(dlpath("libc.so.6"))
 group = CopyAndPatch.StencilGroup(joinpath(@__DIR__, "jl_call2_double.json"))
 holes = CopyAndPatch.holes(group)
 bvec = CopyAndPatch.ByteVector(UInt8.(group.code.body[1]))
-bvec_data = CopyAndPatch.ByteVector(UInt8.(group.data.body[1]))
+if !isempty(group.data.body)
+    bvec_data = CopyAndPatch.ByteVector(UInt8.(group.data.body[1]))
+else
+    bvec_data = Any[]
+end
 
 patches = Dict{String,Any}(
     "_JIT_FUNC" => CopyAndPatch.pointer_from_function(+),
-    # Why does this give garbage here?
-    "_JIT_ARG1" => reinterpret(UInt64, Cdouble(255)),
+    "_JIT_ARG1" => reinterpret(UInt64, Cdouble(155)),
     "_JIT_ARG2" => reinterpret(UInt64, Cdouble(4.1)),
-    # "_JIT_ARG1" => UInt64(Cdouble(255)),
-    # "_JIT_ARG2" => UInt64(Cdouble(4.1)),
     "jl_box_float64" => dlsym(lib, :jl_box_float64),
     "jl_unbox_float64" => dlsym(lib, :jl_unbox_float64),
     "jl_call2" => dlsym(lib, :jl_call2),
+    "printf" => dlsym(libc, :printf)
 )
+
+@show patches["_JIT_ARG1"]
+@show patches["_JIT_ARG2"]
 
 for h in holes
     if startswith(h.symbol, ".rodata")
