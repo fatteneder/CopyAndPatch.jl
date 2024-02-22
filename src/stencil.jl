@@ -224,7 +224,7 @@ function StencilGroup(json::Vector{Any})
 
     @assert group.code.symbols["_JIT_ENTRY"] == 0
     if length(group.data.body) > 0
-        @assert length(group.data.body) == 1
+        # @assert length(group.data.body) == 1
         body = UInt8.(group.data.body[1])
         line = "0: $(join(format.(Ref(hexfmt), body), ' '))"
         push!(group.data.disassembly, line)

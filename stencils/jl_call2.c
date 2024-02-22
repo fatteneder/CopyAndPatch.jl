@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "common.h"
 
-int
+double
 _JIT_ENTRY()
 {
     // TODO This function needs to access .data when we use jl_box_float64 instead of jl_box_int32
