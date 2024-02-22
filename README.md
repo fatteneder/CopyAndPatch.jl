@@ -6,8 +6,8 @@
 Prerequisites:
 - `clang`
 - `llvm-readobj`
-- `llvm-objdump` (optional for debugging stenicls)
-- `julia` from [this](https://github.com/fatteneder/julia/tree/fa/prot_exec) branch (implement `exec` option for `mmap`)
+- `llvm-objdump` (optional for debugging stencils)
+- `julia` from [this](https://github.com/fatteneder/julia/tree/fa/prot_exec) branch (implements `exec` option for `mmap`)
 
 Compile:
 ```
