@@ -13,6 +13,7 @@ bvec_data = CopyAndPatch.ByteVector(UInt8.(group.data.body[1]))
 
 patches = Dict{String,Any}(
     "_JIT_FUNC" => CopyAndPatch.pointer_from_function(+),
+    # Why does this give garbage here?
     "_JIT_ARG1" => reinterpret(UInt64, Cdouble(255)),
     "_JIT_ARG2" => reinterpret(UInt64, Cdouble(4.1)),
     # "_JIT_ARG1" => UInt64(Cdouble(255)),
