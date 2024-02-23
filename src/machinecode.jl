@@ -11,11 +11,14 @@ end
 MachineCode(bvec, rettype, argtypes) = MachineCode(ByteVector(bvec), rettype, argtypes)
 
 
+Base.pointer(code::MachineCode) = code.ptr
+
+
 @generated function (code::MachineCode{RetType,ArgTypes})(args...) where {RetType,ArgTypes}
     rettype_ex = Symbol(RetType)
     argtype_ex = Expr(:tuple)
-    for t in ArgTypes.types
-        push!(argtype_ex.args, Symbol(t))
+    for (i,t) in enumerate(ArgTypes.types)
+        push!(argtype_ex.args, t)
     end
     nargs = length(ArgTypes.types)
     arg_ex = [ :(args[$i]) for i in 1:nargs ]
