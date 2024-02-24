@@ -13,7 +13,11 @@ patches = Dict{String,Ptr}(
     "puts" => dlsym(libc, :puts)
 )
 bvec = CopyAndPatch.ByteVector(UInt8.(group.code.body[1]))
-bvec_data = CopyAndPatch.ByteVector(UInt8.(group.data.body[1]))
+if !isempty(group.data.body)
+    bvec_data = CopyAndPatch.ByteVector(UInt8.(group.data.body[1]))
+else
+    bvec_data = nothing
+end
 
 for h in holes
     if startswith(h.symbol, ".rodata")
@@ -35,12 +39,13 @@ group = CopyAndPatch.StencilGroup(joinpath(@__DIR__, "mwe_continuation.json"))
 holes = CopyAndPatch.holes(group)
 
 patches = Dict{String,Ptr}(
+    "jl_call" => dlsym(CopyAndPatch.libjulia[], :jl_call),
     "printf" => dlsym(libc, :printf),
     "puts" => dlsym(libc, :puts)
 )
 bvec = CopyAndPatch.ByteVector(UInt8.(group.code.body[1]))
 if !isempty(group.data.body)
-    bvec_data = CopyAndPatch.ByteVector(UInt9.(group.data.body[1]))
+    bvec_data = CopyAndPatch.ByteVector(UInt8.(group.data.body[1]))
 else
     bvec_data = nothing
 end
@@ -58,7 +63,12 @@ end
 
 jl_continuation = CopyAndPatch.MachineCode(bvec, Cvoid, (Ptr{Cvoid},))
 
-# stack
-stck = Ptr{UInt64}[ jit_end.ptr ]
+fn = CopyAndPatch.pointer_from_function(versioninfo)
+args = Ptr{UInt64}[]
+nargs = 0
 
-jl_continuation(pointer(stck))
+# stack
+stck = Ptr{UInt64}[ fn, pointer(args), UInt64(nargs), jit_end.ptr ]
+display(stck)
+
+jl_continuation(pointer(stck,length(stck)))
