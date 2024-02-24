@@ -36,6 +36,12 @@ function Base.setindex!(bvec::ByteVector, b::T, ::Type{S}, i) where {T<:Union{Pt
     bvec[sizeof(T)*(i-1)+1] = b
 end
 
+
+Base.pointer(bvec::ByteVector) = pointer(bvec, 1)
+Base.pointer(bvec::ByteVector, i::Integer) = pointer(bvec, UInt8, i)
+Base.pointer(bvec::ByteVector, ::Type{T}, i::Integer) where {T<:Unsigned} = pointer(bvec.d, sizeof(T)*(i-1)+1)
+
+
 function to_unsigned(x::T) where T
     @assert isbits(x)
     n = sizeof(T)

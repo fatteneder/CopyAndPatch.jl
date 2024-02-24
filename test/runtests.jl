@@ -65,4 +65,10 @@ import CopyAndPatch: ByteVector, MachineCode, is_little_endian
     @test bvec[7] == 0x00
     @test bvec[8] == 0x01
 
+    @test pointer(bvec.d) == pointer(bvec)
+    @test pointer(bvec.d, sizeof(UInt8)*2+1) == pointer(bvec, UInt8, 3)
+    @test pointer(bvec.d, sizeof(UInt16)*2+1) == pointer(bvec, UInt16, 3)
+    @test pointer(bvec.d, sizeof(UInt32)*2+1) == pointer(bvec, UInt32, 3)
+    @test pointer(bvec.d, sizeof(UInt64)*2+1) == pointer(bvec, UInt64, 3)
+
 end
