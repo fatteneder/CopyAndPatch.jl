@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+boxtypes=(
+  bool            int8_t
+  int8            int8_t
+  uint8           uint8_t
+  int16           int16_t
+  uint16          uint16_t
+  int32           int32_t
+  uint32          uint32_t
+  char            uint32_t
+  int64           int64_t
+  uint64          uint64_t
+  float32         float
+  float64         double
+  voidpointer     "void *"
+  uint8pointer    "uint8_t *"
+  ssavalue        size_t
+  slotnumber      size_t
+)
+
+ntypes="${#boxtypes[@]}"
+for i in $(seq 0 $((ntypes/2-1))); do
+  jltype="${boxtypes[$((2*$i))]}"
+  ctype="${boxtypes[$((2*$i+1))]}"
+
+  # jl_box_*.c
+  echo """
+#include \"common.h\"
+
+jl_value_t *
+_JIT_ENTRY() {
+  PATCH_VALUE($ctype, _val, _JIT_ARG);
+  jl_value_t *val = jl_box_$jltype(_val);
+  return val;
+}
+""" > jl_box_$jltype.c
+
+done
+
+
+
+
+unboxtypes=(
+  bool            int8_t
+  int8            int8_t
+  uint8           uint8_t
+  int16           int16_t
+  uint16          uint16_t
+  int32           int32_t
+  uint32          uint32_t
+  # char            uint32_t
+  int64           int64_t
+  uint64          uint64_t
+  float32         float
+  float64         double
+  voidpointer     "void *"
+  uint8pointer    "uint8_t *"
+  # ssavalue        size_t
+  # slotnumber      size_t
+)
+
+
+ntypes="${#unboxtypes[@]}"
+for i in $(seq 0 $((ntypes/2-1))); do
+  jltype="${unboxtypes[$((2*$i))]}"
+  ctype="${unboxtypes[$((2*$i+1))]}"
+
+  # jl_unbox_*.c
+  echo """
+#include \"common.h\"
+
+$ctype
+_JIT_ENTRY() {
+  PATCH_VALUE(jl_value_t *, _val, _JIT_ARG);
+  $ctype val = jl_unbox_$jltype(_val);
+  return val;
+}
+""" > jl_unbox_$jltype.c
+
+done
