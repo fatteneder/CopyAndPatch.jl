@@ -14,6 +14,7 @@ function Base.fill!(b::ByteVector, v::T) where T<:Number
 end
 Base.size(b::ByteVector) = size(b.d)
 Base.getindex(b::ByteVector, i) = b.d[i]
+Base.getindex(b::ByteVector, ::Type{T}, i) where {T<:Unsigned} = b[sizeof(T)*(i-1)+1]
 function Base.setindex!(bvec::ByteVector, b::T, i) where T<:Number
     # TODO Rewrite this to use reinterpret. Will need StaticArrays to avoid allocs.
     n = sizeof(T)
@@ -31,6 +32,9 @@ function Base.setindex!(bvec::ByteVector, b::T, i) where T<:Number
     bvec
 end
 Base.setindex!(bvec::ByteVector, p::Ptr, i) = bvec[i] = UInt64(p)
+function Base.setindex!(bvec::ByteVector, b::T, ::Type{S}, i) where {T<:Union{Ptr,Number},S<:Unsigned}
+    bvec[sizeof(T)*(i-1)+1] = b
+end
 
 function to_unsigned(x::T) where T
     @assert isbits(x)

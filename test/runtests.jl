@@ -44,4 +44,25 @@ import CopyAndPatch: ByteVector, MachineCode, is_little_endian
     end
     bvec[1] = pointer_from_objref(:blabla)
 
+    fill!(bvec, 0)
+    bvec[UInt8,1] = 0x01
+    @test bvec[1] == 0x01
+    bvec[UInt16,1] = 0x0100
+    @test bvec[1] == 0x00
+    @test bvec[2] == 0x01
+    bvec[UInt32,1] = 0x01000100
+    @test bvec[1] == 0x00
+    @test bvec[2] == 0x01
+    @test bvec[3] == 0x00
+    @test bvec[4] == 0x01
+    bvec[UInt64,1] = 0x0100010001000100
+    @test bvec[1] == 0x00
+    @test bvec[2] == 0x01
+    @test bvec[3] == 0x00
+    @test bvec[4] == 0x01
+    @test bvec[5] == 0x00
+    @test bvec[6] == 0x01
+    @test bvec[7] == 0x00
+    @test bvec[8] == 0x01
+
 end
