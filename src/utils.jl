@@ -8,6 +8,8 @@ function pointer_from_function(fn::Function)
     @assert pf !== C_NULL
     return pf
 end
+# https://discourse.julialang.org/t/manual-type-inference-of-hand-written-ircode/106356/7
+pointer_from_function(g::GlobalRef) = pointer_from_function(eval(g))
 
 
 # for debugging jl_call
