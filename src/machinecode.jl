@@ -35,6 +35,6 @@ end
 function Base.show(io::IO, ::MIME"text/plain", code::MachineCode{RetType,ArgTypes}) where {RetType,ArgTypes}
     print(io, "MachineCode(")
     args = ArgTypes.types
-    length(args) > 0 && print("::", join(args,"::,"))
-    print(")::", RetType)
+    length(args) > 0 && print(io, "::", join(args,"::,"))
+    print(io, ")::", RetType)
 end
