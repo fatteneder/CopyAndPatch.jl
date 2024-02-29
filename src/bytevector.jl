@@ -16,19 +16,9 @@ Base.size(b::ByteVector) = size(b.d)
 Base.getindex(b::ByteVector, i) = b.d[i]
 Base.getindex(b::ByteVector, ::Type{T}, i) where {T<:Unsigned} = b[sizeof(T)*(i-1)+1]
 function Base.setindex!(bvec::ByteVector, b::T, i) where T<:Number
-    # TODO Rewrite this to use reinterpret. Will need StaticArrays to avoid allocs.
     n = sizeof(T)
-    i+(n-1) <= length(bvec.d) || throw(ArgumentError("buffer overflow"))
-    bb = to_unsigned(b)
-    @static if is_little_endian()
-        for ii in 0:n-1
-            bvec.d[i+ii] = UInt8(bb >> (ii*8) & 0xFF)
-        end
-    else
-        for ii in 0:n-1
-            bvec.d[i+ii] = UInt8(bb >> ((n-1-ii)*8) & 0xFF)
-        end
-    end
+    i+n-1 <= length(bvec.d) || throw(ArgumentError("buffer overflow"))
+    @views bvec.d[i:i+n-1] .= reinterpret(UInt8, [b])
     bvec
 end
 Base.setindex!(bvec::ByteVector, p::Ptr, i) = bvec[i] = UInt64(p)
@@ -40,19 +30,3 @@ end
 Base.pointer(bvec::ByteVector) = pointer(bvec, 1)
 Base.pointer(bvec::ByteVector, i::Integer) = pointer(bvec, UInt8, i)
 Base.pointer(bvec::ByteVector, ::Type{T}, i::Integer) where {T<:Unsigned} = pointer(bvec.d, sizeof(T)*(i-1)+1)
-
-
-function to_unsigned(x::T) where T
-    @assert isbits(x)
-    n = sizeof(T)
-    if n == 1
-        return reinterpret(UInt8,x)
-    elseif n == 2
-        return reinterpret(UInt16,x)
-    elseif n == 4
-        return reinterpret(UInt32,x)
-    elseif n == 8
-        return reinterpret(UInt64,x)
-    end
-    TODO(n)
-end
