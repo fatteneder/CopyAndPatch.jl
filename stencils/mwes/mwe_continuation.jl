@@ -68,7 +68,7 @@ args = Ptr{UInt64}[]
 nargs = 0
 
 # stack
-stck = Ptr{UInt64}[ fn, pointer(args), UInt64(nargs), jit_end.ptr ]
-display(stck)
+st = Ptr{UInt64}[ fn, pointer(args), UInt64(nargs), pointer(jit_end) ]
+display(st)
 
-jl_continuation(pointer(stck,length(stck)))
+jl_continuation(pointer(st,length(st)))
