@@ -73,20 +73,22 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     stack = Stack()
     # -1 because first arg is the function
     nargs = isnothing(codeinfo.slottypes) ? 0 : length(codeinfo.slottypes)-1
-    argstack = ByteVector(nargs*sizeof(Ptr{UInt64}))
+    args = ByteVector(nargs*sizeof(Ptr{UInt64}))
+    nssas = length(codeinfo.ssavaluetypes)
+    ssas = ByteVector(nssas*sizeof(Ptr{UInt64}))
     for ex in reverse(codeinfo.code)
         display(ex)
-        emitcode!(stack, argstack, ex)
+        emitcode!(stack, args, ssas, ex)
     end
 
-    return stack, argstack
+    return stack, args, ssas
 end
 
 
 # CodeInfo can contain following symbols
 # (from https://juliadebug.github.io/JuliaInterpreter.jl/stable/ast/)
 # - %2 ... single static assignment (SSA) value
-#          see CodeInfo.ssavaluetypes, CodeInfo.slotnames
+#          see CodeInfo.ssavaluetypes, CodeInfo.ssaflags
 # - _2 ... slot variable; either a function argument or a local variable
 #          _1 refers to function, _2 to first arg, etc.
 #          see CodeInfo.slottypes, CodeInfo.slotnames
@@ -98,26 +100,28 @@ end
 # stack[end]   = nargs
 #
 # TODO Does the jit code need to handle argstack?
-emitcode!(stack::Stack, argstack::ByteVector, ex) = TODO(typeof(ex))
-function emitcode!(stack::Stack, argstack::ByteVector, ex::Core.ReturnNode)
+emitcode!(stack::Stack, args::ByteVector, ssas::ByteVector, ex) = TODO(typeof(ex))
+function emitcode!(stack::Stack, args::ByteVector, ssas::ByteVector, ex::Core.ReturnNode)
     _, bvec, _ = stencils["jit_end"]
     push!(stack, pointer(bvec))
 end
-function emitcode!(stack::Stack, argstack::ByteVector, ex::Expr)
+function emitcode!(stack::Stack, args::ByteVector, ssas::ByteVector, ex::Expr)
     if isexpr(ex, :call)
         fn = ex.args[1]
         fn_ptr = pointer_from_function(fn)
         push!(stack, fn_ptr)
-        args = @view ex.args[2:end]
-        Main.boxes = Ptr{UInt64}[]
-        for a in args
+        ex_args = @view ex.args[2:end]
+        boxes = Ptr{UInt64}[]
+        for a in ex_args
             if a isa Core.Argument
-                push!(Main.boxes, pointer(argstack, UInt64, a.n))
+                push!(boxes, pointer(args, UInt64, a.n))
+            elseif a isa Core.SSAValue
+                push!(boxes, pointer(ssas, UInt64, a.id))
             else
-                push!(Main.boxes, box(a))
+                push!(boxes, box(a))
             end
         end
-        push!(stack, pointer(Main.boxes))
+        push!(stack, pointer(boxes))
         nargs = length(args)
         push!(stack, UInt64(nargs))
         _, bvec, _ = stencils["jit_call"]
