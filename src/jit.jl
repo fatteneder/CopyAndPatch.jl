@@ -1,118 +1,128 @@
-if isa(node, Expr)
-    if node.head === :(=)
-        lhs, rhs = node.args
-        if isa(rhs, Expr)
-            rhs = eval_rhs(recurse, frame, rhs)
+const stencils = Dict{String,Any}()
+
+
+function init_stencils()
+
+    stencildir = joinpath(@__DIR__, "..", "stencils")
+    files = readdir(stencildir, join=true)
+    filter!(files) do f
+        endswith(f, ".json")
+    end
+
+    empty!(stencils)
+    for f in files
+        s = StencilGroup(f)
+        bvec = ByteVector(UInt8.(s.code.body[1]))
+        bvec_data = if !isempty(s.data.body)
+            ByteVector(UInt8.(s.data.body[1]))
         else
-            rhs = istoplevel ? @lookup(moduleof(frame), frame, rhs) : @lookup(frame, rhs)
+            ByteVector(0)
         end
-        isa(rhs, BreakpointRef) && return rhs
-        do_assignment!(frame, lhs, rhs)
-    elseif node.head === :enter
-        TODO()
-        rhs = node.args[1]::Int
-        push!(data.exception_frames, rhs)
-    elseif node.head === :leave
-        TODO()
-        if length(node.args) == 1 && isa(node.args[1], Int)
-            arg = node.args[1]::Int
-            for _ = 1:arg
-                pop!(data.exception_frames)
+        patch_default_deps!(bvec, bvec_data, s)
+
+        # mmap stencils to make them executable
+        buf_bvec      = mmap(Vector{UInt8}, length(bvec), shared=false, exec=true)
+        buf_bvec_data = mmap(Vector{UInt8}, length(bvec_data), shared=false, exec=true)
+        copy!(buf_bvec, bvec)
+        copy!(buf_bvec_data, bvec_data)
+
+        name = first(splitext(basename(f)))
+        stencils[name] = (s,buf_bvec,buf_bvec_data)
+    end
+
+    return
+end
+
+
+function patch_default_deps!(bvec::ByteVector, bvec_data::ByteVector, s::StencilGroup)
+    holes = s.code.relocations
+    for h in holes
+        startswith(h.symbol, "_JIT_") && continue
+        ptr = if startswith(h.symbol, "jl_")
+            p = dlsym(libjulia[], h.symbol, throw_error=false)
+            if isnothing(p)
+                p = dlsym(libjuliainternal[], h.symbol)
             end
+            p
+        elseif startswith(h.symbol, ".rodata")
+            @assert h.addend+1 < length(bvec_data)
+            pointer(bvec_data.d, h.addend+1)
         else
-            for i = 1:length(node.args)
-                targ = node.args[i]
-                targ === nothing && continue
-                enterstmt = frame.framecode.src.code[(targ::SSAValue).id]
-                enterstmt === nothing && continue
-                pop!(data.exception_frames)
-                if isdefined(enterstmt, :scope)
-                    pop!(data.current_scopes)
-                end
-            end
+            dlsym(libc[], h.symbol)#, throw_error=false)
+            # @assert !isnothing(p)
+            # p
         end
-    elseif node.head === :pop_exception
-        TODO()
-    elseif istoplevel
-        TODO()
-        if node.head === :method && length(node.args) > 1
-            evaluate_methoddef(frame, node)
-        elseif node.head === :module
-            error("this should have been handled by split_expressions")
-        elseif node.head === :using || node.head === :import || node.head === :export
-            Core.eval(moduleof(frame), node)
-        elseif node.head === :const
-            g = node.args[1]
-            if isa(g, GlobalRef)
-                mod, name = g.mod, g.name
+        bvec[h.offset+1] = ptr
+    end
+end
+
+
+const Stack = Vector{Ptr{UInt64}}
+
+
+function jit(@nospecialize(fn::Function), @nospecialize(args))
+
+    init_stencils()
+
+    optimize = true
+    code = code_typed(fn, args; optimize)
+    @assert length(code) == 1
+    codeinfo = code[1].first
+    ret = code[1].second
+
+    stack = Stack()
+    # -1 because first arg is the function
+    nargs = isnothing(codeinfo.slottypes) ? 0 : length(codeinfo.slottypes)-1
+    argstack = ByteVector(nargs*sizeof(Ptr{UInt64}))
+    for ex in reverse(codeinfo.code)
+        display(ex)
+        emitcode!(stack, argstack, ex)
+    end
+
+    return stack, argstack
+end
+
+
+# CodeInfo can contain following symbols
+# (from https://juliadebug.github.io/JuliaInterpreter.jl/stable/ast/)
+# - %2 ... single static assignment (SSA) value
+#          see CodeInfo.ssavaluetypes, CodeInfo.slotnames
+# - _2 ... slot variable; either a function argument or a local variable
+#          _1 refers to function, _2 to first arg, etc.
+#          see CodeInfo.slottypes, CodeInfo.slotnames
+#
+# Our calling convention:
+# stack[end-3] = continuation_ptr
+# stack[end-2] = fn_ptr
+# stack[end-3] = pointer(boxes(args))
+# stack[end]   = nargs
+#
+# TODO Does the jit code need to handle argstack?
+emitcode!(stack::Stack, argstack::ByteVector, ex) = TODO(typeof(ex))
+function emitcode!(stack::Stack, argstack::ByteVector, ex::Core.ReturnNode)
+    _, bvec, _ = stencils["jit_end"]
+    push!(stack, pointer(bvec))
+end
+function emitcode!(stack::Stack, argstack::ByteVector, ex::Expr)
+    if isexpr(ex, :call)
+        fn = ex.args[1]
+        fn_ptr = pointer_from_function(fn)
+        push!(stack, fn_ptr)
+        args = @view ex.args[2:end]
+        Main.boxes = Ptr{UInt64}[]
+        for a in args
+            if a isa Core.Argument
+                push!(Main.boxes, pointer(argstack, UInt64, a.n))
             else
-                mod, name = moduleof(frame), g::Symbol
+                push!(Main.boxes, box(a))
             end
-            Core.eval(mod, Expr(:const, name))
-        elseif node.head === :thunk
-            newframe = Frame(moduleof(frame), node.args[1]::CodeInfo)
-            if isa(recurse, Compiled)
-                finish!(recurse, newframe, true)
-            else
-                newframe.caller = frame
-                frame.callee = newframe
-                finish!(recurse, newframe, true)
-                frame.callee = nothing
-            end
-            return_from(newframe)
-        elseif node.head === :global
-            Core.eval(moduleof(frame), node)
-        elseif node.head === :toplevel
-            mod = moduleof(frame)
-            iter = ExprSplitter(mod, node)
-            rhs = Core.eval(mod, Expr(:toplevel,
-                :(for (mod, ex) in $iter
-                      if ex.head === :toplevel
-                          Core.eval(mod, ex)
-                          continue
-                      end
-                      newframe = ($Frame)(mod, ex)
-                      while true
-                          ($through_methoddef_or_done!)($recurse, newframe) === nothing && break
-                      end
-                      $return_from(newframe)
-                  end)))
-        elseif node.head === :error
-            error("unexpected error statement ", node)
-        elseif node.head === :incomplete
-            error("incomplete statement ", node)
-        else
-            rhs = eval_rhs(recurse, frame, node)
         end
-    elseif node.head === :thunk || node.head === :toplevel
-        error("this frame needs to be run at top level")
+        push!(stack, pointer(Main.boxes))
+        nargs = length(args)
+        push!(stack, UInt64(nargs))
+        _, bvec, _ = stencils["jit_call"]
+        push!(stack, pointer(bvec))
     else
-        TODO()
-        rhs = eval_rhs(recurse, frame, node)
+        TODO(ex.head)
     end
-elseif isa(node, GotoNode)
-    return (frame.pc = node.label)
-elseif isa(node, GotoIfNot)
-    arg = @lookup(frame, node.cond)
-    if !isa(arg, Bool)
-        throw(TypeError(nameof(frame), "if", Bool, arg))
-    end
-    if !arg
-        return (frame.pc = node.dest)
-    end
-elseif isa(node, ReturnNode)
-    return nothing
-elseif isa(node, NewvarNode)
-    # FIXME: undefine the slot?
-elseif istoplevel && isa(node, LineNumberNode)
-elseif istoplevel && isa(node, Symbol)
-    rhs = getfield(moduleof(frame), node)
-elseif @static (isdefined(Core.IR, :EnterNode) && true) && isa(node, Core.IR.EnterNode)
-    rhs = node.catch_dest
-    push!(data.exception_frames, rhs)
-    if isdefined(node, :scope)
-        push!(data.current_scopes, @lookup(frame, node.scope))
-    end
-else
-    rhs = @lookup(frame, node)
 end

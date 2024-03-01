@@ -6,6 +6,10 @@ import Mmap: mmap
 import JSON: parsefile
 import Base.Libc.Libdl: dlpath, dlopen, dlsym
 import Printf: Format, format
+import Base: isexpr, code_typed
+
+
+export jit
 
 
 TODO() = error("Not implemented yet")
@@ -30,6 +34,7 @@ include("utils.jl")
 include("bytevector.jl")
 include("machinecode.jl")
 include("stencil.jl")
+include("jit.jl")
 
 
 end
