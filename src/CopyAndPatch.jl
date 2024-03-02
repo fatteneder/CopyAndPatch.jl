@@ -18,6 +18,7 @@ TODO(msg) = error("Not implemented yet: $msg")
 
 
 const path_libjulia = Ref{String}("")
+const path_libjuliainternal = Ref{String}("")
 const libjulia = Ref{Ptr{Cvoid}}(0)
 const libjuliainternal = Ref{Ptr{Cvoid}}(0)
 const libc = Ref{Ptr{Cvoid}}(0)
@@ -26,6 +27,7 @@ function __init__()
     libjuliainternal[] = dlopen(dlpath("libjulia-internal.so"))
     libc[] = dlopen(dlpath("libc.so.6"))
     path_libjulia[] = dlpath("libjulia.so")
+    path_libjuliainternal[] = dlpath("libjulia-internal.so")
     nothing
 end
 
