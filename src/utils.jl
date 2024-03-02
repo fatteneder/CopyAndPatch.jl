@@ -1,6 +1,7 @@
 is_little_endian() = ENDIAN_BOM == 0x04030201
 
 
+# unfortunately, query jl_function_t * can't be done reliably (clarified on Slack)
 function pointer_from_function(fn::Function)
     pm = pointer_from_objref(typeof(fn).name.module)
     ps = pointer_from_objref(nameof(fn))
