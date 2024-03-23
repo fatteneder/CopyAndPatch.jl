@@ -24,7 +24,9 @@ for i in $(seq 0 $((ntypes/2-1))); do
   jltype="${boxtypes[$((2*$i))]}"
   ctype="${boxtypes[$((2*$i+1))]}"
 
-  # jl_box_*.c
+  # stencil version
+  # name: stencil_jl_box_*.c
+  # TODO Need to also patch continuation
   echo """
 #include \"common.h\"
 
@@ -34,7 +36,27 @@ _JIT_ENTRY() {
   jl_value_t *val = jl_box_$jltype(_val);
   return val;
 }
-""" > jl_box_$jltype.c
+""" > stencil_jl_box_$jltype.c
+
+  # stack version
+  # name: stack_jl_box_*.c
+  echo """
+#include \"common.h\"
+
+typedef union {
+  void *ptr;
+  $ctype val;
+} ptrval;
+
+void
+_JIT_ENTRY(void ** stack_ptr) {
+  ptrval val = (ptrval)(stack_ptr--)[0];
+  jl_value_t **ret = (jl_value_t **)(stack_ptr--)[0];
+  void (*continuation)(void **) = (stack_ptr--)[0];
+  *ret = jl_box_$jltype(val.val);
+  continuation(stack_ptr);
+}
+""" > stack_jl_box_$jltype.c
 
 done
 
@@ -66,7 +88,9 @@ for i in $(seq 0 $((ntypes/2-1))); do
   jltype="${unboxtypes[$((2*$i))]}"
   ctype="${unboxtypes[$((2*$i+1))]}"
 
-  # jl_unbox_*.c
+  # stencil version
+  # name: stencil_jl_unbox_*.c
+  # TODO Need to also patch continuation
   echo """
 #include \"common.h\"
 
@@ -76,6 +100,21 @@ _JIT_ENTRY() {
   $ctype val = jl_unbox_$jltype(_val);
   return val;
 }
-""" > jl_unbox_$jltype.c
+""" > stencil_jl_unbox_$jltype.c
+
+  # stack version
+  # name: stack_jl_unbox_*.c
+  echo """
+#include \"common.h\"
+
+void
+_JIT_ENTRY(void ** stack_ptr) {
+  jl_value_t *val = (jl_value_t *)(stack_ptr--)[0];
+  $ctype *ret = ($ctype *)(stack_ptr--)[0];
+  void (*continuation)(void **) = (stack_ptr--)[0];
+  *ret = jl_unbox_$jltype(val);
+  continuation(stack_ptr);
+}
+""" > stack_jl_unbox_$jltype.c
 
 done

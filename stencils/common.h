@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <julia.h>
 
 #define PATCH_VALUE(TYPE, NAME, ALIAS)  \
