@@ -37,11 +37,16 @@ end
 function patch_default_deps!(bvec::ByteVector, bvec_data::ByteVector, s::StencilGroup)
     holes = s.code.relocations
     for h in holes
+        # TODO Is there a list of intrinsics which I can skip here?
         startswith(h.symbol, "_JIT_") && continue
         ptr = if startswith(h.symbol, "jl_")
             p = dlsym(libjulia[], h.symbol, throw_error=false)
             if isnothing(p)
-                p = dlsym(libjuliainternal[], h.symbol)
+                p = dlsym(libjuliainternal[], h.symbol, throw_error=false)
+                if isnothing(p)
+                    @warn "failed to find $(h.symbol) symbol"
+                    continue
+                end
             end
             p
         elseif startswith(h.symbol, ".rodata")
