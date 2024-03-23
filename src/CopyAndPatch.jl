@@ -4,6 +4,7 @@ module CopyAndPatch
 import Mmap: mmap
 # using JuliaInterpreter
 import JSON: parsefile
+import Base.Libc: malloc, free
 import Base.Libc.Libdl: dlpath, dlopen, dlsym
 import Printf: Format, format
 import Base: isexpr, code_typed
