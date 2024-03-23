@@ -101,18 +101,31 @@ JL_DLLEXPORT void jl_set_next_task(jl_task_t *task) JL_NOTSAFEPOINT;
 
 
 let
-rgx = r"JL_DLLEXPORT (\w*) \*?(\w*)\((.*)\)"
+rgx_sig = r"JL_DLLEXPORT (\w* \*)(\w*)\((.*)\)"
+rgx_arg = r"(\w* \*)"
 for line in split(signatures,'\n')
     isempty(line) && continue
-    m = match(rgx, line) |> something
-    ret, fn_name, args = m[1], m[2], split(m[3],',')
-    args = first.(split.(args))
+    m = match(rgx_sig, line)
+    isnothing(m) && continue
+    rettype, fn_name, args = m[1], m[2], split(m[3],',')
+    argtypes = SubString[]
+    skip = false
+    for a in args
+        m = match(rgx_arg, a)
+        if isnothing(m)
+            skip = true
+            break
+        end
+        push!(argtypes, m[1])
+    end
+    skip && continue
 
-    ret != "jl_value_t" && continue
-    !all(==("jl_value_t"), args) && continue
+    rettype != "jl_value_t *" && continue
+    !all(==("jl_value_t *"), argtypes) && continue
+    # TODO Removed by #53765
     fn_name == "jl_arraylen" && continue
 
-    nargs = length(args)
+    nargs = length(argtypes)
     unpack_args = join([ "jl_value_t *a$i = (jl_value_t *)(stack_ptr--)[0];" for i = 1:nargs ], '\n')
     fn_args = join([ "a$i" for i = 1:nargs ], ',')
     code = """
@@ -124,12 +137,11 @@ void
 _JIT_ENTRY(void **stack_ptr)
 {
 $unpack_args
-jl_value_t *ret = $fn_name($fn_args);
-// TODO push result onto stack!
+jl_value_t **ret = (jl_value_t **)(stack_ptr--)[0];
+*ret = $fn_name($fn_args);
 void (*continuation)(void **) = (stack_ptr--)[0];
 continuation(stack_ptr);
-}
-"""
+}"""
     println(code)
     filename = joinpath(@__DIR__, "$fn_name.c")
     open(filename, write=true) do file
