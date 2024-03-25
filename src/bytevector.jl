@@ -15,10 +15,16 @@ end
 Base.size(b::ByteVector) = size(b.d)
 Base.length(b::ByteVector, ::Type{T}) where {T<:Unsigned} = length(b)÷sizeof(T)
 Base.getindex(b::ByteVector, i) = b.d[i]
-Base.getindex(b::ByteVector, ::Type{T}, i) where {T<:Unsigned} = b[sizeof(T)*(i-1)+1]
+function Base.getindex(b::ByteVector, ::Type{T}, i) where {T<:Unsigned}
+    sz = sizeof(T)
+    start = sz*(i-1)+1
+    stop = sz*i
+    1 <= start <= stop <= length(b) || throw(BoundsError(b,i))
+    return first(reinterpret(T, b[start:stop]))
+end
 function Base.setindex!(bvec::ByteVector, b::T, i) where T<:Number
     n = sizeof(T)
-    i+n-1 <= length(bvec.d) || throw(ArgumentError("buffer overflow"))
+    i+n-1 <= length(bvec.d) || throw(BoundsError(b,i))
     @views bvec.d[i:i+n-1] .= reinterpret(UInt8, [b])
     bvec
 end
