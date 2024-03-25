@@ -72,3 +72,6 @@ import CopyAndPatch: ByteVector, MachineCode, is_little_endian
     @test pointer(bvec.d, sizeof(UInt64)*2+1) == pointer(bvec, UInt64, 3)
 
 end
+
+
+include("jit.jl")
