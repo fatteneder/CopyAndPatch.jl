@@ -75,18 +75,41 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     codeinfo = code[1].first
     ret = code[1].second
 
+    @show codeinfo
+    # @show codeinfo.slottypes
+    # @show codeinfo.ssavaluetypes
+    # @show propertynames(codeinfo)
+
     stack = Stack()
-    # -1 because first arg is the function
-    nargs = isnothing(codeinfo.slottypes) ? 0 : length(codeinfo.slottypes)-1
-    args = ByteVector(nargs*sizeof(Ptr{UInt64}))
+    nslots = length(codeinfo.slottypes)
+    slots = ByteVector(nslots*sizeof(Ptr{UInt64}))
     nssas = length(codeinfo.ssavaluetypes)
     ssas = ByteVector(nssas*sizeof(Ptr{UInt64}))
-    for ex in reverse(codeinfo.code)
-        display(ex)
-        emitcode!(stack, args, ssas, ex)
+
+    # init ssas and slots
+    for i = 1:nslots
+        T = codeinfo.slottypes[i]
+        T isa Core.Const && continue
+        T <: Number || continue
+        b = box(T(0))
+        slots[UInt64,i] = b
+    end
+    @show slots
+    for i = 1:nssas
+        T = codeinfo.ssavaluetypes[i]
+        T <: Number || continue
+        b = box(T(0))
+        ssas[UInt64,i] = b
+    end
+    @show slots[UInt64,2]
+
+    boxes = Any[]
+    for (i,ex) in Iterators.reverse(enumerate(codeinfo.code))
+        @show i, codeinfo.ssavaluetypes[i], ex
+        emitcode!(stack, slots, ssas, boxes, ex, codeinfo.ssavaluetypes[i])
     end
 
-    return stack, args, ssas
+    return stack, slots, ssas, boxes
 end
 
 
@@ -101,37 +124,102 @@ end
 # Our calling convention:
 # stack[end-3] = continuation_ptr
 # stack[end-2] = fn_ptr
-# stack[end-3] = pointer(boxes(args))
+# stack[end-1] = pointer(boxes.(args))
 # stack[end]   = nargs
 #
 # TODO Does the jit code need to handle argstack?
-emitcode!(stack::Stack, args::ByteVector, ssas::ByteVector, ex) = TODO(typeof(ex))
-function emitcode!(stack::Stack, args::ByteVector, ssas::ByteVector, ex::Core.ReturnNode)
+emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, boxes, ex, rettype) = TODO(typeof(ex))
+function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.ReturnNode, rettype)
     _, bvec, _ = stencils["jit_end"]
     push!(stack, pointer(bvec))
 end
-function emitcode!(stack::Stack, args::ByteVector, ssas::ByteVector, ex::Expr)
+function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::Expr, rettype)
     if isexpr(ex, :call)
-        fn = ex.args[1]
-        fn_ptr = pointer_from_function(fn)
-        push!(stack, fn_ptr)
-        ex_args = @view ex.args[2:end]
-        boxes = Ptr{UInt64}[]
-        for a in ex_args
-            if a isa Core.Argument
-                push!(boxes, pointer(args, UInt64, a.n))
-            elseif a isa Core.SSAValue
-                push!(boxes, pointer(ssas, UInt64, a.id))
-            else
-                push!(boxes, box(a))
+        g = ex.args[1]
+        @assert g isa GlobalRef
+        fn = unwrap(g)
+        if fn isa Core.IntrinsicFunction
+            ex_args = @view ex.args[2:end]
+            nargs = length(ex_args)
+            boxes = Ptr{UInt64}[]
+            name = string(g.name)
+            for a in ex_args
+                if a isa Core.Argument || a isa Core.SSAValue
+                    p = if a isa Core.Argument
+                        @assert a.n > 1
+                        slots[UInt64, a.n]
+                    elseif a isa Core.SSAValue
+                        ssas[UInt64, a.id]
+                    end
+                    push!(boxes, p)
+                elseif a isa Number
+                    b = box(a)
+                    push!(boxes, b)
+                    push!(bxs, b)
+                elseif a isa Type
+                    TODO(a)
+                else
+                    TODO(a)
+                end
             end
+            retbox = Ref{Ptr{Cvoid}}(C_NULL)
+            push!(stack, unsafe_convert(Ptr{Cvoid}, retbox))
+            append!(bxs, boxes) # preseve boxes
+            append!(stack, reverse(boxes))
+            name = string("jl_", Symbol(fn))
+            _, intrinsic, _ = get(stencils, name) do
+                error("don't know how to handle intrinsic $name")
+            end
+            @show pointer(intrinsic)
+            push!(stack, pointer(intrinsic))
+            @show stack
+        elseif fn isa Function
+            @assert iscallable(fn)
+            fn_ptr = pointer_from_function(fn)
+            push!(stack, fn_ptr)
+            ex_args = @view ex.args[2:end]
+            nargs = length(ex_args)
+            boxes = Ptr{UInt64}[]
+            for a in ex_args
+                if a isa Core.Argument
+                    @assert a.n > 1
+                    push!(boxes, pointer(slots, UInt64, a.n))
+                elseif a isa Core.SSAValue
+                    push!(boxes, pointer(ssas, UInt64, a.id))
+                else
+                    push!(boxes, box(a))
+                end
+            end
+            append!(bxs, boxes)
+            push!(stack, pointer(boxes))
+            push!(stack, UInt64(nargs))
+            _, bvec, _ = stencils["jit_call"]
+            push!(stack, pointer(bvec))
+        else
+            TODO(fn)
         end
-        push!(stack, pointer(boxes))
-        nargs = length(args)
-        push!(stack, UInt64(nargs))
-        _, bvec, _ = stencils["jit_call"]
-        push!(stack, pointer(bvec))
     else
         TODO(ex.head)
     end
+end
+
+
+const IntrinsicDispatchType = Union{Int8,Int16,Int32,Int64,UInt8,UInt16,UInt32,UInt64,Float16,Float32,Float64}
+name_stack_jl_box(@nospecialize(t::Type{T})) where T<:IntrinsicDispatchType = string("stack_jl_box_", lowercase(string(Symbol(t))))
+
+
+function emitcode_box!(stack::Stack, p::Ptr, @nospecialize(type::Type{T})) where T<:IntrinsicDispatchType
+
+    retbox = Ref{Ptr{Cvoid}}(C_NULL)
+    name = name_stack_jl_box(type)
+    _, bvec, _ = stencils[name]
+
+    # arg
+    push!(stack, p)
+    # retvalue
+    push!(stack, unsafe_convert(Ptr{Cvoid}, retbox))
+    # continuation
+    push!(stack, pointer(bvec))
+
+    return bvec, retbox
 end
