@@ -157,7 +157,7 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
                     push!(boxes, b)
                     push!(bxs, b)
                 elseif a isa Type
-                    TODO(a)
+                    push!(boxes, pointer_from_objref(a))
                 else
                     TODO(a)
                 end
