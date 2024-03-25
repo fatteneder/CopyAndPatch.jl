@@ -1,6 +1,10 @@
 is_little_endian() = ENDIAN_BOM == 0x04030201
 
 
+unwrap(g::GlobalRef) = getproperty(g.mod, g.name)
+iscallable(@nospecialize(f)) = !isempty(methods(f))
+
+
 # TODO Remove this, because we cannot reliably query jl_function_t * (clarified on Slack)
 function pointer_from_function(fn::Function)
     pm = pointer_from_objref(typeof(fn).name.module)
