@@ -2,7 +2,8 @@ using CopyAndPatch
 
 
 # f(x) = x+2
-f(x) = (x+2)*3-x^3
+# f(x) = (x+2)*3-x^3
+f(x) = (x+2)/3
 # this does not work, because mul_int can't be queried with CopyAndPatch.pointer_from_function
 
 # stack, argstack, ssas, boxes = jit(f, (Int64,))

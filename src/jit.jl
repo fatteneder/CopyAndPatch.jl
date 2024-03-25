@@ -91,21 +91,20 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
         T = codeinfo.slottypes[i]
         T isa Core.Const && continue
         T <: Number || continue
-        b = box(T(0))
+        z = T(0)
+        b = box(z)
         slots[UInt64,i] = b
     end
-    @show slots
     for i = 1:nssas
         T = codeinfo.ssavaluetypes[i]
         T <: Number || continue
-        b = box(T(0))
+        z = T(0)
+        b = box(z)
         ssas[UInt64,i] = b
     end
-    @show slots[UInt64,2]
 
     boxes = Any[]
     for (i,ex) in Iterators.reverse(enumerate(codeinfo.code))
-        @show i, codeinfo.ssavaluetypes[i], ex
         emitcode!(stack, slots, ssas, boxes, ex, codeinfo.ssavaluetypes[i])
     end
 
@@ -144,11 +143,12 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
             boxes = Ptr{UInt64}[]
             name = string(g.name)
             for a in ex_args
+                @show ex, a
                 if a isa Core.Argument || a isa Core.SSAValue
                     p = if a isa Core.Argument
-                        @assert a.n > 1
                         slots[UInt64, a.n]
                     elseif a isa Core.SSAValue
+                        @show a
                         ssas[UInt64, a.id]
                     end
                     push!(boxes, p)
@@ -170,9 +170,7 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
             _, intrinsic, _ = get(stencils, name) do
                 error("don't know how to handle intrinsic $name")
             end
-            @show pointer(intrinsic)
             push!(stack, pointer(intrinsic))
-            @show stack
         elseif fn isa Function
             @assert iscallable(fn)
             fn_ptr = pointer_from_function(fn)
