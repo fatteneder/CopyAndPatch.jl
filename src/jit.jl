@@ -221,3 +221,33 @@ function emitcode_box!(stack::Stack, p::Ptr, @nospecialize(type::Type{T})) where
 
     return bvec, retbox
 end
+
+
+function code_native(code::Vector{UInt8};syntax=:intel)
+
+    if syntax === :intel
+        variant = 1
+    elseif syntax === :att
+        variant = 0
+    else
+        throw(ArgumentError("'syntax' must be either :intel or :att"))
+    end
+
+    triple = lowercase(string(Sys.KERNEL, '-', Sys.MACHINE))
+    codestr = join(Iterators.map(string, code), ' ')
+
+    out, err = Pipe(), Pipe()
+    cmd = `llvm-mc --disassemble --triple=$triple --output-asm-variant=$variant`
+    pipe = pipeline(cmd, stdout=out, stderr=err)
+    open(pipe, "w", stdin) do io
+        println(io, codestr)
+    end
+    close(out.in)
+    close(err.in)
+
+    str_out = read(out, String)
+    str_err = read(err, String)
+
+    print_native(stdout, str_out)
+
+end

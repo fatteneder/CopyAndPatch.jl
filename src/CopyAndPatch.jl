@@ -8,6 +8,7 @@ import Base.Libc.Libdl: dlpath, dlopen, dlsym
 import Printf: Format, format
 import Base: isexpr, code_typed, unsafe_convert
 import Base.Iterators
+import InteractiveUtils: print_native
 
 
 export jit
