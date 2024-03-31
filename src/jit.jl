@@ -223,7 +223,8 @@ function emitcode_box!(stack::Stack, p::Ptr, @nospecialize(type::Type{T})) where
 end
 
 
-function code_native(code::Vector{UInt8};syntax=:intel)
+code_native(code::Vector{UInt8};syntax=:intel) = code_native(stdout, code; syntax)
+function code_native(io::IO, code::Vector{UInt8}; syntax=:intel)
 
     if syntax === :intel
         variant = 1
@@ -239,8 +240,8 @@ function code_native(code::Vector{UInt8};syntax=:intel)
     out, err = Pipe(), Pipe()
     cmd = `llvm-mc --disassemble --triple=$triple --output-asm-variant=$variant`
     pipe = pipeline(cmd, stdout=out, stderr=err)
-    open(pipe, "w", stdin) do io
-        println(io, codestr)
+    open(pipe, "w", stdin) do p
+        println(p, codestr)
     end
     close(out.in)
     close(err.in)
@@ -248,6 +249,6 @@ function code_native(code::Vector{UInt8};syntax=:intel)
     str_out = read(out, String)
     str_err = read(err, String)
 
-    print_native(stdout, str_out)
+    print_native(io, str_out)
 
 end
