@@ -1,14 +1,13 @@
 module CopyAndPatch
 
 
-import Mmap: mmap
-# using JuliaInterpreter
-import JSON: parsefile
+import Base: isexpr, code_typed, unsafe_convert, Iterators
 import Base.Libc.Libdl: dlpath, dlopen, dlsym
-import Printf: Format, format
-import Base: isexpr, code_typed, unsafe_convert
-import Base.Iterators
+import Core: MethodInstance
 import InteractiveUtils: print_native
+import JSON: parsefile
+import Mmap: mmap
+import Printf: Format, format
 
 
 export jit

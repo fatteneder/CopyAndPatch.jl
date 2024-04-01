@@ -143,12 +143,10 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
             boxes = Ptr{UInt64}[]
             name = string(g.name)
             for a in ex_args
-                @show ex, a
                 if a isa Core.Argument || a isa Core.SSAValue
                     p = if a isa Core.Argument
                         slots[UInt64, a.n]
                     elseif a isa Core.SSAValue
-                        @show a
                         ssas[UInt64, a.id]
                     end
                     push!(boxes, p)
@@ -196,6 +194,21 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
         else
             TODO(fn)
         end
+    elseif isexpr(ex, :invoke)
+        mi, g = ex.args[1], ex.args[2]
+        @assert mi isa MethodInstance
+        @assert g isa GlobalRef
+        fn = unwrap(g)
+        args = []
+        nargs = length(args)
+        retbox = Ref{Ptr{Cvoid}}(C_NULL)
+        push!(stack, unsafe_convert(Ptr{Cvoid}, retbox))
+        push!(stack, pointer_from_function(fn))
+        push!(stack, pointer(args))
+        push!(stack, nargs)
+        push!(stack, pointer_from_objref(mi))
+        _, bvec, _ = stencils["jl_invoke"]
+        push!(stack, pointer(bvec))
     else
         TODO(ex.head)
     end
