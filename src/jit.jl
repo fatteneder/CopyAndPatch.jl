@@ -199,16 +199,37 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
         @assert mi isa MethodInstance
         @assert g isa GlobalRef
         fn = unwrap(g)
-        args = []
-        nargs = length(args)
+        ex_args = length(ex.args) > 2 ? ex.args[3:end] : []
+        # @show ex_args
+        # @show g
+        # @show mi
+        # @show mi.specTypes
+        # TODO Need to figure out how to connect the call arguments with the slots!
+        boxes = Ptr{UInt64}[]
+        for a in ex_args
+            if a isa Core.Argument
+                @assert a.n > 1
+                push!(boxes, pointer(slots, UInt64, a.n))
+            elseif a isa Core.SSAValue
+                push!(boxes, pointer(ssas, UInt64, a.id))
+            elseif a isa String
+                push!(boxes, pointer_from_objref(a))
+            else
+                push!(boxes, box(a))
+            end
+        end
+        nargs = length(boxes)
+        # @show boxes
+        append!(bxs, boxes)
         retbox = Ref{Ptr{Cvoid}}(C_NULL)
         push!(stack, unsafe_convert(Ptr{Cvoid}, retbox))
         push!(stack, pointer_from_function(fn))
-        push!(stack, pointer(args))
+        push!(stack, pointer(boxes))
         push!(stack, nargs)
         push!(stack, pointer_from_objref(mi))
         _, bvec, _ = stencils["jl_invoke"]
         push!(stack, pointer(bvec))
+        # TODO()
     else
         TODO(ex.head)
     end
