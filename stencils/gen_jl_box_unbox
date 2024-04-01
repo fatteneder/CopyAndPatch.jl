@@ -32,31 +32,45 @@ for i in $(seq 0 $((ntypes/2-1))); do
 
 jl_value_t *
 _JIT_ENTRY() {
-  PATCH_VALUE($ctype, _val, _JIT_ARG);
-  jl_value_t *val = jl_box_$jltype(_val);
-  return val;
+    PATCH_VALUE($ctype, _val, _JIT_ARG);
+    jl_value_t *val = jl_box_$jltype(_val);
+    return val;
 }
 """ > stencil_jl_box_$jltype.c
 
   # stack version
   # name: stack_jl_box_*.c
-  echo """
+  if [ "${ctype: -1}" = '*' ]; then
+    echo """
+#include \"common.h\"
+
+void
+_JIT_ENTRY(void **stack_ptr) {
+   $ctype val = ($ctype)(stack_ptr--)[0];
+   jl_value_t **ret = (jl_value_t **)(stack_ptr--)[0];
+   void (*continuation)(void **) = (stack_ptr--)[0];
+   *ret = jl_box_$jltype(val);
+   continuation(stack_ptr);
+}""" > stack_jl_box_$jltype.c
+  else
+    echo "SERS $jltype $ctype"
+    echo """
 #include \"common.h\"
 
 typedef union {
-  void *ptr;
-  $ctype val;
+   void *ptr;
+   $ctype val;
 } ptrval;
 
 void
-_JIT_ENTRY(void ** stack_ptr) {
-  ptrval val = (ptrval)(stack_ptr--)[0];
-  jl_value_t **ret = (jl_value_t **)(stack_ptr--)[0];
-  void (*continuation)(void **) = (stack_ptr--)[0];
-  *ret = jl_box_$jltype(val.val);
-  continuation(stack_ptr);
-}
-""" > stack_jl_box_$jltype.c
+_JIT_ENTRY(void **stack_ptr) {
+   ptrval pv = (ptrval)(stack_ptr--)[0];
+   jl_value_t **ret = (jl_value_t **)(stack_ptr--)[0];
+   void (*continuation)(void **) = (stack_ptr--)[0];
+   *ret = jl_box_$jltype(pv.val);
+   continuation(stack_ptr);
+}""" > stack_jl_box_$jltype.c
+  fi
 
 done
 
@@ -96,9 +110,9 @@ for i in $(seq 0 $((ntypes/2-1))); do
 
 $ctype
 _JIT_ENTRY() {
-  PATCH_VALUE(jl_value_t *, _val, _JIT_ARG);
-  $ctype val = jl_unbox_$jltype(_val);
-  return val;
+    PATCH_VALUE(jl_value_t *, _val, _JIT_ARG);
+    $ctype val = jl_unbox_$jltype(_val);
+    return val;
 }
 """ > stencil_jl_unbox_$jltype.c
 
@@ -108,12 +122,12 @@ _JIT_ENTRY() {
 #include \"common.h\"
 
 void
-_JIT_ENTRY(void ** stack_ptr) {
-  jl_value_t *val = (jl_value_t *)(stack_ptr--)[0];
-  $ctype *ret = ($ctype *)(stack_ptr--)[0];
-  void (*continuation)(void **) = (stack_ptr--)[0];
-  *ret = jl_unbox_$jltype(val);
-  continuation(stack_ptr);
+_JIT_ENTRY(void **stack_ptr) {
+    jl_value_t *val = (jl_value_t *)(stack_ptr--)[0];
+    $ctype *ret = ($ctype *)(stack_ptr--)[0];
+    void (*continuation)(void **) = (stack_ptr--)[0];
+    *ret = jl_unbox_$jltype(val);
+    continuation(stack_ptr);
 }
 """ > stack_jl_unbox_$jltype.c
 

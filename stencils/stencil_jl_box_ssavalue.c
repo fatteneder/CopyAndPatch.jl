@@ -3,8 +3,8 @@
 
 jl_value_t *
 _JIT_ENTRY() {
-  PATCH_VALUE(size_t, _val, _JIT_ARG);
-  jl_value_t *val = jl_box_ssavalue(_val);
-  return val;
+    PATCH_VALUE(size_t, _val, _JIT_ARG);
+    jl_value_t *val = jl_box_ssavalue(_val);
+    return val;
 }
 
