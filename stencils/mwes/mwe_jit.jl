@@ -1,12 +1,22 @@
 using CopyAndPatch
 
 
+@noinline function g(x,y)
+    versioninfo()
+    x + y
+end
+
 # f(x) = x+2
 # f(x) = (x+2)*3-x^3
 # f(x) = (x+2)/3
 function f(x)
+    # print("SERS", x)
     versioninfo()
+    g(x,2*x)
+    # y = "SERS" * "OIDA"
+    x += log(x)
     (x+2)/3
+    # y
 end
 # this does not work, because mul_int can't be queried with CopyAndPatch.pointer_from_function
 
