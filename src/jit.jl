@@ -86,24 +86,39 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     nssas = length(codeinfo.ssavaluetypes)
     ssas = ByteVector(nssas*sizeof(Ptr{UInt64}))
 
+    boxes = Any[]
+
     # init ssas and slots
     for i = 1:nslots
         T = codeinfo.slottypes[i]
         T isa Core.Const && continue
-        T <: Number || continue
-        z = T(0)
-        b = box(z)
-        slots[UInt64,i] = b
+        if T <: Number
+            z = T(T === Bool ? true : i)
+            b = box(z)
+            slots[UInt64,i] = b
+        elseif T <: String
+            str = "Slot$i"
+            b = pointer_from_objref(str)
+            slots[UInt64,i] = b
+            push!(boxes, str)
+        end
     end
+    # @show slots
     for i = 1:nssas
         T = codeinfo.ssavaluetypes[i]
-        T <: Number || continue
-        z = T(0)
-        b = box(z)
-        ssas[UInt64,i] = b
+        if T <: Number
+            z = T(T === Bool ? true : i)
+            b = box(z)
+            ssas[UInt64,i] = b
+        elseif T <: String
+            str = "SSA$i"
+            b = pointer_from_objref(str)
+            ssas[UInt64,i] = b
+            push!(boxes, str)
+        end
     end
+    # @show ssas
 
-    boxes = Any[]
     for (i,ex) in Iterators.reverse(enumerate(codeinfo.code))
         emitcode!(stack, slots, ssas, boxes, ex, codeinfo.ssavaluetypes[i])
     end
@@ -206,12 +221,16 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
         # @show mi.specTypes
         # TODO Need to figure out how to connect the call arguments with the slots!
         boxes = Ptr{UInt64}[]
+        @show ex_args
         for a in ex_args
             if a isa Core.Argument
-                @assert a.n > 1
                 push!(boxes, pointer(slots, UInt64, a.n))
             elseif a isa Core.SSAValue
-                push!(boxes, pointer(ssas, UInt64, a.id))
+                if fn == println
+                    push!(boxes, ssas[UInt64,a.id])
+                else
+                    push!(boxes, pointer(ssas, UInt64, a.id))
+                end
             elseif a isa String
                 push!(boxes, pointer_from_objref(a))
             else
@@ -219,7 +238,7 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
             end
         end
         nargs = length(boxes)
-        # @show boxes
+        # @show fn, boxes
         append!(bxs, boxes)
         retbox = Ref{Ptr{Cvoid}}(C_NULL)
         push!(stack, unsafe_convert(Ptr{Cvoid}, retbox))
