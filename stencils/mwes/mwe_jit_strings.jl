@@ -1,12 +1,12 @@
 using CopyAndPatch
 
 
-function f(x)
-    # return x*x
-    println("SERS ", x)
+function f()
+    y = 1
+    println("SERS ", y)
 end
 
-stack, argstack, ssas, boxes = jit(f, (Int64,))
+stack, argstack, ssas, boxes = jit(f, ())
 
 jit_entry = stack[end]
 stackptr = pointer(stack,length(stack)-1)
