@@ -16,6 +16,7 @@ end
 
 
 # for debugging jl_call
+box(x::Bool) = ccall((:jl_box_bool,path_libjulia[]), Ptr{Cvoid}, (Int8,), x)
 box(x::Int8) = ccall((:jl_box_int8,path_libjulia[]), Ptr{Cvoid}, (Int8,), x)
 box(x::Int16) = ccall((:jl_box_int16,path_libjulia[]), Ptr{Cvoid}, (Int16,), x)
 box(x::Int32) = ccall((:jl_box_int32,path_libjulia[]), Ptr{Cvoid}, (Int32,), x)
@@ -27,6 +28,7 @@ box(x::UInt64) = ccall((:jl_box_uint64,path_libjulia[]), Ptr{Cvoid}, (UInt64,), 
 box(x::Float16) = ccall((:jl_box_float16,path_libjulia[]), Ptr{Cvoid}, (Float16,), x)
 box(x::Float32) = ccall((:jl_box_float32,path_libjulia[]), Ptr{Cvoid}, (Float32,), x)
 box(x::Float64) = ccall((:jl_box_float64,path_libjulia[]), Ptr{Cvoid}, (Float64,), x)
+unbox(::Type{Bool}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_bool,path_libjulia[]), Bool, (Ptr{Cvoid},), ptr)
 unbox(::Type{Int8}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_int8,path_libjulia[]), Int8, (Ptr{Cvoid},), ptr)
 unbox(::Type{Int16}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_int16,path_libjulia[]), Int16, (Ptr{Cvoid},), ptr)
 unbox(::Type{Int32}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_int32,path_libjulia[]), Int32, (Ptr{Cvoid},), ptr)
