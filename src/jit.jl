@@ -217,24 +217,19 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
         @assert g isa GlobalRef
         fn = unwrap(g)
         ex_args = length(ex.args) > 2 ? ex.args[3:end] : []
-        # @show ex_args
-        # @show g
-        # @show mi
-        # @show mi.specTypes
         # TODO Need to figure out how to connect the call arguments with the slots!
         boxes = box_args(ex_args, slots, ssas, fn)
         nargs = length(boxes)
-        # @show fn, boxes
         append!(bxs, boxes)
         retbox = Ref{Ptr{Cvoid}}(C_NULL)
-        push!(stack, unsafe_convert(Ptr{Cvoid}, retbox))
-        push!(stack, pointer_from_function(fn))
-        push!(stack, pointer(boxes))
-        push!(stack, nargs)
-        push!(stack, pointer_from_objref(mi))
-        _, bvec, _ = stencils["jl_invoke"]
-        push!(stack, pointer(bvec))
-        # TODO()
+        st, _bvec, _ = stencils["jl_invoke"]
+        push!(stack, pointer(_bvec))
+        bvec = ByteVector(_bvec)
+        patch!(bvec, st.code, "_JIT_MI",    pointer_from_objref(mi))
+        patch!(bvec, st.code, "_JIT_NARGS", nargs)
+        patch!(bvec, st.code, "_JIT_ARGS",  pointer(boxes))
+        patch!(bvec, st.code, "_JIT_F",     pointer_from_function(fn))
+        patch!(bvec, st.code, "_JIT_RET",   unsafe_convert(Ptr{Cvoid}, retbox))
     else
         TODO(ex.head)
     end
