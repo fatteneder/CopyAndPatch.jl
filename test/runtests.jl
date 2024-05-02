@@ -1,6 +1,6 @@
 using Test
 
-import CopyAndPatch: ByteVector, MachineCode, is_little_endian
+import CopyAndPatch: ByteVector, MachineCode, is_little_endian, jit
 
 
 @testset "ByteVector" begin
