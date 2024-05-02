@@ -223,13 +223,13 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
         append!(bxs, boxes)
         retbox = Ref{Ptr{Cvoid}}(C_NULL)
         st, _bvec, _ = stencils["jl_invoke"]
-        push!(stack, pointer(_bvec))
         bvec = ByteVector(_bvec)
         patch!(bvec, st.code, "_JIT_MI",    pointer_from_objref(mi))
         patch!(bvec, st.code, "_JIT_NARGS", nargs)
         patch!(bvec, st.code, "_JIT_ARGS",  pointer(boxes))
         patch!(bvec, st.code, "_JIT_F",     pointer_from_function(fn))
         patch!(bvec, st.code, "_JIT_RET",   unsafe_convert(Ptr{Cvoid}, retbox))
+        patch!(bvec, st.code, "_JIT_CONT",  pointer(_bvec))
     else
         TODO(ex.head)
     end
