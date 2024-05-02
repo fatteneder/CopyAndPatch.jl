@@ -259,5 +259,16 @@ end
 
 
 holes(g::StencilGroup) = g.code.relocations
-patch!(m::MachineCode, g::Hole, p::Ptr) = m.buf[g.offset+1] = p
+patch!(m::MachineCode, h::Hole, p::Ptr) = m.buf[h.offset+1] = p
+patch!(b::ByteVector, h::Hole, val) = b[h.offset+1] = val
 # patchlibs!(m::MachineCode, g::Hole)
+function patch!(bvec::ByteVector, st::Stencil, symbol::String, val)
+    holes = st.relocations
+    for h in holes
+        if startswith(h.symbol, symbol)
+            patch!(bvec, h, val)
+            return
+        end
+    end
+    error("No symbol $symbol found in stencil")
+end
