@@ -132,6 +132,32 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
 end
 
 
+# TODO Maybe dispatch on fn
+function box_args(ex_args, slots, ssas, fn)
+    boxes = Ptr{UInt64}[]
+    for a in ex_args
+        if a isa Core.Argument
+            push!(boxes,
+                  fn isa Core.IntrinsicFunction ? slots[UInt64,a.n] : pointer(slots, UInt64, a.n))
+        elseif a isa Core.SSAValue
+            push!(boxes,
+                  fn isa Core.IntrinsicFunction ? ssas[UInt64,a.id] : pointer(ssas, UInt64, a.id))
+        elseif a isa String
+            push!(boxes, pointer_from_objref(a))
+        elseif a isa Number
+            b = box(a)
+            push!(boxes, b)
+            # push!(bxs, b) # TODO Was this necessary before?
+        elseif a isa Type
+            push!(boxes, pointer_from_objref(a))
+        else
+            push!(boxes, box(a))
+        end
+    end
+    return boxes
+end
+
+
 # CodeInfo can contain following symbols
 # (from https://juliadebug.github.io/JuliaInterpreter.jl/stable/ast/)
 # - %2 ... single static assignment (SSA) value
@@ -160,29 +186,10 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
         if fn isa Core.IntrinsicFunction
             ex_args = @view ex.args[2:end]
             nargs = length(ex_args)
-            boxes = Ptr{UInt64}[]
-            name = string(g.name)
-            for a in ex_args
-                if a isa Core.Argument || a isa Core.SSAValue
-                    p = if a isa Core.Argument
-                        slots[UInt64, a.n]
-                    elseif a isa Core.SSAValue
-                        ssas[UInt64, a.id]
-                    end
-                    push!(boxes, p)
-                elseif a isa Number
-                    b = box(a)
-                    push!(boxes, b)
-                    push!(bxs, b)
-                elseif a isa Type
-                    push!(boxes, pointer_from_objref(a))
-                else
-                    TODO(a)
-                end
-            end
+            boxes = box_args(ex_args, slots, ssas, fn)
             retbox = Ref{Ptr{Cvoid}}(C_NULL)
             push!(stack, unsafe_convert(Ptr{Cvoid}, retbox))
-            append!(bxs, boxes) # preseve boxes
+            append!(bxs, boxes)
             append!(stack, reverse(boxes))
             name = string("jl_", Symbol(fn))
             _, intrinsic, _ = get(stencils, name) do
@@ -195,17 +202,7 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
             push!(stack, fn_ptr)
             ex_args = @view ex.args[2:end]
             nargs = length(ex_args)
-            boxes = Ptr{UInt64}[]
-            for a in ex_args
-                if a isa Core.Argument
-                    @assert a.n > 1
-                    push!(boxes, pointer(slots, UInt64, a.n))
-                elseif a isa Core.SSAValue
-                    push!(boxes, pointer(ssas, UInt64, a.id))
-                else
-                    push!(boxes, box(a))
-                end
-            end
+            boxes = box_args(ex_args, slots, ssas, fn)
             append!(bxs, boxes)
             push!(stack, pointer(boxes))
             push!(stack, UInt64(nargs))
@@ -225,23 +222,7 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
         # @show mi
         # @show mi.specTypes
         # TODO Need to figure out how to connect the call arguments with the slots!
-        boxes = Ptr{UInt64}[]
-        @show ex_args
-        for a in ex_args
-            if a isa Core.Argument
-                push!(boxes, pointer(slots, UInt64, a.n))
-            elseif a isa Core.SSAValue
-                if fn == println
-                    push!(boxes, ssas[UInt64,a.id])
-                else
-                    push!(boxes, pointer(ssas, UInt64, a.id))
-                end
-            elseif a isa String
-                push!(boxes, pointer_from_objref(a))
-            else
-                push!(boxes, box(a))
-            end
-        end
+        boxes = box_args(ex_args, slots, ssas, fn)
         nargs = length(boxes)
         # @show fn, boxes
         append!(bxs, boxes)
