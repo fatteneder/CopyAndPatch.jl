@@ -11,23 +11,28 @@ function init_stencils()
 
     empty!(stencils)
     for f in files
-        s = StencilGroup(f)
-        bvec = ByteVector(UInt8.(s.code.body[1]))
-        bvec_data = if !isempty(s.data.body)
-            ByteVector(UInt8.(s.data.body[1]))
-        else
-            ByteVector(0)
+        try
+            s = StencilGroup(f)
+            bvec = ByteVector(UInt8.(s.code.body[1]))
+            bvec_data = if !isempty(s.data.body)
+                ByteVector(UInt8.(s.data.body[1]))
+            else
+                ByteVector(0)
+            end
+            patch_default_deps!(bvec, bvec_data, s)
+
+            # mmap stencils to make them executable
+            buf_bvec      = mmap(Vector{UInt8}, length(bvec), shared=false, exec=true)
+            buf_bvec_data = mmap(Vector{UInt8}, length(bvec_data), shared=false, exec=true)
+            copy!(buf_bvec, bvec)
+            copy!(buf_bvec_data, bvec_data)
+
+            name = first(splitext(basename(f)))
+            stencils[name] = (s,buf_bvec,buf_bvec_data)
+        catch e
+            println("Failure when processing $f")
+            rethrow(e)
         end
-        patch_default_deps!(bvec, bvec_data, s)
-
-        # mmap stencils to make them executable
-        buf_bvec      = mmap(Vector{UInt8}, length(bvec), shared=false, exec=true)
-        buf_bvec_data = mmap(Vector{UInt8}, length(bvec_data), shared=false, exec=true)
-        copy!(buf_bvec, bvec)
-        copy!(buf_bvec_data, bvec_data)
-
-        name = first(splitext(basename(f)))
-        stencils[name] = (s,buf_bvec,buf_bvec_data)
     end
 
     return
