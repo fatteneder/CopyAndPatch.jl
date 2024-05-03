@@ -302,7 +302,6 @@ end
 code_native(code::AbstractVector; syntax=:intel) = code_native(UInt8.(code); syntax)
 code_native(code::Vector{UInt8}; syntax=:intel) = code_native(stdout, code; syntax)
 function code_native(io::IO, code::Vector{UInt8}; syntax=:intel)
-
     if syntax === :intel
         variant = 1
     elseif syntax === :att
@@ -310,10 +309,8 @@ function code_native(io::IO, code::Vector{UInt8}; syntax=:intel)
     else
         throw(ArgumentError("'syntax' must be either :intel or :att"))
     end
-
     triple = lowercase(string(Sys.KERNEL, '-', Sys.MACHINE))
     codestr = join(Iterators.map(string, code), ' ')
-
     out, err = Pipe(), Pipe()
     cmd = `llvm-mc --disassemble --triple=$triple --output-asm-variant=$variant`
     pipe = pipeline(cmd, stdout=out, stderr=err)
@@ -322,10 +319,7 @@ function code_native(io::IO, code::Vector{UInt8}; syntax=:intel)
     end
     close(out.in)
     close(err.in)
-
     str_out = read(out, String)
     str_err = read(err, String)
-
     print_native(io, str_out)
-
 end
