@@ -5,7 +5,7 @@ function stencil_files()
     files = readdir(dir, join=true)
     filter!(files) do ff
         f = basename(ff)
-        startswith(f, "jl_") && endswith(f, ".json")
+        (startswith(f, "jl_") || startswith(f, "jit_")) && endswith(f, ".json")
     end
     return files
 end
