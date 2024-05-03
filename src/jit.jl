@@ -264,7 +264,9 @@ function emitcode_box!(stack::Stack, p::Ptr, @nospecialize(type::Type{T})) where
 end
 
 
-code_native(code::Vector{UInt8};syntax=:intel) = code_native(stdout, code; syntax)
+# code_native(code::AbstractVector{<:AbstractVector}; syntax=:intel) = foreach(code_native(c; syntax) for c in code)
+code_native(code::AbstractVector; syntax=:intel) = code_native(UInt8.(code); syntax)
+code_native(code::Vector{UInt8}; syntax=:intel) = code_native(stdout, code; syntax)
 function code_native(io::IO, code::Vector{UInt8}; syntax=:intel)
 
     if syntax === :intel
