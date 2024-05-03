@@ -127,10 +127,13 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
             data_size += length(only(st.data.body))
         end
     end
-    memory = mmap(Vector{UInt8}, code_size+data_size, shared=false, exec=true)
+    memory = mmap(Vector{UInt8}, code_size, shared=false, exec=true)
+    # memory = mmap(Vector{UInt8}, code_size+data_size, shared=false, exec=true)
+    # bvec_code = view(memory, 1:code_size)
+    # bvec_data = view(memory, code_size+1:code_size+data_size)
 
     for (ic,ex) in enumerate(codeinfo.code)
-        emitcode!(ic, memory, stencil_starts, slots, ssas, boxes, ex)
+        emitcode!(memory, stencil_starts, ic, slots, ssas, boxes, ex)
     end
 
     return memory
@@ -163,28 +166,24 @@ get_stencil(ex::Core.GotoIfNot)  = stencils["jit_gotoifnot"]
 
 
 # TODO Maybe dispatch on fn
-function box_args(ex_args, slots, ssas, fn)
-    boxes = Ptr{UInt64}[]
-    for a in ex_args
-        if a isa Core.Argument
-            push!(boxes,
-                  fn isa Core.IntrinsicFunction ? slots[UInt64,a.n] : pointer(slots, UInt64, a.n))
-        elseif a isa Core.SSAValue
-            push!(boxes,
-                  fn isa Core.IntrinsicFunction ? ssas[UInt64,a.id] : pointer(ssas, UInt64, a.id))
-        elseif a isa String
-            push!(boxes, pointer_from_objref(a))
-        elseif a isa Number
-            b = box(a)
-            push!(boxes, b)
-            # push!(bxs, b) # TODO Was this necessary before?
-        elseif a isa Type
-            push!(boxes, pointer_from_objref(a))
-        else
-            push!(boxes, box(a))
-        end
+function box_arg(a, slots, ssas, fn)
+    if a isa Core.Argument
+        return fn isa Core.IntrinsicFunction ? slots[UInt64,a.n] : pointer(slots, UInt64, a.n)
+    elseif a isa Core.SSAValue
+        return fn isa Core.IntrinsicFunction ? ssas[UInt64,a.id] : pointer(ssas, UInt64, a.id)
+    elseif a isa String
+        return pointer_from_objref(a)
+    elseif a isa Number
+        return box(a)
+    elseif a isa Type
+        return pointer_from_objref(a)
+    else
+        return box(a)
     end
-    return boxes
+end
+function box_args(ex_args::AbstractVector, slots, ssas, fn)
+    # TODO Need to cast to Ptr{UInt64} here?
+    return box_arg.(ex_args, Ref(slots), Ref(ssas), Ref(fn))
 end
 
 # Given a CodeInfo ci object, use the following to figure out which
@@ -204,17 +203,25 @@ end
 # - _2 ... slot variable; either a function argument or a local variable
 #          _1 refers to function, _2 to first arg, etc.
 #          see CodeInfo.slottypes, CodeInfo.slotnames
-emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVector, boxes, ex) = TODO(typeof(ex))
-function emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.ReturnNode)
+emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, ex) = TODO(typeof(ex))
+function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.ReturnNode)
     _, bvec, _ = stencils["jit_end"]
     # patch!(bvec, st.code, "_JIT_RET", ssas[end])
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
 end
-function emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.GotoIfNot)
-    st, bvec, _ = stencils["jl_gotoifnot"]
-    TODO()
+function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.GotoIfNot)
+    st, bvec, bvec_data = stencils["jit_gotoifnot"]
+    test = box_arg(ex.cond, slots, ssas, nothing)
+    foreach(println, st.code.relocations)
+    patch!(bvec, st.code, "_JIT_TEST",  test)
+    patch!(bvec, st.code, "_JIT_CONT1", pointer(memory, stencil_starts[end]))
+    patch!(bvec, st.code, "_JIT_CONT2", pointer(memory, stencil_starts[end]))
+    @assert length(bvec_data) == 0 bvec_data
+    # patch!(bvec, st.code, "_JIT_CONT1", pointer(memory, stencil_starts[ex.dest]))
+    # patch!(bvec, st.code, "_JIT_CONT2", pointer(memory, stencil_starts[ic+1]))
+    copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
 end
-function emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVector, bxs, ex::Expr)
+function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, bxs, ex::Expr)
     if isexpr(ex, :call)
         g = ex.args[1]
         @assert g isa GlobalRef
