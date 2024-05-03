@@ -123,14 +123,42 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
             push!(boxes, str)
         end
     end
-    # @show ssas
+
+    @show codeinfo.code
+    nstencils = length(codeinfo.code)
+    stencil_starts = zeros(Int64, nstencils)
+    code_size = 0
+    data_size = 0
+    for (i,ex) in enumerate(codeinfo.code)
+        st, _, _ = get_stencil(ex)
+        stencil_starts[i] = 1+code_size
+        code_size += length(st.code.body)
+        data_size += length(st.data.body)
+    end
+    memory = mmap(Vector{UInt8}, code_size+data_size, shared=false, exec=true)
+    # TODO Maybe wrap this into a ByteVector
+    bvec_code = view(memory, 1:code_size)
+    bvec_data = view(memory, code_size+1:code_size+data_size)
 
     for (i,ex) in Iterators.reverse(enumerate(codeinfo.code))
-        emitcode!(stack, slots, ssas, boxes, ex, codeinfo.ssavaluetypes[i])
+        emitcode!(stack, slots, ssas, boxes, ex, codeinfo.ssavaluetypes[i], stencil_starts)
     end
 
     return stack, slots, ssas, boxes
 end
+
+
+function get_stencil(ex)
+    if isexpr(ex, :call)
+        return stencils["jl_call"]
+    elseif isexpr(ex, :invoke)
+        return stencils["jl_invoke"]
+    else
+        TODO("Stencil not implemented yet:", ex)
+    end
+end
+get_stencil(ex::Core.ReturnNode) = stencils["jit_end"]
+get_stencil(ex::Core.GotoIfNot)  = stencils["jit_gotoifnot"]
 
 
 # TODO Maybe dispatch on fn
@@ -174,12 +202,18 @@ end
 # stack[end]   = nargs
 #
 # TODO Does the jit code need to handle argstack?
-emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, boxes, ex, rettype) = TODO(typeof(ex))
-function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.ReturnNode, rettype)
+emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, boxes, ex, rettype, stencil_starts) = TODO(typeof(ex))
+function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.ReturnNode, rettype, stencil_starts)
     _, bvec, _ = stencils["jit_end"]
     push!(stack, pointer(bvec))
 end
-function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::Expr, rettype)
+function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.GotoIfNot, rettype, stencil_starts)
+    st, _bvec, _ = stencils["jl_gotoifnot"]
+    bvec = ByteVector(_bvec)
+    # TODO Update emitcode! arguments to no longer use a stack!
+    # patch!(st.code,
+end
+function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::Expr, rettype, stencil_starts)
     if isexpr(ex, :call)
         g = ex.args[1]
         @assert g isa GlobalRef
