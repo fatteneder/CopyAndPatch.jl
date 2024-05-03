@@ -2,12 +2,17 @@
 #include <julia_internal.h>
 #include <julia_threads.h>
 
+typedef union {
+   uint64_t addr;
+   void (*fnptr)(void **);
+} convert_cont;
+
 void
 _JIT_ENTRY(void **stack_ptr)
 {
-jl_value_t *a1 = (jl_value_t *)(stack_ptr--)[0];
-jl_value_t **ret = (jl_value_t **)(stack_ptr--)[0];
+PATCH_VALUE(jl_value_t *, a1, _JIT_A1);
+PATCH_VALUE(jl_value_t **, ret, _JIT_RET);
+PATCH_VALUE_AND_CONVERT(uint64_t, convert_cont, cont, _JIT_CONT);
 *ret = jl_atomic_fence(a1);
-void (*continuation)(void **) = (stack_ptr--)[0];
-continuation(stack_ptr);
+cont.fnptr(stack_ptr);
 }

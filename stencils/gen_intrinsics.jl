@@ -126,21 +126,26 @@ for line in split(signatures,'\n')
     fn_name == "jl_arraylen" && continue
 
     nargs = length(argtypes)
-    unpack_args = join([ "jl_value_t *a$i = (jl_value_t *)(stack_ptr--)[0];" for i = 1:nargs ], '\n')
+    patch_args = join([ "PATCH_VALUE(jl_value_t *, a$i, _JIT_A$i);" for i = 1:nargs ], '\n')
     fn_args = join([ "a$i" for i = 1:nargs ], ',')
     code = """
 #include "common.h"
 #include <julia_internal.h>
 #include <julia_threads.h>
 
+typedef union {
+   uint64_t addr;
+   void (*fnptr)(void **);
+} convert_cont;
+
 void
 _JIT_ENTRY(void **stack_ptr)
 {
-$unpack_args
-jl_value_t **ret = (jl_value_t **)(stack_ptr--)[0];
+$patch_args
+PATCH_VALUE(jl_value_t **, ret, _JIT_RET);
+PATCH_VALUE_AND_CONVERT(uint64_t, convert_cont, cont, _JIT_CONT);
 *ret = $fn_name($fn_args);
-void (*continuation)(void **) = (stack_ptr--)[0];
-continuation(stack_ptr);
+cont.fnptr(stack_ptr);
 }"""
     println(code)
     filename = joinpath(@__DIR__, "$fn_name.c")
