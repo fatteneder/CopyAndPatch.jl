@@ -10,10 +10,8 @@
 
     for T in (Int64,Int32), f in (f1,f2,f3)
         @test try
-            stack, argstack, ssas, boxes = jit(f, (T,))
-            jit_entry = stack[end]
-            stackptr = pointer(stack,length(stack)-1)
-            ccall(jit_entry, Cvoid, (Ptr{Cvoid},), stackptr)
+            memory = jit(f, (T,))
+            ccall(pointer(memory), Cvoid, (Ptr{Cvoid},), C_NULL)
             true
         catch e
             @error "Failed $f(::$T) with" e
@@ -39,10 +37,8 @@ end
 
     for T in (Int64,Int32)
         @test try
-            stack, argstack, ssas, boxes = jit(f, (T,))
-            jit_entry = stack[end]
-            stackptr = pointer(stack,length(stack)-1)
-            ccall(jit_entry, Cvoid, (Ptr{Cvoid},), stackptr)
+            memory = jit(f, (T,))
+            ccall(pointer(memory), Cvoid, (Ptr{Cvoid},), C_NULL)
             true
         catch e
             @error "Failed $f(::$T) with" e

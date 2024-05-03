@@ -135,27 +135,38 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     code_size = 0
     data_size = 0
     for (i,ex) in enumerate(codeinfo.code)
-        st, _, _ = get_stencil(ex)
+        st, bvec, _ = get_stencil(ex)
         stencil_starts[i] = 1+code_size
-        code_size += length(st.code.body)
-        data_size += length(st.data.body)
+        code_size += length(only(st.code.body))
+        if !isempty(st.data.body)
+            data_size += length(only(st.data.body))
+        end
     end
     memory = mmap(Vector{UInt8}, code_size+data_size, shared=false, exec=true)
-    # TODO Maybe wrap this into a ByteVector
-    bvec_code = view(memory, 1:code_size)
-    bvec_data = view(memory, code_size+1:code_size+data_size)
 
-    for (i,ex) in Iterators.reverse(enumerate(codeinfo.code))
-        emitcode!(stack, slots, ssas, boxes, ex, codeinfo.ssavaluetypes[i], stencil_starts)
+    for (ic,ex) in enumerate(codeinfo.code)
+        emitcode!(ic, memory, stencil_starts, slots, ssas, boxes, ex)
     end
 
-    return stack, slots, ssas, boxes
+    return memory
 end
 
 
 function get_stencil(ex)
     if isexpr(ex, :call)
-        return stencils["jl_call"]
+        g = ex.args[1]
+        @assert g isa GlobalRef
+        fn = unwrap(g)
+        if fn isa Core.IntrinsicFunction
+            name = string("jl_", Symbol(fn))
+            return get(stencils, name) do
+                error("don't know how to handle intrinsic $name")
+            end
+        elseif fn isa Function
+            return stencils["jl_call"]
+        else
+            TODO(fn)
+        end
     elseif isexpr(ex, :invoke)
         return stencils["jl_invoke"]
     else
@@ -208,26 +219,18 @@ end
 # - _2 ... slot variable; either a function argument or a local variable
 #          _1 refers to function, _2 to first arg, etc.
 #          see CodeInfo.slottypes, CodeInfo.slotnames
-#
-# Our calling convention:
-# stack[end-3] = continuation_ptr
-# stack[end-2] = fn_ptr
-# stack[end-1] = pointer(boxes.(args))
-# stack[end]   = nargs
-#
-# TODO Does the jit code need to handle argstack?
-emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, boxes, ex, rettype, stencil_starts) = TODO(typeof(ex))
-function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.ReturnNode, rettype, stencil_starts)
+emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVector, boxes, ex) = TODO(typeof(ex))
+function emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.ReturnNode)
     _, bvec, _ = stencils["jit_end"]
-    push!(stack, pointer(bvec))
+    # patch!(bvec, st.code, "_JIT_RET", ssas[end])
+    copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
 end
-function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.GotoIfNot, rettype, stencil_starts)
+function emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.GotoIfNot)
     st, _bvec, _ = stencils["jl_gotoifnot"]
     bvec = ByteVector(_bvec)
-    # TODO Update emitcode! arguments to no longer use a stack!
-    # patch!(st.code,
+    TODO()
 end
-function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::Expr, rettype, stencil_starts)
+function emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVector, bxs, ex::Expr)
     if isexpr(ex, :call)
         g = ex.args[1]
         @assert g isa GlobalRef
@@ -237,18 +240,25 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
             nargs = length(ex_args)
             boxes = box_args(ex_args, slots, ssas, fn)
             retbox = Ref{Ptr{Cvoid}}(C_NULL)
-            push!(stack, unsafe_convert(Ptr{Cvoid}, retbox))
             append!(bxs, boxes)
-            append!(stack, reverse(boxes))
             name = string("jl_", Symbol(fn))
-            _, intrinsic, _ = get(stencils, name) do
+            st, _bvec, _bvec2 = get(stencils, name) do
                 error("don't know how to handle intrinsic $name")
             end
-            push!(stack, pointer(intrinsic))
+            @assert length(_bvec2) == 0
+            bvec = ByteVector(_bvec)
+            for n in 1:nargs
+                # TODO I think one of the problems is that one
+                # box argument here is a literal and the other one a dynamic value.
+                # patch!(bvec, st.code, "_JIT_A$n", pointer(boxes, n))
+                patch!(bvec, st.code, "_JIT_A$n", boxes[n])
+            end
+            patch!(bvec, st.code, "_JIT_RET", unsafe_convert(Ptr{Cvoid}, retbox))
+            patch!(bvec, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ic+1]))
+            copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
         elseif fn isa Function
             @assert iscallable(fn)
             fn_ptr = pointer_from_function(fn)
-            push!(stack, fn_ptr)
             ex_args = @view ex.args[2:end]
             nargs = length(ex_args)
             boxes = box_args(ex_args, slots, ssas, fn)
@@ -260,8 +270,8 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
             patch!(bvec, st.code, "_JIT_ARGS",  pointer(boxes))
             patch!(bvec, st.code, "_JIT_FN",    pointer_from_function(fn))
             patch!(bvec, st.code, "_JIT_RET",   unsafe_convert(Ptr{Cvoid}, retbox))
-            patch!(bvec, st.code, "_JIT_CONT",  pointer(_bvec))
-            TODO()
+            patch!(bvec, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
+            copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
             TODO("still used?")
         else
             TODO(fn)
@@ -277,14 +287,16 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
         nargs = length(boxes)
         append!(bxs, boxes)
         retbox = Ref{Ptr{Cvoid}}(C_NULL)
-        st, _bvec, _ = stencils["jl_invoke"]
+        st, _bvec, _bvec2 = stencils["jl_invoke"]
+        @assert length(_bvec2) == 0
         bvec = ByteVector(_bvec)
         patch!(bvec, st.code, "_JIT_MI",    pointer_from_objref(mi))
         patch!(bvec, st.code, "_JIT_NARGS", nargs)
         patch!(bvec, st.code, "_JIT_ARGS",  pointer(boxes))
         patch!(bvec, st.code, "_JIT_FN",    pointer_from_function(fn))
         patch!(bvec, st.code, "_JIT_RET",   unsafe_convert(Ptr{Cvoid}, retbox))
-        patch!(bvec, st.code, "_JIT_CONT",  pointer(_bvec)) # is this here correct? no its not ...
+        patch!(bvec, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
+        copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
     else
         TODO(ex.head)
     end
@@ -292,24 +304,6 @@ end
 
 
 const IntrinsicDispatchType = Union{Int8,Int16,Int32,Int64,UInt8,UInt16,UInt32,UInt64,Float16,Float32,Float64}
-name_stack_jl_box(@nospecialize(t::Type{T})) where T<:IntrinsicDispatchType = string("stack_jl_box_", lowercase(string(Symbol(t))))
-
-
-function emitcode_box!(stack::Stack, p::Ptr, @nospecialize(type::Type{T})) where T<:IntrinsicDispatchType
-
-    retbox = Ref{Ptr{Cvoid}}(C_NULL)
-    name = name_stack_jl_box(type)
-    _, bvec, _ = stencils[name]
-
-    # arg
-    push!(stack, p)
-    # retvalue
-    push!(stack, unsafe_convert(Ptr{Cvoid}, retbox))
-    # continuation
-    push!(stack, pointer(bvec))
-
-    return bvec, retbox
-end
 
 
 # code_native(code::AbstractVector{<:AbstractVector}; syntax=:intel) = foreach(code_native(c; syntax) for c in code)
