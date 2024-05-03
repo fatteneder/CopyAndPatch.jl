@@ -2,13 +2,11 @@ const stencils = Dict{String,Any}()
 
 
 function init_stencils()
-
     stencildir = joinpath(@__DIR__, "..", "stencils")
     files = readdir(stencildir, join=true)
     filter!(files) do f
         endswith(f, ".json")
     end
-
     empty!(stencils)
     for f in files
         try
@@ -20,21 +18,13 @@ function init_stencils()
                 ByteVector(0)
             end
             patch_default_deps!(bvec, bvec_data, s)
-
-            # mmap stencils to make them executable
-            buf_bvec      = mmap(Vector{UInt8}, length(bvec), shared=false, exec=true)
-            buf_bvec_data = mmap(Vector{UInt8}, length(bvec_data), shared=false, exec=true)
-            copy!(buf_bvec, bvec)
-            copy!(buf_bvec_data, bvec_data)
-
             name = first(splitext(basename(f)))
-            stencils[name] = (s,buf_bvec,buf_bvec_data)
+            stencils[name] = (s,bvec,bvec_data)
         catch e
             println("Failure when processing $f")
             rethrow(e)
         end
     end
-
     return
 end
 
