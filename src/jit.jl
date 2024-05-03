@@ -73,6 +73,10 @@ const Stack = Vector{Ptr{UInt64}}
 
 function jit(@nospecialize(fn::Function), @nospecialize(args))
 
+    # this here does the linking of all non-copy-patched parts
+    # so that the stencils can be used as they already below
+    # this includes setting up the data part too, which is important
+    # because below we separate code and data parts in memory
     init_stencils()
 
     optimize = true
@@ -99,6 +103,8 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
         T = codeinfo.slottypes[i]
         T isa Core.Const && continue
         if T <: Number
+            # the rand(T) version can trigger random 'LoadError: sext_int: value is not a primitive type error'
+            # z = T(T === Bool ? true : rand(T))
             z = T(T === Bool ? true : i)
             b = box(z)
             slots[UInt64,i] = b
@@ -109,7 +115,6 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
             push!(boxes, str)
         end
     end
-    # @show slots
     for i = 1:nssas
         T = codeinfo.ssavaluetypes[i]
         if T <: Number
@@ -185,6 +190,15 @@ function box_args(ex_args, slots, ssas, fn)
     end
     return boxes
 end
+
+# Given a CodeInfo ci object, use the following to figure out which
+# ssa values are actually used in the body.
+# ```
+# used = BitSet()
+# for stmt in ci.code
+#   Core.Compiler.scan_ssa_use!(push!, used, stmt)
+# end
+# ```
 
 
 # CodeInfo can contain following symbols
