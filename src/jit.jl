@@ -13,9 +13,9 @@ function init_stencils()
     for f in files
         try
             s = StencilGroup(f)
-            bvec = ByteVector(UInt8.(s.code.body[1]))
+            bvec = ByteVector(UInt8.(only(s.code.body)))
             bvec_data = if !isempty(s.data.body)
-                ByteVector(UInt8.(s.data.body[1]))
+                ByteVector(UInt8.(only(s.data.body)))
             else
                 ByteVector(0)
             end
