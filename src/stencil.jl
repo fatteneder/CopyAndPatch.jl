@@ -264,13 +264,14 @@ patch!(b::ByteVector, h::Hole, val) = b[h.offset+1] = val
 # patchlibs!(m::MachineCode, g::Hole)
 function patch!(bvec::ByteVector, st::Stencil, symbol::String, val)
     holes = st.relocations
+    anyfound = false
     for h in holes
         if startswith(h.symbol, symbol)
             patch!(bvec, h, val)
-            return
+            anyfound = true
         end
     end
-    error("No symbol $symbol found in stencil")
+    !anyfound && error("No symbol $symbol found in stencil")
 end
 function patch!(vec::AbstractVector{<:UInt8}, st::Stencil, symbol::String, val)
     patch!(ByteVector(vec), st, symbol, val)
