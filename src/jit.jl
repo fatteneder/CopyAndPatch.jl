@@ -58,9 +58,6 @@ function patch_default_deps!(bvec::ByteVector, bvec_data::ByteVector, s::Stencil
 end
 
 
-const Stack = Vector{Ptr{UInt64}}
-
-
 function jit(@nospecialize(fn::Function), @nospecialize(args))
 
     # this here does the linking of all non-copy-patched parts
@@ -80,12 +77,10 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     # @show codeinfo.ssavaluetypes
     # @show propertynames(codeinfo)
 
-    stack = Stack()
     nslots = length(codeinfo.slottypes)
     slots = ByteVector(nslots*sizeof(Ptr{UInt64}))
     nssas = length(codeinfo.ssavaluetypes)
     ssas = ByteVector(nssas*sizeof(Ptr{UInt64}))
-
     boxes = Any[]
 
     # init ssas and slots
