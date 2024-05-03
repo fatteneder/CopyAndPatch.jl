@@ -211,8 +211,7 @@ function emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVect
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
 end
 function emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.GotoIfNot)
-    st, _bvec, _ = stencils["jl_gotoifnot"]
-    bvec = ByteVector(_bvec)
+    st, bvec, _ = stencils["jl_gotoifnot"]
     TODO()
 end
 function emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVector, bxs, ex::Expr)
@@ -227,11 +226,10 @@ function emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVect
             retbox = Ref{Ptr{Cvoid}}(C_NULL)
             append!(bxs, boxes)
             name = string("jl_", Symbol(fn))
-            st, _bvec, _bvec2 = get(stencils, name) do
+            st, bvec, bvec2 = get(stencils, name) do
                 error("don't know how to handle intrinsic $name")
             end
-            @assert length(_bvec2) == 0
-            bvec = ByteVector(_bvec)
+            @assert length(bvec2) == 0
             for n in 1:nargs
                 # TODO I think one of the problems is that one
                 # box argument here is a literal and the other one a dynamic value.
@@ -249,8 +247,7 @@ function emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVect
             boxes = box_args(ex_args, slots, ssas, fn)
             append!(bxs, boxes)
             retbox = Ref{Ptr{Cvoid}}(C_NULL)
-            st, _bvec, _ = stencils["jit_call"]
-            bvec = ByteVector(_bvec)
+            st, bvec, _ = stencils["jit_call"]
             patch!(bvec, st.code, "_JIT_NARGS", nargs)
             patch!(bvec, st.code, "_JIT_ARGS",  pointer(boxes))
             patch!(bvec, st.code, "_JIT_FN",    pointer_from_function(fn))
@@ -272,9 +269,8 @@ function emitcode!(ic, memory, stencil_starts, slots::ByteVector, ssas::ByteVect
         nargs = length(boxes)
         append!(bxs, boxes)
         retbox = Ref{Ptr{Cvoid}}(C_NULL)
-        st, _bvec, _bvec2 = stencils["jl_invoke"]
-        @assert length(_bvec2) == 0
-        bvec = ByteVector(_bvec)
+        st, bvec, bvec2 = stencils["jl_invoke"]
+        @assert length(bvec2) == 0
         patch!(bvec, st.code, "_JIT_MI",    pointer_from_objref(mi))
         patch!(bvec, st.code, "_JIT_NARGS", nargs)
         patch!(bvec, st.code, "_JIT_ARGS",  pointer(boxes))
