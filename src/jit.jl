@@ -43,6 +43,7 @@ function patch_default_deps!(bvec::ByteVector, bvec_data::ByteVector, s::Stencil
     holes = s.code.relocations
     for h in holes
         # TODO Is there a list of intrinsics which I can skip here?
+        # Shall we use _JIT_ENTRY here?
         startswith(h.symbol, "_JIT_") && continue
         ptr = if startswith(h.symbol, "jl_")
             p = dlsym(libjulia[], h.symbol, throw_error=false)
@@ -212,6 +213,7 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
             patch!(bvec, st.code, "_JIT_FN",    pointer_from_function(fn))
             patch!(bvec, st.code, "_JIT_RET",   unsafe_convert(Ptr{Cvoid}, retbox))
             patch!(bvec, st.code, "_JIT_CONT",  pointer(_bvec))
+            TODO()
             TODO("still used?")
         else
             TODO(fn)
@@ -234,7 +236,7 @@ function emitcode!(stack::Stack, slots::ByteVector, ssas::ByteVector, bxs, ex::E
         patch!(bvec, st.code, "_JIT_ARGS",  pointer(boxes))
         patch!(bvec, st.code, "_JIT_FN",    pointer_from_function(fn))
         patch!(bvec, st.code, "_JIT_RET",   unsafe_convert(Ptr{Cvoid}, retbox))
-        patch!(bvec, st.code, "_JIT_CONT",  pointer(_bvec)) # is this here correct?
+        patch!(bvec, st.code, "_JIT_CONT",  pointer(_bvec)) # is this here correct? no its not ...
     else
         TODO(ex.head)
     end
