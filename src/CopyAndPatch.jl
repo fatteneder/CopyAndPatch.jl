@@ -14,7 +14,8 @@ export jit
 
 
 TODO() = error("Not implemented yet")
-TODO(msg) = error("Not implemented yet: $msg")
+TODO(msg) = TODO("Not implemented yet", msg)
+TODO(prefix, msg) = error(prefix, " ", msg)
 
 
 
