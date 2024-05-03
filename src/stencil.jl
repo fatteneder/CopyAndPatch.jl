@@ -272,3 +272,6 @@ function patch!(bvec::ByteVector, st::Stencil, symbol::String, val)
     end
     error("No symbol $symbol found in stencil")
 end
+function patch!(vec::AbstractVector{<:UInt8}, st::Stencil, symbol::String, val)
+    patch!(ByteVector(vec), st, symbol, val)
+end
