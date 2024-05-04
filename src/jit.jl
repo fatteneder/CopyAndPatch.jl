@@ -67,12 +67,9 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     init_stencils()
 
     optimize = true
-    code = code_typed(fn, args; optimize)
-    @assert length(code) == 1
-    codeinfo = code[1].first
-    ret = code[1].second
+    codeinfo, rettype = only(code_typed(fn, args; optimize))
 
-    @show codeinfo
+    # @show codeinfo
     # @show codeinfo.slottypes
     # @show codeinfo.ssavaluetypes
     # @show propertynames(codeinfo)
@@ -114,7 +111,6 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
         end
     end
 
-    @show codeinfo.code
     nstencils = length(codeinfo.code)
     stencil_starts = zeros(Int64, nstencils)
     code_size = 0
