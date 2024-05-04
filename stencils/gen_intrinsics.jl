@@ -135,17 +135,17 @@ for line in split(signatures,'\n')
 
 typedef union {
    uint64_t addr;
-   void (*fnptr)(void **);
+   void (*fnptr)(int);
 } convert_cont;
 
 void
-_JIT_ENTRY(void **stack_ptr)
+_JIT_ENTRY(int ip)
 {
 $patch_args
 PATCH_VALUE(jl_value_t **, ret, _JIT_RET);
 PATCH_VALUE_AND_CONVERT(uint64_t, convert_cont, cont, _JIT_CONT);
 *ret = $fn_name($fn_args);
-cont.fnptr(stack_ptr);
+cont.fnptr(ip+1);
 }"""
     println(code)
     filename = joinpath(@__DIR__, "$fn_name.c")

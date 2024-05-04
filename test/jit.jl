@@ -9,7 +9,7 @@
     for T in (Int64,Int32), f in (f1,f2,f3)
         @test try
             memory = jit(f, (T,))
-            ccall(pointer(memory), Cvoid, (Ptr{Cvoid},), C_NULL)
+            ccall(pointer(memory), Cvoid, (Cint,), 1)
             true
         catch e
             @error "Failed $f(::$T) with" e
@@ -33,7 +33,7 @@ end
     for T in (Int64,Int32)
         @test try
             memory = jit(f, (T,))
-            ccall(pointer(memory), Cvoid, (Ptr{Cvoid},), C_NULL)
+            ccall(pointer(memory), Cvoid, (Cint,), 1)
             true
         catch e
             @error "Failed $f(::$T) with" e
@@ -47,7 +47,7 @@ end
     for T in (Int64,Int32)
         @test try
             memory = jit(f, (T,))
-            ccall(pointer(memory), Cvoid, (Ptr{Cvoid},), C_NULL)
+            ccall(pointer(memory), Cvoid, (Cint,), 1)
             true
         catch e
             @error "Failed $f(::$T) with" e
