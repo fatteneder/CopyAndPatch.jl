@@ -12,3 +12,10 @@
     RECTYPE ALIAS##_ = (RECTYPE)(uint64_t)&ALIAS;   \
     TYPE NAME;                                      \
     memcpy(&NAME, &ALIAS##_, sizeof(TYPE));
+
+#define PATCH_JUMP(ALIAS, IP)      \
+do {                               \
+    extern void (ALIAS)(int);     \
+    __attribute__((musttail))      \
+    return (ALIAS)(IP); \
+} while (0)

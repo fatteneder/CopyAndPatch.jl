@@ -2,11 +2,6 @@
 #include <julia_internal.h>
 #include <julia_threads.h>
 
-typedef union {
-   uint64_t addr;
-   void (*fnptr)(int);
-} convert_cont;
-
 void
 _JIT_ENTRY(int ip)
 {
@@ -16,7 +11,6 @@ PATCH_VALUE(jl_value_t *, a3, _JIT_A3);
 PATCH_VALUE(jl_value_t *, a4, _JIT_A4);
 PATCH_VALUE(jl_value_t *, a5, _JIT_A5);
 PATCH_VALUE(jl_value_t **, ret, _JIT_RET);
-PATCH_VALUE_AND_CONVERT(uint64_t, convert_cont, cont, _JIT_CONT);
 *ret = jl_atomic_pointerreplace(a1,a2,a3,a4,a5);
-cont.fnptr(ip+1);
+PATCH_JUMP(_JIT_CONT, ip+1);
 }
