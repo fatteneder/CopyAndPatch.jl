@@ -218,8 +218,8 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
     test = ssas[UInt64,ex.cond.id] # TODO Can this also be a slot?
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_TEST",  test)
-    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT1", pointer(memory, stencil_starts[end]))
-    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT2", pointer(memory, stencil_starts[end]))
+    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT1", pointer(memory, stencil_starts[ex.dest]))
+    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT2", pointer(memory, stencil_starts[ic+1]))
 end
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, bxs, used_rets, ex::Expr)
     if isexpr(ex, :call)
