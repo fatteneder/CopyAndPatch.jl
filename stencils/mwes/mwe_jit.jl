@@ -5,28 +5,95 @@ using CopyAndPatch
     versioninfo()
     x + y
 end
-
+# f(x) = nothing
+# f(x) = (x+2)*2
+# f(x) = x
 # f(x) = x+2
 # f(x) = (x+2)*3-x^3
 # f(x) = (x+2)/3
-function f(x)
-    # print("SERS", x)
-    versioninfo()
-    g(x,2*x)
-    # y = "SERS" * "OIDA"
-    x += log(x)
-    (x+2)/3
-    # y
+f(x) = x < 1 ? 1 : 2
+# function f(x)
+#     versioninfo()
+#     g(x,2*x)
+#     x += log(x)
+#     (x+2)/3
+# end
+
+function eulers_sieve(n)
+    qs = collect(1:n)
+    ms = zeros(Int64, length(qs))
+    p = 2
+    while true
+        for i in 2*p:p:n
+            ms[i] = 1
+        end
+        next_p = nothing
+        # @show ms, qs
+        for i in 1:length(qs)
+            # @show p, i, ms[i]
+            if ms[i] == 0 && i > p
+                next_p = i
+                break
+            end
+        end
+        isnothing(next_p) && break
+        p = next_p
+    end
+    ps = [ q for (i,q) in enumerate(qs) if ms[i] == 0 ]
+    ps
 end
-# this does not work, because mul_int can't be queried with CopyAndPatch.pointer_from_function
+# eulers_sieve(10)
 
-# stack, argstack, ssas, boxes = jit(f, (Int64,))
+# function mul2(n)
+#     a = collect(1:n)
+#     b = zeros(Int64, length(a))
+#     for i in 1:length(a)
+#         b[i] = 2*a[i]
+#     end
+#     return b
+# end
+# mul2(3)
 
-# this here requires jl_sext_int
-# jl_sext_int requires pointers to primitive types, but those seem to be
-# obtainable with pointer_from_objref, so perhaps pre-patch those in stencils?
-stack, argstack, ssas, boxes = jit(f, (Int32,))
+# function mycollect(n)
+#     return collect(1:n)
+# end
+# mycollect(3)
 
-jit_entry = stack[end]
-stackptr = pointer(stack,length(stack)-1)
-ccall(jit_entry, Cvoid, (Ptr{Cvoid},), stackptr)
+
+# function myrange(n)
+#     return myrange(1:n)
+# end
+# mycollect(3)
+
+function myfn1(n)
+    x = 2
+    if n > 3
+        x *= 2
+    else
+        x -= 3
+    end
+    return x
+end
+# myfn1(3)
+
+# function myfn2(n)
+#     x = 2
+#     if n > 3
+#         x *= 2
+#     else
+#         x -= 3
+#     end
+#     return x
+# end
+# myfn2(3)
+
+# memory = jit(f, (Int64,))
+# memory = jit(eulers_sieve, (Int64,))
+# memory = jit(mul2, (Int64,))
+# memory = jit(mycollect, (Int64,))
+# memory = jit(myrange, (Int64,))
+memory = jit(myfn1, (Int64,))
+# memory = jit(myfn2, (Int64,))
+# memory = jit(f, (Int32,Int32))
+# CopyAndPatch.code_native(memory)
+ccall(pointer(memory), Cvoid, (Ptr{Cvoid},), C_NULL)
