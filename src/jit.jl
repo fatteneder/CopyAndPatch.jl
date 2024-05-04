@@ -77,8 +77,11 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     nslots = length(codeinfo.slottypes)
     slots = ByteVector(nslots*sizeof(Ptr{UInt64}))
     nssas = length(codeinfo.ssavaluetypes)
+    # TODO we use this assumption to save return values into ssa array
+    @assert nssas == length(codeinfo.code)
     ssas = ByteVector(nssas*sizeof(Ptr{UInt64}))
     boxes = Any[]
+    used_rets = find_used(codeinfo)
 
     # init ssas and slots
     for i = 1:nslots
@@ -182,14 +185,17 @@ function box_args(ex_args::AbstractVector, slots, ssas, fn)
     return box_arg.(ex_args, Ref(slots), Ref(ssas), Ref(fn))
 end
 
-# Given a CodeInfo ci object, use the following to figure out which
-# ssa values are actually used in the body.
-# ```
-# used = BitSet()
-# for stmt in ci.code
-#   Core.Compiler.scan_ssa_use!(push!, used, stmt)
-# end
-# ```
+
+# Based on base/compiler/ssair/ir.jl
+# JuliaInterpreter.jl implements its own version of scan_ssa_use!,
+# not sure why though.
+function find_used(ci::CodeInfo)
+    used = BitSet()
+    for stmt in ci.code
+        Core.Compiler.scan_ssa_use!(push!, used, stmt)
+    end
+    return used
+end
 
 
 # CodeInfo can contain following symbols

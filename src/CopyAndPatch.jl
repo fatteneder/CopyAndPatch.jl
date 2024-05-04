@@ -3,7 +3,7 @@ module CopyAndPatch
 
 import Base: isexpr, code_typed, unsafe_convert, Iterators
 import Base.Libc.Libdl: dlpath, dlopen, dlsym
-import Core: MethodInstance
+import Core: MethodInstance, CodeInfo
 import InteractiveUtils: print_native
 import JSON: parsefile
 import Mmap: mmap
