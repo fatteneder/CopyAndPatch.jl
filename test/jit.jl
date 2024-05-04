@@ -55,3 +55,25 @@ end
         end
     end
 end
+
+@testset "GotoNode and PhiNode" begin
+    function f(n)
+        x = 2
+        if n > 3
+            x *= 2
+        else
+            x -= 3
+        end
+        return x
+    end
+    for T in (Int64,Int32)
+        @test try
+            memory = jit(f, (T,))
+            ccall(pointer(memory), Cvoid, (Cint,), 1)
+            true
+        catch e
+            @error "Failed $f(::$T) with" e
+            false
+        end
+    end
+end

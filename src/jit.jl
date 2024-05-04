@@ -120,6 +120,12 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     code_size = 0
     data_size = 0
     for (i,ex) in enumerate(codeinfo.code)
+        if isnothing(ex)
+            if i > 1
+                stencil_starts[i] = stencil_starts[i-1]
+            end
+            continue
+        end
         st, bvec, _ = get_stencil(ex)
         stencil_starts[i] = 1+code_size
         code_size += length(only(st.code.body))
@@ -164,6 +170,7 @@ end
 get_stencil(ex::Core.ReturnNode) = stencils["jit_end"]
 get_stencil(ex::Core.GotoIfNot)  = stencils["jit_gotoifnot"]
 get_stencil(ex::Core.GotoNode)   = stencils["jit_goto"]
+get_stencil(ex::Core.PhiNode)    = stencils["jit_phinode"]
 
 
 # TODO Maybe dispatch on fn
@@ -228,6 +235,21 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_TEST",  test)
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT1", pointer(memory, stencil_starts[ex.dest]))
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT2", pointer(memory, stencil_starts[ic+1]))
+end
+function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Core.PhiNode)
+    st, bvec, _ = stencils["jit_phinode"]
+    copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
+    nedges = length(ex.edges)
+    append!(boxes, ex.edges)
+    vals_boxes = box_args(ex.values, slots, ssas, nothing)
+    append!(boxes, vals_boxes)
+    retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
+    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NEDGES",  nedges)
+    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_EDGES",   pointer(ex.edges))
+    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_VALS",    pointer(vals_boxes))
+    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",     pointer(retbox))
+    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_THIS_IP", ic)
+    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",    pointer(memory, stencil_starts[ic+1]))
 end
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, bxs, used_rets, ex::Expr)
     if isexpr(ex, :call)
