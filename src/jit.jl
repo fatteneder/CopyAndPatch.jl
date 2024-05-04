@@ -132,7 +132,7 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     # bvec_data = view(memory, code_size+1:code_size+data_size)
 
     for (ic,ex) in enumerate(codeinfo.code)
-        emitcode!(memory, stencil_starts, ic, slots, ssas, boxes, ex)
+        emitcode!(memory, stencil_starts, ic, slots, ssas, boxes, used_rets, ex)
     end
 
     return memory
@@ -176,6 +176,8 @@ function box_arg(a, slots, ssas, fn)
         return box(a)
     elseif a isa Type
         return pointer_from_objref(a)
+    elseif a isa GlobalRef
+        return pointer_from_objref(unwrap(a))
     else
         return box(a)
     end
@@ -206,24 +208,20 @@ end
 #          _1 refers to function, _2 to first arg, etc.
 #          see CodeInfo.slottypes, CodeInfo.slotnames
 emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, ex) = TODO(typeof(ex))
-function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.ReturnNode)
+function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Core.ReturnNode)
     _, bvec, _ = stencils["jit_end"]
     # patch!(bvec, st.code, "_JIT_RET", ssas[end])
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
 end
-function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, ex::Core.GotoIfNot)
-    st, bvec, bvec_data = stencils["jit_gotoifnot"]
-    test = box_arg(ex.cond, slots, ssas, nothing)
-    foreach(println, st.code.relocations)
-    patch!(bvec, st.code, "_JIT_TEST",  test)
-    patch!(bvec, st.code, "_JIT_CONT1", pointer(memory, stencil_starts[end]))
-    patch!(bvec, st.code, "_JIT_CONT2", pointer(memory, stencil_starts[end]))
-    @assert length(bvec_data) == 0 bvec_data
-    # patch!(bvec, st.code, "_JIT_CONT1", pointer(memory, stencil_starts[ex.dest]))
-    # patch!(bvec, st.code, "_JIT_CONT2", pointer(memory, stencil_starts[ic+1]))
+function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Core.GotoIfNot)
+    st, bvec, _ = stencils["jit_gotoifnot"]
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
+    test = ssas[UInt64,ex.cond.id] # TODO Can this also be a slot?
+    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_TEST",  test)
+    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT1", pointer(memory, stencil_starts[end]))
+    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT2", pointer(memory, stencil_starts[end]))
 end
-function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, bxs, ex::Expr)
+function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, bxs, used_rets, ex::Expr)
     if isexpr(ex, :call)
         g = ex.args[1]
         @assert g isa GlobalRef
@@ -231,23 +229,26 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         if fn isa Core.IntrinsicFunction
             ex_args = @view ex.args[2:end]
             nargs = length(ex_args)
+            @show fn, fn isa GlobalRef
             boxes = box_args(ex_args, slots, ssas, fn)
-            retbox = Ref{Ptr{Cvoid}}(C_NULL)
             append!(bxs, boxes)
+            # retbox = ic in used_rets ? ssas[UInt64,ic] : unsafe_convert(Ptr{Cvoid},Ref(C_NULL))
+            retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
+            push!(bxs, retbox)
             name = string("jl_", Symbol(fn))
             st, bvec, bvec2 = get(stencils, name) do
                 error("don't know how to handle intrinsic $name")
             end
             @assert length(bvec2) == 0
+            copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
             for n in 1:nargs
                 # TODO I think one of the problems is that one
                 # box argument here is a literal and the other one a dynamic value.
                 # patch!(bvec, st.code, "_JIT_A$n", pointer(boxes, n))
-                patch!(bvec, st.code, "_JIT_A$n", boxes[n])
+                patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_A$n", boxes[n])
             end
-            patch!(bvec, st.code, "_JIT_RET", unsafe_convert(Ptr{Cvoid}, retbox))
-            patch!(bvec, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ic+1]))
-            copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
+            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",  pointer(retbox))
+            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ic+1]))
         elseif fn isa Function
             @assert iscallable(fn)
             fn_ptr = pointer_from_function(fn)
@@ -255,14 +256,15 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
             nargs = length(ex_args)
             boxes = box_args(ex_args, slots, ssas, fn)
             append!(bxs, boxes)
-            retbox = Ref{Ptr{Cvoid}}(C_NULL)
+            retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
+            push!(bxs, retbox)
             st, bvec, _ = stencils["jit_call"]
-            patch!(bvec, st.code, "_JIT_NARGS", nargs)
-            patch!(bvec, st.code, "_JIT_ARGS",  pointer(boxes))
-            patch!(bvec, st.code, "_JIT_FN",    pointer_from_function(fn))
-            patch!(bvec, st.code, "_JIT_RET",   unsafe_convert(Ptr{Cvoid}, retbox))
-            patch!(bvec, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
             copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
+            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
+            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS",  pointer(boxes))
+            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_FN",    pointer_from_function(fn))
+            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",   pointer(retbox))
+            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
             TODO("still used?")
         else
             TODO(fn)
@@ -273,20 +275,20 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         @assert g isa GlobalRef
         fn = unwrap(g)
         ex_args = length(ex.args) > 2 ? ex.args[3:end] : []
-        # TODO Need to figure out how to connect the call arguments with the slots!
         boxes = box_args(ex_args, slots, ssas, fn)
-        nargs = length(boxes)
         append!(bxs, boxes)
-        retbox = Ref{Ptr{Cvoid}}(C_NULL)
+        nargs = length(boxes)
+        retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
+        push!(bxs, retbox)
         st, bvec, bvec2 = stencils["jl_invoke"]
         @assert length(bvec2) == 0
-        patch!(bvec, st.code, "_JIT_MI",    pointer_from_objref(mi))
-        patch!(bvec, st.code, "_JIT_NARGS", nargs)
-        patch!(bvec, st.code, "_JIT_ARGS",  pointer(boxes))
-        patch!(bvec, st.code, "_JIT_FN",    pointer_from_function(fn))
-        patch!(bvec, st.code, "_JIT_RET",   unsafe_convert(Ptr{Cvoid}, retbox))
-        patch!(bvec, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
         copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_MI",    pointer_from_objref(mi))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS",  pointer(boxes))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_FN",    pointer_from_function(fn))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",   pointer(retbox))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
     else
         TODO(ex.head)
     end
@@ -319,5 +321,8 @@ function code_native(io::IO, code::Vector{UInt8}; syntax=:intel)
     close(err.in)
     str_out = read(out, String)
     str_err = read(err, String)
+    # TODO print_native outputs a place holder expression like
+    #   add     byte ptr [rax], al
+    # whenever there are just zeros. Is that a bug?
     print_native(io, str_out)
 end
