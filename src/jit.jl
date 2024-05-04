@@ -70,6 +70,7 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     codeinfo, rettype = only(code_typed(fn, args; optimize))
 
     # @show codeinfo
+    # @show codeinfo.code
     # @show codeinfo.slottypes
     # @show codeinfo.ssavaluetypes
     # @show propertynames(codeinfo)
@@ -162,6 +163,7 @@ function get_stencil(ex)
 end
 get_stencil(ex::Core.ReturnNode) = stencils["jit_end"]
 get_stencil(ex::Core.GotoIfNot)  = stencils["jit_gotoifnot"]
+get_stencil(ex::Core.GotoNode)   = stencils["jit_goto"]
 
 
 # TODO Maybe dispatch on fn
@@ -208,10 +210,16 @@ end
 #          _1 refers to function, _2 to first arg, etc.
 #          see CodeInfo.slottypes, CodeInfo.slotnames
 emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, ex) = TODO(typeof(ex))
+emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Nothing) = nothing
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Core.ReturnNode)
     _, bvec, _ = stencils["jit_end"]
     # patch!(bvec, st.code, "_JIT_RET", ssas[end])
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
+end
+function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Core.GotoNode)
+    st, bvec, _ = stencils["jit_goto"]
+    copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
+    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ex.label]))
 end
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Core.GotoIfNot)
     st, bvec, _ = stencils["jit_gotoifnot"]
@@ -229,7 +237,6 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         if fn isa Core.IntrinsicFunction
             ex_args = @view ex.args[2:end]
             nargs = length(ex_args)
-            @show fn, fn isa GlobalRef
             boxes = box_args(ex_args, slots, ssas, fn)
             append!(bxs, boxes)
             # retbox = ic in used_rets ? ssas[UInt64,ic] : unsafe_convert(Ptr{Cvoid},Ref(C_NULL))
