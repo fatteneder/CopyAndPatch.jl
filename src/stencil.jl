@@ -28,6 +28,7 @@ end
 
 
 struct Stencil
+    # TODO Add field name!
     body
     holes
     disassembly
@@ -272,6 +273,7 @@ function patch!(bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, 
             anyfound = true
         end
     end
+    # TODO Use st.name for better error msg
     !anyfound && error("No symbol $symbol found in stencil")
 end
 function patch!(vec::AbstractVector{<:UInt8}, offset::Integer, st::Stencil, symbol::String, val)

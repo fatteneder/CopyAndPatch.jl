@@ -14,5 +14,9 @@ _JIT_ENTRY(int ip)
     PATCH_VALUE(jl_value_t *, fn, _JIT_FN);
     PATCH_VALUE(jl_value_t **, ret, _JIT_RET);
     *ret = jl_invoke(fn, args, nargs.val, mi);
+    // TODO Make this more like src/interpreter.c
+    /** jl_method_instance_t *meth = (jl_method_instance_t*)fn; */
+    /** assert(jl_is_method_instance(meth)); */
+    /** *ret = jl_invoke(fn, &argv[2], nargs - 2, meth); */
     PATCH_JUMP(_JIT_CONT, ip+1);
 }
