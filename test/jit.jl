@@ -100,3 +100,19 @@ end
         end
     end
 end
+
+@testset ":new node" begin
+    function f(n)
+        return 1:n
+    end
+    for T in (Int64,Int32)
+        @test try
+            memory = jit(f, (T,))
+            ccall(pointer(memory), Cvoid, (Cint,), 1)
+            true
+        catch e
+            @error "Failed $f(::$T) with" e
+            false
+        end
+    end
+end

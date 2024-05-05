@@ -165,6 +165,8 @@ function get_stencil(ex)
         end
     elseif isexpr(ex, :invoke)
         return stencils["jl_invoke"]
+    elseif isexpr(ex, :new)
+        return stencils["jl_new_structv"]
     else
         TODO("Stencil not implemented yet:", ex)
     end
@@ -320,6 +322,20 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS",  pointer(boxes))
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_FN",    pointer_from_function(fn))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",   pointer(retbox))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
+    elseif isexpr(ex, :new)
+        ex_args = ex.args
+        boxes = box_args(ex_args, slots, ssas)
+        append!(bxs, boxes)
+        nargs = length(boxes)
+        retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
+        push!(bxs, retbox)
+        st, bvec, bvec2 = stencils["jl_new_structv"]
+        @assert length(bvec2) == 0
+        copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS",  pointer(boxes))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",   pointer(retbox))
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
     else
