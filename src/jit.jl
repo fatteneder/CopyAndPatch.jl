@@ -217,11 +217,14 @@ end
 # - _2 ... slot variable; either a function argument or a local variable
 #          _1 refers to function, _2 to first arg, etc.
 #          see CodeInfo.slottypes, CodeInfo.slotnames
-emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, ex) = TODO(typeof(ex))
+emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex) = TODO(typeof(ex))
 emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Nothing) = nothing
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Core.ReturnNode)
-    _, bvec, _ = stencils["jit_end"]
-    # patch!(bvec, st.code, "_JIT_RET", ssas[end])
+    st, bvec, _ = stencils["jit_end"]
+    retbox = ic in used_rets ? box_arg(ex.val, slots, ssas) : pointer([C_NULL])
+    push!(boxes, retbox)
+    # TODO Atm _JIT_RET is unused in stencils, so it is optimzed away and we can't patch it
+    # patch!(bvec, st.code, "_JIT_RET", retbox)
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
 end
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Core.GotoNode)
@@ -245,6 +248,7 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
     vals_boxes = box_args(ex.values, slots, ssas)
     append!(boxes, vals_boxes)
     retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
+    push!(boxes, retbox)
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NEDGES",  nedges)
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_EDGES",   pointer(ex.edges))
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_VALS",    pointer(vals_boxes))
@@ -262,7 +266,6 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
             nargs = length(ex_args)
             boxes = box_args(ex_args, slots, ssas)
             append!(bxs, boxes)
-            # retbox = ic in used_rets ? ssas[UInt64,ic] : unsafe_convert(Ptr{Cvoid},Ref(C_NULL))
             retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
             push!(bxs, retbox)
             name = string("jl_", Symbol(fn))
