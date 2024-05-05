@@ -121,6 +121,8 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     data_size = 0
     for (i,ex) in enumerate(codeinfo.code)
         if isnothing(ex)
+            # FIXME This might cause problems with continuations when we patch with stencil_starts[ic+1]
+            # and ic+1 is a nothing node, I think...
             if i > 1
                 stencil_starts[i] = stencil_starts[i-1]
             end
@@ -341,6 +343,9 @@ function code_native(io::IO, code::Vector{UInt8}; syntax=:intel)
     triple = lowercase(string(Sys.KERNEL, '-', Sys.MACHINE))
     codestr = join(Iterators.map(string, code), ' ')
     out, err = Pipe(), Pipe()
+    # TODO src/disasm.cpp also exports exports a disassembler which is based on llvm-mc
+    # jl_value_t *jl_dump_fptr_asm_impl(uint64_t fptr, char emit_mc, const char* asm_variant, const char *debuginfo, char binary)
+    # maybe we can repurpose that to avoid the extra llvm-mc dependence?
     cmd = `llvm-mc --disassemble --triple=$triple --output-asm-variant=$variant`
     pipe = pipeline(cmd, stdout=out, stderr=err)
     open(pipe, "w", stdin) do p
