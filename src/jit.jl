@@ -175,12 +175,11 @@ get_stencil(ex::Core.GotoNode)   = stencils["jit_goto"]
 get_stencil(ex::Core.PhiNode)    = stencils["jit_phinode"]
 
 
-# TODO Maybe dispatch on fn
-function box_arg(a, slots, ssas, fn)
+function box_arg(a, slots, ssas)
     if a isa Core.Argument
-        return fn isa Core.IntrinsicFunction ? slots[UInt64,a.n] : pointer(slots, UInt64, a.n)
+        return slots[UInt64,a.n]
     elseif a isa Core.SSAValue
-        return fn isa Core.IntrinsicFunction ? ssas[UInt64,a.id] : pointer(ssas, UInt64, a.id)
+        return ssas[UInt64,a.id]
     elseif a isa String
         return pointer_from_objref(a)
     elseif a isa Number
@@ -193,9 +192,9 @@ function box_arg(a, slots, ssas, fn)
         return box(a)
     end
 end
-function box_args(ex_args::AbstractVector, slots, ssas, fn)
+function box_args(ex_args::AbstractVector, slots, ssas)
     # TODO Need to cast to Ptr{UInt64} here?
-    return box_arg.(ex_args, Ref(slots), Ref(ssas), Ref(fn))
+    return Ptr{Cvoid}[ box_arg(a, slots, ssas) for a in ex_args ]
 end
 
 
@@ -243,7 +242,7 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
     nedges = length(ex.edges)
     append!(boxes, ex.edges)
-    vals_boxes = box_args(ex.values, slots, ssas, nothing)
+    vals_boxes = box_args(ex.values, slots, ssas)
     append!(boxes, vals_boxes)
     retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NEDGES",  nedges)
@@ -261,7 +260,7 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         if fn isa Core.IntrinsicFunction
             ex_args = @view ex.args[2:end]
             nargs = length(ex_args)
-            boxes = box_args(ex_args, slots, ssas, fn)
+            boxes = box_args(ex_args, slots, ssas)
             append!(bxs, boxes)
             # retbox = ic in used_rets ? ssas[UInt64,ic] : unsafe_convert(Ptr{Cvoid},Ref(C_NULL))
             retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
@@ -285,7 +284,7 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
             fn_ptr = pointer_from_function(fn)
             ex_args = @view ex.args[2:end]
             nargs = length(ex_args)
-            boxes = box_args(ex_args, slots, ssas, fn)
+            boxes = box_args(ex_args, slots, ssas)
             append!(bxs, boxes)
             retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
             push!(bxs, retbox)
@@ -306,7 +305,7 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         @assert g isa GlobalRef
         fn = unwrap(g)
         ex_args = length(ex.args) > 2 ? ex.args[3:end] : []
-        boxes = box_args(ex_args, slots, ssas, fn)
+        boxes = box_args(ex_args, slots, ssas)
         append!(bxs, boxes)
         nargs = length(boxes)
         retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
