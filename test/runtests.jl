@@ -1,6 +1,25 @@
 using Test
 
+using CopyAndPatch
 import CopyAndPatch: ByteVector, MachineCode, is_little_endian, jit
+
+
+# from https://github.com/JuliaLang/julia/issues/12711#issuecomment-912740865
+function my_redirect_stdout(f::Function, io::IO)
+    old_stdout = stdout
+    rd, = redirect_stdout()
+    task = @async write(io, rd)
+    try
+        ret = f()
+        Libc.flush_cstdio()
+        flush(stdout)
+        return ret
+    finally
+        close(rd)
+        redirect_stdout(old_stdout)
+        wait(task)
+    end
+end
 
 
 @testset "ByteVector" begin
