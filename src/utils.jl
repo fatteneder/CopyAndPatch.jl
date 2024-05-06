@@ -14,6 +14,11 @@ function pointer_from_function(fn::Function)
     return pf
 end
 
+function is_method_instance(mi::MethodInstance)
+    p = pointer_from_objref(mi)
+    GC.@preserve mi ccall((:is_method_instance,path_is_method_instance[]), Cint, (Ptr{Cvoid},), p)
+end
+
 
 # missing a few:
 # - jl_value_t *jl_box_char(uint32_t x);
