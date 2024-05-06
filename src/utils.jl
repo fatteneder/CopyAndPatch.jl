@@ -15,7 +15,25 @@ function pointer_from_function(fn::Function)
 end
 
 
-# for debugging jl_call
+# missing a few:
+# - jl_value_t *jl_box_char(uint32_t x);
+# - jl_value_t *jl_box_voidpointer(void *x);
+# - jl_value_t *jl_box_uint8pointer(uint8_t *x);
+# - jl_value_t *jl_box_ssavalue(size_t x);
+# - jl_value_t *jl_box_slotnumber(size_t x);
+#
+# - void *jl_unbox_voidpointer(jl_value_t *v) JL_NOTSAFEPOINT;
+# - uint8_t *jl_unbox_uint8pointer(jl_value_t *v) JL_NOTSAFEPOINT;
+#
+# Here is a list of default primitives: https://docs.julialang.org/en/v1/manual/types/#Primitive-Types
+# It also contains Float16, UInt128, Int128, but we don't have box methods for them.
+# Why? Because they are emulated in software?
+#
+# Why are there box methods for char, ssavalue, slotnumber, but no unbox methods?
+#
+# TODO path_libjulia[] not needed here, I think.
+const Boxable   = Union{Bool,Int8,Int16,Int32,Int64,UInt8,UInt32,UInt64,Float32,Float64}
+const Unboxable = Union{Bool,Int8,Int16,Int32,Int64,UInt8,UInt32,UInt64,Float32,Float64}
 box(x::Bool) = ccall((:jl_box_bool,path_libjulia[]), Ptr{Cvoid}, (Int8,), x)
 box(x::Int8) = ccall((:jl_box_int8,path_libjulia[]), Ptr{Cvoid}, (Int8,), x)
 box(x::Int16) = ccall((:jl_box_int16,path_libjulia[]), Ptr{Cvoid}, (Int16,), x)
@@ -25,7 +43,6 @@ box(x::UInt8) = ccall((:jl_box_uint8,path_libjulia[]), Ptr{Cvoid}, (UInt8,), x)
 box(x::UInt16) = ccall((:jl_box_uint16,path_libjulia[]), Ptr{Cvoid}, (UInt16,), x)
 box(x::UInt32) = ccall((:jl_box_uint32,path_libjulia[]), Ptr{Cvoid}, (UInt32,), x)
 box(x::UInt64) = ccall((:jl_box_uint64,path_libjulia[]), Ptr{Cvoid}, (UInt64,), x)
-box(x::Float16) = ccall((:jl_box_float16,path_libjulia[]), Ptr{Cvoid}, (Float16,), x)
 box(x::Float32) = ccall((:jl_box_float32,path_libjulia[]), Ptr{Cvoid}, (Float32,), x)
 box(x::Float64) = ccall((:jl_box_float64,path_libjulia[]), Ptr{Cvoid}, (Float64,), x)
 unbox(::Type{Bool}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_bool,path_libjulia[]), Bool, (Ptr{Cvoid},), ptr)
@@ -37,7 +54,6 @@ unbox(::Type{UInt8}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_uint8,path_libjulia[]),
 unbox(::Type{UInt16}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_uint16,path_libjulia[]), UInt16, (Ptr{Cvoid},), ptr)
 unbox(::Type{UInt32}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_uint32,path_libjulia[]), UInt32, (Ptr{Cvoid},), ptr)
 unbox(::Type{UInt64}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_uint64,path_libjulia[]), UInt64, (Ptr{Cvoid},), ptr)
-unbox(::Type{Float16}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_float16,path_libjulia[]), Float16, (Ptr{Cvoid},), ptr)
 unbox(::Type{Float32}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_float32,path_libjulia[]), Float32, (Ptr{Cvoid},), ptr)
 unbox(::Type{Float64}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_float64,path_libjulia[]), Float64, (Ptr{Cvoid},), ptr)
 unbox(T::Type, ptr::Integer) = unbox(T, Ptr{Cvoid}(UInt64(ptr)))
