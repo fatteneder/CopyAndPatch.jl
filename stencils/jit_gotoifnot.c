@@ -6,7 +6,7 @@ _JIT_ENTRY(int ip) {
    if (test == jl_false) {
       PATCH_JUMP(_JIT_CONT1, ip+1);
    } else if (test != jl_true) {
-      jl_type_error("if", (jl_value_t*)jl_bool_type, test);
+      jl_type_error("if", (jl_value_t*)jl_bool_type, test /*JL_MAYBE_UNROOTED*/);
    }
    PATCH_JUMP(_JIT_CONT2, ip+1);
 }
