@@ -15,7 +15,7 @@
 
 #define PATCH_JUMP(ALIAS, IP)      \
 do {                               \
-    extern void (ALIAS)(int);     \
+    extern void (ALIAS)(int);      \
     __attribute__((musttail))      \
-    return (ALIAS)(IP); \
-} while (0)
+    return (ALIAS)(IP);            \
+} while (0);

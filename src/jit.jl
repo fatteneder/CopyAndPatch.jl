@@ -193,9 +193,18 @@ function box_arg(a, slots, ssas)
     elseif a isa Type
         return pointer_from_objref(a)
     elseif a isa GlobalRef
-        return pointer_from_objref(unwrap(a))
-    else
+        # do it similar to src/interpreter.c:jl_eval_globalref
+        p = ccall(:jl_get_globalref_value, Ptr{Cvoid}, (Any,), a)
+        if p === C_NULL
+            throw(UndefVarError(a.name,a.mod))
+        end
+        return p
+    elseif typeof(a) <: Boxable
         return box(a)
+    elseif a isa MethodInstance
+        return pointer_from_objref(a)
+    else
+        TODO(a)
     end
 end
 function box_args(ex_args::AbstractVector, slots, ssas)
@@ -319,12 +328,8 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
         push!(preserve, retbox)
         st, bvec, bvec2 = stencils["jl_invoke"]
-        @assert length(bvec2) == 0
         copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_MI",    pointer_from_objref(mi))
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS",  pointer(boxes))
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_FN",    pointer_from_function(fn))
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",   pointer(retbox))
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
