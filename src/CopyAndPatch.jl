@@ -21,6 +21,7 @@ TODO(prefix, msg) = error(prefix, " ", msg)
 
 const path_libjulia = Ref{String}("")
 const path_libjuliainternal = Ref{String}("")
+const path_libjl = Ref{String}("")
 const libjulia = Ref{Ptr{Cvoid}}(0)
 const libjuliainternal = Ref{Ptr{Cvoid}}(0)
 const libc = Ref{Ptr{Cvoid}}(0)
@@ -30,6 +31,7 @@ function __init__()
     libc[] = dlopen(dlpath("libc.so.6"))
     path_libjulia[] = dlpath("libjulia.so")
     path_libjuliainternal[] = dlpath("libjulia-internal.so")
+    path_libjl[] = normpath(joinpath(@__DIR__, "..", "stencils", "libjl.so"))
     nothing
 end
 

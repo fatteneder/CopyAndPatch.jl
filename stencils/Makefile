@@ -9,12 +9,11 @@ JSON=$(SRC:.c=.json)
 %.json: %.o readobj
 	./readobj $< > $*.json
 
-is_method_instance.o: is_method_instance.c
-	gcc -std=gnu11 -I'/home/flo/.julia/juliaup/julia-1.10.1+0.x64.linux.gnu/include/julia' -fPIC -L'/home/flo/.julia/juliaup/julia-1.10.1+0.x64.linux.gnu/lib' -Wl,--export-dynamic -Wl,-rpath,'/home/flo/.julia/juliaup/julia-1.10.1+0.x64.linux.gnu/lib' -Wl,-rpath,'/home/flo/.julia/juliaup/julia-1.10.1+0.x64.linux.gnu/lib/julia' -ljulia -shared -o $*.so $<
-
-
 .SECONDARY:
-all: $(JSON)
+all: $(JSON) libjl.so
+
+libjl.so: libjl.c
+	gcc -std=gnu11 -I'/home/flo/.julia/juliaup/julia-1.10.1+0.x64.linux.gnu/include/julia' -fPIC -L'/home/flo/.julia/juliaup/julia-1.10.1+0.x64.linux.gnu/lib' -Wl,--export-dynamic -Wl,-rpath,'/home/flo/.julia/juliaup/julia-1.10.1+0.x64.linux.gnu/lib' -Wl,-rpath,'/home/flo/.julia/juliaup/julia-1.10.1+0.x64.linux.gnu/lib/julia' -ljulia -shared -o $*.so $<
 
 clean:
 	rm -f $(JSON)

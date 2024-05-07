@@ -14,9 +14,14 @@ function pointer_from_function(fn::Function)
     return pf
 end
 
-function is_method_instance(mi::MethodInstance)
-    p = pointer_from_objref(mi)
-    GC.@preserve mi ccall((:is_method_instance,path_is_method_instance[]), Cint, (Ptr{Cvoid},), p)
+function is_method_instance(mi)
+    GC.@preserve mi ccall((:is_method_instance,path_libjl[]), Cint, (Any,), mi)
+end
+function is_bool(b)
+    p = box(b)
+    # no need for GC.@preserve, because it is apparent that p depends on b, assuming
+    # ccall(:jl_box_bool,x) is not unsafe?
+    ccall((:is_bool,path_libjl[]), Cint, (Ptr{Cvoid},), p)
 end
 
 

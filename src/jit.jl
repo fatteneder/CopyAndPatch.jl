@@ -5,6 +5,7 @@ function init_stencils()
     stencildir = joinpath(@__DIR__, "..", "stencils")
     files = readdir(stencildir, join=true)
     filter!(files) do f
+        contains(f, "libjl") && return false
         endswith(f, ".json")
     end
     empty!(stencils)
