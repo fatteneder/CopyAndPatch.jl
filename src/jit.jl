@@ -139,12 +139,12 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     # memory = mmap(Vector{UInt8}, code_size+data_size, shared=false, exec=true)
     # bvec_code = view(memory, 1:code_size)
     # bvec_data = view(memory, code_size+1:code_size+data_size)
-
+    preserve = Any[]
     for (ic,ex) in enumerate(codeinfo.code)
-        emitcode!(memory, stencil_starts, ic, slots, ssas, boxes, used_rets, ex)
+        emitcode!(memory, stencil_starts, ic, slots, ssas, preserve, used_rets, ex)
     end
 
-    return memory
+    return memory, preserve
 end
 
 
@@ -177,6 +177,10 @@ get_stencil(ex::Core.GotoNode)   = stencils["jit_goto"]
 get_stencil(ex::Core.PhiNode)    = stencils["jit_phinode"]
 
 
+# TODO Need to collect the a's which need to be GC.@preserved when their pointers are used.
+# - Anything to which we apply pointer_from_objref or pointer needs to be preserved when used.
+# - Also slots and ssas need to be kept alive till the function is finished.
+# - What about boxed stuff?
 function box_arg(a, slots, ssas)
     if a isa Core.Argument
         return slots[UInt64,a.n]
@@ -219,22 +223,22 @@ end
 # - _2 ... slot variable; either a function argument or a local variable
 #          _1 refers to function, _2 to first arg, etc.
 #          see CodeInfo.slottypes, CodeInfo.slotnames
-emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex) = TODO(typeof(ex))
-emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Nothing) = nothing
-function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Core.ReturnNode)
+emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex) = TODO(typeof(ex))
+emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Nothing) = nothing
+function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.ReturnNode)
     st, bvec, _ = stencils["jit_end"]
     retbox = ic in used_rets ? box_arg(ex.val, slots, ssas) : pointer([C_NULL])
-    push!(boxes, retbox)
+    push!(preserve, retbox)
     # TODO Atm _JIT_RET is unused in stencils, so it is optimzed away and we can't patch it
     # patch!(bvec, st.code, "_JIT_RET", retbox)
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
 end
-function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Core.GotoNode)
+function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.GotoNode)
     st, bvec, _ = stencils["jit_goto"]
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ex.label]))
 end
-function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Core.GotoIfNot)
+function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.GotoIfNot)
     st, bvec, _ = stencils["jit_gotoifnot"]
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
     test = ssas[UInt64,ex.cond.id] # TODO Can this also be a slot?
@@ -242,15 +246,15 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT1", pointer(memory, stencil_starts[ex.dest]))
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT2", pointer(memory, stencil_starts[ic+1]))
 end
-function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, boxes, used_rets, ex::Core.PhiNode)
+function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.PhiNode)
     st, bvec, _ = stencils["jit_phinode"]
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
     nedges = length(ex.edges)
-    append!(boxes, ex.edges)
+    append!(preserve, ex.edges)
     vals_boxes = box_args(ex.values, slots, ssas)
-    append!(boxes, vals_boxes)
+    append!(preserve, vals_boxes)
     retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
-    push!(boxes, retbox)
+    push!(preserve, retbox)
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NEDGES",  nedges)
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_EDGES",   pointer(ex.edges))
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_VALS",    pointer(vals_boxes))
@@ -258,7 +262,7 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_THIS_IP", ic)
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",    pointer(memory, stencil_starts[ic+1]))
 end
-function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, bxs, used_rets, ex::Expr)
+function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Expr)
     if isexpr(ex, :call)
         g = ex.args[1]
         @assert g isa GlobalRef
@@ -267,9 +271,9 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
             ex_args = @view ex.args[2:end]
             nargs = length(ex_args)
             boxes = box_args(ex_args, slots, ssas)
-            append!(bxs, boxes)
+            append!(preserve, boxes)
             retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
-            push!(bxs, retbox)
+            push!(preserve, retbox)
             name = string("jl_", Symbol(fn))
             st, bvec, bvec2 = get(stencils, name) do
                 error("don't know how to handle intrinsic $name")
@@ -290,9 +294,9 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
             ex_args = @view ex.args[2:end]
             nargs = length(ex_args)
             boxes = box_args(ex_args, slots, ssas)
-            append!(bxs, boxes)
+            append!(preserve, boxes)
             retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
-            push!(bxs, retbox)
+            push!(preserve, retbox)
             st, bvec, _ = stencils["jit_call"]
             copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
             patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
@@ -308,13 +312,12 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         mi, g = ex.args[1], ex.args[2]
         @assert mi isa MethodInstance
         @assert g isa GlobalRef
-        fn = unwrap(g)
-        ex_args = length(ex.args) > 2 ? ex.args[3:end] : []
+        ex_args = ex.args
         boxes = box_args(ex_args, slots, ssas)
-        append!(bxs, boxes)
+        append!(preserve, boxes)
         nargs = length(boxes)
         retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
-        push!(bxs, retbox)
+        push!(preserve, retbox)
         st, bvec, bvec2 = stencils["jl_invoke"]
         @assert length(bvec2) == 0
         copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
@@ -322,15 +325,16 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS",  pointer(boxes))
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_FN",    pointer_from_function(fn))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",   pointer(retbox))
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
     elseif isexpr(ex, :new)
         ex_args = ex.args
         boxes = box_args(ex_args, slots, ssas)
-        append!(bxs, boxes)
+        append!(preserve, boxes)
         nargs = length(boxes)
         retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
-        push!(bxs, retbox)
+        push!(preserve, retbox)
         st, bvec, bvec2 = stencils["jl_new_structv"]
         @assert length(bvec2) == 0
         copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))

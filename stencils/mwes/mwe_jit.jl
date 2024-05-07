@@ -1,23 +1,40 @@
 using CopyAndPatch
 
 
-@noinline function g(x,y)
-    versioninfo()
-    x + y
-end
-# f(x) = nothing
-# f(x) = (x+2)*2
-# f(x) = x
-# f(x) = x+2
-# f(x) = (x+2)*3-x^3
-# f(x) = (x+2)/3
-f(x) = x < 1 ? 1 : 2
+# @noinline function g(x,y)
+#     versioninfo()
+#     x + y
+# end
+# # f(x) = nothing
+# # f(x) = (x+2)*2
+# # f(x) = x
+# # f(x) = x+2
+# # f(x) = (x+2)*3-x^3
+# # f(x) = (x+2)/3
+# f(x) = x < 1 ? 1 : 2
+# # function f(x)
+# #     versioninfo()
+# #     g(x,2*x)
+# #     x += log(x)
+# #     (x+2)/3
+# # end
+
+# @noinline function g(x,y)
+#     versioninfo()
+#     x + y
+# end
+# # TODO Moving f(x) to here gives a segfault
 # function f(x)
 #     versioninfo()
 #     g(x,2*x)
 #     x += log(x)
 #     (x+2)/3
 # end
+function f(x)
+    versioninfo()
+    x+1
+end
+
 
 function eulers_sieve(n)
     qs = collect(1:n)
@@ -87,13 +104,15 @@ end
 # end
 # myfn2(3)
 
-# memory = jit(f, (Int64,))
+memory, preserve = jit(f, (Int64,))
 # memory = jit(eulers_sieve, (Int64,))
 # memory = jit(mul2, (Int64,))
 # memory = jit(mycollect, (Int64,))
 # memory = jit(myrange, (Int64,))
-memory = jit(myfn1, (Int64,))
+# memory = jit(myfn1, (Int64,))
 # memory = jit(myfn2, (Int64,))
 # memory = jit(f, (Int32,Int32))
-# CopyAndPatch.code_native(memory)
-ccall(pointer(memory), Cvoid, (Ptr{Cvoid},), C_NULL)
+CopyAndPatch.code_native(memory)
+GC.@preserve preserve begin
+    ccall(pointer(memory), Cvoid, (Cint,), 1)
+end

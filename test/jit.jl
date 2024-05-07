@@ -8,8 +8,8 @@
     end
     for T in (Int64,Int32), f in (f1,f2,f3)
         @test try
-            memory = jit(f, (T,))
-            ccall(pointer(memory), Cvoid, (Cint,), 1)
+            memory, preserve = jit(f, (T,))
+            GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
             true
         catch e
             @error "Failed $f(::$T) with" e
@@ -32,8 +32,8 @@ end
     end
     for T in (Int64,Int32)
         @test try
-            memory = jit(f, (T,))
-            ccall(pointer(memory), Cvoid, (Cint,), 1)
+            memory, preserve = jit(f, (T,))
+            GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
             true
         catch e
             @error "Failed $f(::$T) with" e
@@ -52,9 +52,9 @@ end
         # Maybe need to porperly handle the data section now?
         # my_redirect_stdout(io) do
             @test try
-                memory = jit(f, (T,))
+                memory, preserve = jit(f, (T,))
                 CopyAndPatch.code_native(memory)
-                ccall(pointer(memory), Cvoid, (Cint,), 1)
+                GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
                 true
             catch e
                 @error "Failed $f(::$T) with" e
@@ -69,8 +69,8 @@ end
     f(x) = x > 1 ? 1 : 2
     for T in (Int64,Int32)
         @test try
-            memory = jit(f, (T,))
-            ccall(pointer(memory), Cvoid, (Cint,), 1)
+            memory, preserve = jit(f, (T,))
+            GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
             true
         catch e
             @error "Failed $f(::$T) with" e
@@ -91,8 +91,8 @@ end
     end
     for T in (Int64,Int32)
         @test try
-            memory = jit(f, (T,))
-            ccall(pointer(memory), Cvoid, (Cint,), 1)
+            memory, preserve = jit(f, (T,))
+            GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
             true
         catch e
             @error "Failed $f(::$T) with" e
@@ -107,8 +107,8 @@ end
     end
     for T in (Int64,Int32)
         @test try
-            memory = jit(f, (T,))
-            ccall(pointer(memory), Cvoid, (Cint,), 1)
+            memory, preserve = jit(f, (T,))
+            GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
             true
         catch e
             @error "Failed $f(::$T) with" e
