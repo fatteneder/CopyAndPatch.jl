@@ -14,4 +14,5 @@ elif [[ $(hostname) == "fwork" ]]; then
   export JULIA_LIB="$HOME/wd/julia2/usr/lib"
   export JULIA_INCLUDE2="$HOME/wd/julia2/usr/include"
   export JULIA_INTERNAL_INCLUDE="$HOME/wd/julia2/src"
+  export LIBFFI_INCLUDE="$HOME/wd/libffi/x86_64-pc-linux-gnu/include"
 fi

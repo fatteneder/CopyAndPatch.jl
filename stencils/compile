@@ -11,6 +11,7 @@ clang -O3 \
       -I"$JULIA_INCLUDE" \
       -I"$JULIA_INCLUDE2" \
       -I"$JULIA_INTERNAL_INCLUDE" \
+      -I"$LIBFFI_INCLUDE" \
       -I"$(pwd)" \
       -o $2 \
       $1

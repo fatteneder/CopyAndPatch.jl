@@ -2,7 +2,11 @@
 
 julia_version = "1.12.0-DEV"
 manifest_format = "2.0"
-project_hash = "eeab410b3e6127e066a1db00693f48fd7636f953"
+project_hash = "ada220dabd6c04cb723b9e8185110d03a7b24416"
+
+[[deps.Artifacts]]
+uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
+version = "1.11.0"
 
 [[deps.Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
@@ -24,6 +28,12 @@ deps = ["Markdown"]
 uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 version = "1.11.0"
 
+[[deps.JLLWrappers]]
+deps = ["Artifacts", "Preferences"]
+git-tree-sha1 = "7e5d6779a1e09a36db2a7b6cff50942a0a7d0fca"
+uuid = "692b3bcd-3c85-4b1f-b108-f13ce0eb3210"
+version = "1.5.0"
+
 [[deps.JSON]]
 deps = ["Dates", "Mmap", "Parsers", "Unicode"]
 git-tree-sha1 = "31e996f0a15c7b280ba9f76636b3ff9e2ae58c9a"
@@ -35,6 +45,16 @@ deps = ["CodeTracking", "InteractiveUtils", "Random", "UUIDs"]
 git-tree-sha1 = "7b762d81887160169ddfc93a47e5fd7a6a3e78ef"
 uuid = "aa1ae85d-cabe-5617-a682-6adf51b2e16a"
 version = "0.9.29"
+
+[[deps.Libdl]]
+uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+version = "1.11.0"
+
+[[deps.Libffi_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "45611d6cb43558bfac990674c4351c7821aa78ca"
+uuid = "e9f186c6-92d2-5b65-8a66-fee21dc1b490"
+version = "3.4.6+0"
 
 [[deps.MacroTools]]
 deps = ["Markdown", "Random"]

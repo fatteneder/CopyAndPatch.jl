@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <julia.h>
+#include <ffi.h>
 
 #define PATCH_VALUE(TYPE, NAME, ALIAS)  \
     extern void ALIAS;                  \
