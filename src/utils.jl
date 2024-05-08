@@ -67,3 +67,40 @@ unbox(::Type{UInt64}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_uint64,path_libjulia[]
 unbox(::Type{Float32}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_float32,path_libjulia[]), Float32, (Ptr{Cvoid},), ptr)
 unbox(::Type{Float64}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_float64,path_libjulia[]), Float64, (Ptr{Cvoid},), ptr)
 unbox(T::Type, ptr::Integer) = unbox(T, Ptr{Cvoid}(UInt64(ptr)))
+
+
+# libffi offers these types: https://www.chiark.greenend.org.uk/doc/libffi-dev/html/Primitive-Types.html
+# ffi_type_void ffi_type_uint8 ffi_type_sint8 ffi_type_uint16 ffi_type_sint16 ffi_type_uint32
+# ffi_type_sint32 ffi_type_uint64 ffi_type_sint64 ffi_type_float ffi_type_double ffi_type_uchar
+# ffi_type_schar ffi_type_ushort ffi_type_sshort ffi_type_uint ffi_type_sint ffi_type_ulong
+# ffi_type_slong ffi_type_longdouble ffi_type_pointer ffi_type_complex_float ffi_type_complex_double
+# ffi_type_complex_longdouble
+# ---
+# julia offers these types: https://docs.julialang.org/en/v1/manual/calling-c-and-fortran-code/#man-bits-types
+# Cvoid Cuchar Cshort Cushort Cint Cuint Clonglong Culonglong Cintmax_t Cuintmax_t Cfloat Cdouble
+# ComplexF32 ComplexF64 Cptrdiff_t Cssize_t Csize_t Cchar Clong Culong Cwchar_t
+# ---
+# here we define a mapping between julia's types and ffi's types
+# a few notes:
+# - ffi uses macros to define some types, e.g. ffi_type_sshort, so we resolve them manually here
+#   this might need to be adjusted depending on the system for which libffi is configured
+# - some C types can be identical, e.g. Cintmax_t = Clonglong = Int64 on x86_64-redhat-linux
+#   because of that we define ffi_type below only for the 'unique' ones to avoid overwrite warnings
+# - there are at least four system dependent types, Cchar, Clong, Culong, Cwchar_t, which
+#   we will need special care later on
+for (jl_t, ffi_t) in [
+                       (Cvoid,      :ffi_type_void),
+                       (Cuchar,     :ffi_type_uint8),
+                       (Cshort,     :ffi_type_sint16), # ffi_type_sshort
+                       (Cushort,    :ffi_type_uint16), # ffi_type_ushort
+                       (Cint,       :ffi_type_sint32), # ffi_type_sint
+                       (Cuint,      :ffi_type_uint32), # ffi_type_uint
+                       (Cfloat,     :ffi_type_float),
+                       (Cdouble,    :ffi_type_double),
+                       (Clonglong,  :ffi_type_sint64),
+                       (Culonglong, :ffi_type_uint64),
+                       (ComplexF32, :ffi_type_complex_float),
+                       (ComplexF64, :ffi_type_complex_double),
+                   ]
+    @eval ffi_type(::Type{$jl_t}) = dlsym(libffi_handle,$(QuoteNode(ffi_t)))
+end

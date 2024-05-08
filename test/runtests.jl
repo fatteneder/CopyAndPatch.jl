@@ -92,5 +92,15 @@ end
 
 end
 
+@testset "libffi" begin
+    ctypes = Any[ Cvoid, Cuchar, Cshort, Cint, Cuint, Cfloat,
+                  Cdouble, Cuint, Cfloat, Cdouble, Clonglong, Culonglong,
+                  ComplexF32, ComplexF64 ]
+    for ct in ctypes
+        p = CopyAndPatch.ffi_type(ct)
+        @test p != C_NULL
+    end
+end
+
 
 include("jit.jl")
