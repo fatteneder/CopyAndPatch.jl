@@ -168,6 +168,8 @@ function get_stencil(ex)
         return stencils["jl_invoke"]
     elseif isexpr(ex, :new)
         return stencils["jl_new_structv"]
+    elseif isexpr(ex, :foreigncall)
+        return stencils["jl_foreigncall"]
     else
         TODO("Stencil not implemented yet:", ex)
     end
@@ -348,6 +350,34 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",   pointer(retbox))
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
+    elseif isexpr(ex, :foreigncall)
+        fname, libname = ex.args[1].args[2].value, unwrap(ex.args[1].args[3].args[2])
+        rettype = ex.args[2]
+        argtypes = ex.args[3]
+        nreq = ex.args[4]
+        @assert nreq == 0
+        conv = ex.args[5]
+        @assert conv === QuoteNode(:ccall)
+        args = ex.args[6:5+length(ex.args[3])]
+        gc_roots = ex.args[6+length(ex.args[3])+1:end]
+        @assert length(gc_roots) == 0
+        boxes = box_args(args, slots, ssas)
+        append!(preserve, boxes)
+        nargs = length(boxes)
+        retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
+        push!(preserve, retbox)
+        @show argtypes
+        cif = Ffi_cif(rettype, argtypes)
+        st, bvec, bvec2 = stencils["jl_foreigncall"]
+        @assert length(bvec2) == 0
+        handle = dlopen(libname[])
+        fptr = dlsym(handle, fname)
+        copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CIF",  pointer(cif))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_F",    fptr)
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS", pointer(boxes))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",  pointer(retbox))
+        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ic+1]))
     else
         TODO(ex.head)
     end

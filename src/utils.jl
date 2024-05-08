@@ -111,6 +111,8 @@ mutable struct Ffi_cif{N}
     argtypes::NTuple{N,DataType}
 
     # https://www.chiark.greenend.org.uk/doc/libffi-dev/html/The-Basics.html
+    # TODO do we need splat here?
+    Ffi_cif(@nospecialize(rettype::Type), s::Core.SimpleVector) = Ffi_cif(rettype, tuple(s...))
     function Ffi_cif(@nospecialize(rettype::Type), @nospecialize(argtypes::NTuple{N,DataType})) where N
         @assert isbitstype(rettype)
         @assert all(isbitstype, argtypes)
@@ -149,6 +151,8 @@ mutable struct Ffi_cif{N}
         end
     end
 end
+
+Base.pointer(cif::Ffi_cif) = cif.p
 
 
 function ffi_call(cif::Ffi_cif{N}, fn::Ptr{Cvoid}, @nospecialize(args::Vector)) where N

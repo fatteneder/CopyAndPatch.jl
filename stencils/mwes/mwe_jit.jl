@@ -1,5 +1,11 @@
 using CopyAndPatch
+using Libdl
 
+
+function foreign(x::Int64)
+    @ccall CopyAndPatch.libffihelpers_path[].my_square(x::Int64)::Int64
+end
+foreign(1)
 
 # @noinline function g(x,y)
 #     versioninfo()
@@ -104,9 +110,10 @@ end
 # end
 # myfn2(3)
 
-memory, preserve = jit(f, (Int64,))
+# memory, preserve = jit(f, (Int64,))
 # memory = jit(eulers_sieve, (Int64,))
 # memory = jit(mul2, (Int64,))
+memory, preserve = jit(foreign, (Int64,))
 # memory = jit(mycollect, (Int64,))
 # memory = jit(myrange, (Int64,))
 # memory = jit(myfn1, (Int64,))
