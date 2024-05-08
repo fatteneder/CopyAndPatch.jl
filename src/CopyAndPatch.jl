@@ -6,7 +6,7 @@ import Base.Libc.Libdl: dlpath, dlopen, dlsym
 import Core: MethodInstance, CodeInfo
 import InteractiveUtils: print_native
 import JSON: parsefile
-import Libffi_jll: libffi_handle
+import Libffi_jll: libffi_handle, libffi_path
 import Mmap: mmap
 import Printf: Format, format
 
@@ -23,6 +23,7 @@ TODO(prefix, msg) = error(prefix, " ", msg)
 const path_libjulia = Ref{String}("")
 const path_libjuliainternal = Ref{String}("")
 const path_libjl = Ref{String}("")
+const path_libffihelpers = Ref{String}("")
 const libjulia = Ref{Ptr{Cvoid}}(0)
 const libjuliainternal = Ref{Ptr{Cvoid}}(0)
 const libc = Ref{Ptr{Cvoid}}(0)
@@ -33,6 +34,7 @@ function __init__()
     path_libjulia[] = dlpath("libjulia.so")
     path_libjuliainternal[] = dlpath("libjulia-internal.so")
     path_libjl[] = normpath(joinpath(@__DIR__, "..", "stencils", "libjl.so"))
+    path_libffihelpers[] = normpath(joinpath(@__DIR__, "..", "stencils", "libffihelpers.so"))
     nothing
 end
 

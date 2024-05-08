@@ -49,10 +49,10 @@ function patch_default_deps!(bvec::ByteVector, bvec_data::ByteVector, s::Stencil
         elseif startswith(h.symbol, ".rodata")
             @assert h.addend+1 < length(bvec_data)
             pointer(bvec_data.d, h.addend+1)
+        elseif startswith(h.symbol, "ffi_")
+            dlsym(libffi_handle, Symbol(h.symbol))
         else
-            dlsym(libc[], h.symbol)#, throw_error=false)
-            # @assert !isnothing(p)
-            # p
+            dlsym(libc[], h.symbol)
         end
         bvec[h.offset+1] = ptr
     end

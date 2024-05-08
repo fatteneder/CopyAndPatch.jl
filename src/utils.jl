@@ -104,3 +104,61 @@ for (jl_t, ffi_t) in [
                    ]
     @eval ffi_type(::Type{$jl_t}) = dlsym(libffi_handle,$(QuoteNode(ffi_t)))
 end
+
+
+mutable struct Ffi_cif{N}
+    p::Ptr{Cvoid}
+    rettype::Type
+    argtypes::NTuple{N,DataType}
+
+    # https://www.chiark.greenend.org.uk/doc/libffi-dev/html/The-Basics.html
+    function Ffi_cif(@nospecialize(rettype::Type), @nospecialize(argtypes::NTuple{N,DataType})) where N
+        @assert isbitstype(rettype)
+        @assert all(isbitstype, argtypes)
+        # TODO Do we need to hold onto ffi_rettype, ffi_argtypes for the lifetime of Ffi_cfi?
+        ffi_rettype  = ffi_type(rettype)
+        ffi_argtypes = [ ffi_type(a) for a in argtypes ]
+        nargs = length(argtypes)
+        sz_cif = ccall((:get_sizeof_ffi_cif,path_libffihelpers[]), Csize_t, ())
+        @assert sz_cif > 0
+        p_cif = Libc.malloc(sz_cif)
+        @assert p_cif !== C_NULL
+        default_abi = ccall((:get_ffi_default_abi,path_libffihelpers[]), Cint, ())
+        status = @ccall libffi_path.ffi_prep_cif(
+                                p_cif::Ptr{Cvoid}, default_abi::Cint, nargs::Cint,
+                                ffi_rettype::Ptr{Cvoid}, ffi_argtypes::Ptr{Ptr{Cvoid}}
+                               )::Cint
+        if status == 0 # = FFI_OK
+            cif = new{N}(p_cif, rettype, argtypes)
+            return finalizer(cif) do cif
+                if cif.p !== C_NULL
+                    Libc.free(cif.p)
+                    cif.p = C_NULL
+                end
+            end
+        else
+            msg = "Failed to prepare ffi_cif for f($(join(argtypes,',')))::$rettype; ffi_prep_cif returned "
+            if status == 1
+                error(msg * "FFI_BAD_TYPEDEF")
+            elseif status == 2
+                error(msg * "FFI_BAD_ABI")
+            elseif status == 3
+                error(msg * "FFI_BAD_ARGTYPE")
+            else
+                error(msg * "unknown error code $status")
+            end
+        end
+    end
+end
+
+
+function ffi_call(cif::Ffi_cif{N}, fn::Ptr{Cvoid}, @nospecialize(args::Vector)) where N
+    @assert fn !== C_NULL
+    @assert N == length(args)
+    @assert all( typeof(a) == cif.argtypes[i] for (i,a) in enumerate(args) )
+    ret = Ref{cif.rettype}()
+    p_args = convert(Vector{Any}, args)
+    @ccall libffi_path.ffi_call(cif.p::Ptr{Cvoid}, fn::Ptr{Cvoid},
+                                ret::Ptr{Cvoid}, p_args::Ptr{Any})::Cvoid
+    return ret[]
+end
