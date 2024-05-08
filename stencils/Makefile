@@ -13,7 +13,7 @@ JSON=$(SRC:.c=.json)
 all: $(JSON) libjl.so
 
 libjl.so: libjl.c
-	gcc -std=gnu11 -I'/home/flo/.julia/juliaup/julia-1.10.1+0.x64.linux.gnu/include/julia' -fPIC -L'/home/flo/.julia/juliaup/julia-1.10.1+0.x64.linux.gnu/lib' -Wl,--export-dynamic -Wl,-rpath,'/home/flo/.julia/juliaup/julia-1.10.1+0.x64.linux.gnu/lib' -Wl,-rpath,'/home/flo/.julia/juliaup/julia-1.10.1+0.x64.linux.gnu/lib/julia' -ljulia -shared -o $*.so $<
+	gcc -std=gnu11 -I'${JULIA_INCLUDE}' -fPIC -L'${JULIA_LIB}' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' -ljulia -shared -o $*.so $<
 
 clean:
 	rm -f $(JSON)
