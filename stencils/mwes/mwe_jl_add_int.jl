@@ -6,14 +6,8 @@ CopyAndPatch.init_stencils()
 T = Int64
 a, b = T(2), T(3)
 box_a, box_b = CopyAndPatch.box(a), CopyAndPatch.box(b)
-box_ret = ccall((:jl_add_int,CopyAndPatch.path_libjuliainternal[]), Ptr{Cvoid},
-                (Ptr{Cvoid},Ptr{Cvoid}),
-                box_a, box_b)
+box_ret = @ccall jl_add_int(box_a::Ptr{Cvoid}, box_b::Ptr{Cvoid})::Ptr{Cvoid}
 @show CopyAndPatch.unbox(T,box_ret)
-# box_ret = ccall((:jl_mul_int,CopyAndPatch.path_libjuliainternal[]), Ptr{Cvoid},
-#                 (Ptr{Cvoid},Ptr{Cvoid}),
-#                 box_a, box_b)
-# @show CopyAndPatch.unbox(T,box_ret)
 
 # # this segfaults when we don't use the Core.IntrinsicFunction dispatch for pointer_from_function
 # # however, that one does not work reliably as was clarified on slack

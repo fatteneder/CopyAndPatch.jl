@@ -9,19 +9,19 @@ iscallable(@nospecialize(f)) = !isempty(methods(f))
 function pointer_from_function(fn::Function)
     pm = pointer_from_objref(typeof(fn).name.module)
     ps = pointer_from_objref(nameof(fn))
-    pf = ccall((:jl_get_global, path_libjulia[]), Ptr{Cvoid}, (Ptr{Cvoid},Ptr{Cvoid}), pm, ps)
+    pf = @ccall jl_get_global(pm::Ptr{Cvoid}, ps::Ptr{Cvoid})::Ptr{Cvoid}
     @assert pf !== C_NULL
     return pf
 end
 
 function is_method_instance(mi)
-    GC.@preserve mi ccall((:is_method_instance,path_libjl[]), Cint, (Any,), mi)
+    GC.@preserve mi @ccall libjl_path[].is_method_instance(mi::Any)::Cint
 end
 function is_bool(b)
     p = box(b)
     # no need for GC.@preserve, because it is apparent that p depends on b, assuming
     # ccall(:jl_box_bool,x) is not unsafe?
-    ccall((:is_bool,path_libjl[]), Cint, (Ptr{Cvoid},), p)
+    @ccall libjl_path[].is_bool(p::Ptr{Cvoid})::Cint
 end
 
 
@@ -41,31 +41,30 @@ end
 #
 # Why are there box methods for char, ssavalue, slotnumber, but no unbox methods?
 #
-# TODO path_libjulia[] not needed here, I think.
 const Boxable   = Union{Bool,Int8,Int16,Int32,Int64,UInt8,UInt32,UInt64,Float32,Float64}
 const Unboxable = Union{Bool,Int8,Int16,Int32,Int64,UInt8,UInt32,UInt64,Float32,Float64}
-box(x::Bool) = ccall((:jl_box_bool,path_libjulia[]), Ptr{Cvoid}, (Int8,), x)
-box(x::Int8) = ccall((:jl_box_int8,path_libjulia[]), Ptr{Cvoid}, (Int8,), x)
-box(x::Int16) = ccall((:jl_box_int16,path_libjulia[]), Ptr{Cvoid}, (Int16,), x)
-box(x::Int32) = ccall((:jl_box_int32,path_libjulia[]), Ptr{Cvoid}, (Int32,), x)
-box(x::Int64) = ccall((:jl_box_int64,path_libjulia[]), Ptr{Cvoid}, (Int64,), x)
-box(x::UInt8) = ccall((:jl_box_uint8,path_libjulia[]), Ptr{Cvoid}, (UInt8,), x)
-box(x::UInt16) = ccall((:jl_box_uint16,path_libjulia[]), Ptr{Cvoid}, (UInt16,), x)
-box(x::UInt32) = ccall((:jl_box_uint32,path_libjulia[]), Ptr{Cvoid}, (UInt32,), x)
-box(x::UInt64) = ccall((:jl_box_uint64,path_libjulia[]), Ptr{Cvoid}, (UInt64,), x)
-box(x::Float32) = ccall((:jl_box_float32,path_libjulia[]), Ptr{Cvoid}, (Float32,), x)
-box(x::Float64) = ccall((:jl_box_float64,path_libjulia[]), Ptr{Cvoid}, (Float64,), x)
-unbox(::Type{Bool}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_bool,path_libjulia[]), Bool, (Ptr{Cvoid},), ptr)
-unbox(::Type{Int8}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_int8,path_libjulia[]), Int8, (Ptr{Cvoid},), ptr)
-unbox(::Type{Int16}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_int16,path_libjulia[]), Int16, (Ptr{Cvoid},), ptr)
-unbox(::Type{Int32}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_int32,path_libjulia[]), Int32, (Ptr{Cvoid},), ptr)
-unbox(::Type{Int64}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_int64,path_libjulia[]), Int64, (Ptr{Cvoid},), ptr)
-unbox(::Type{UInt8}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_uint8,path_libjulia[]), UInt8, (Ptr{Cvoid},), ptr)
-unbox(::Type{UInt16}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_uint16,path_libjulia[]), UInt16, (Ptr{Cvoid},), ptr)
-unbox(::Type{UInt32}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_uint32,path_libjulia[]), UInt32, (Ptr{Cvoid},), ptr)
-unbox(::Type{UInt64}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_uint64,path_libjulia[]), UInt64, (Ptr{Cvoid},), ptr)
-unbox(::Type{Float32}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_float32,path_libjulia[]), Float32, (Ptr{Cvoid},), ptr)
-unbox(::Type{Float64}, ptr::Ptr{Cvoid}) = ccall((:jl_unbox_float64,path_libjulia[]), Float64, (Ptr{Cvoid},), ptr)
+box(x::Bool)    = @ccall jl_box_bool(x::Int8)::Ptr{Cvoid}
+box(x::Int8)    = @ccall jl_box_int8(x::Int8)::Ptr{Cvoid}
+box(x::Int16)   = @ccall jl_box_int16(x::Int16)::Ptr{Cvoid}
+box(x::Int32)   = @ccall jl_box_int32(x::Int32)::Ptr{Cvoid}
+box(x::Int64)   = @ccall jl_box_int64(x::Int64)::Ptr{Cvoid}
+box(x::UInt8)   = @ccall jl_box_uint8(x::UInt8)::Ptr{Cvoid}
+box(x::UInt16)  = @ccall jl_box_uint16(x::UInt16)::Ptr{Cvoid}
+box(x::UInt32)  = @ccall jl_box_uint32(x::UInt32)::Ptr{Cvoid}
+box(x::UInt64)  = @ccall jl_box_uint64(x::UInt64)::Ptr{Cvoid}
+box(x::Float32) = @ccall jl_box_float32(x::Float32)::Ptr{Cvoid}
+box(x::Float64) = @ccall jl_box_float64(x::Float64)::Ptr{Cvoid}
+unbox(::Type{Bool}, ptr::Ptr{Cvoid})    = @ccall jl_unbox_bool(ptr::Ptr{Cvoid})::Bool
+unbox(::Type{Int8}, ptr::Ptr{Cvoid})    = @ccall jl_unbox_int8(ptr::Ptr{Cvoid})::Int8
+unbox(::Type{Int16}, ptr::Ptr{Cvoid})   = @ccall jl_unbox_int16(ptr::Ptr{Cvoid})::Int16
+unbox(::Type{Int32}, ptr::Ptr{Cvoid})   = @ccall jl_unbox_int32(ptr::Ptr{Cvoid})::Int32
+unbox(::Type{Int64}, ptr::Ptr{Cvoid})   = @ccall jl_unbox_int64(ptr::Ptr{Cvoid})::Int64
+unbox(::Type{UInt8}, ptr::Ptr{Cvoid})   = @ccall jl_unbox_uint8(ptr::Ptr{Cvoid})::UInt8
+unbox(::Type{UInt16}, ptr::Ptr{Cvoid})  = @ccall jl_unbox_uint16(ptr::Ptr{Cvoid})::UInt16
+unbox(::Type{UInt32}, ptr::Ptr{Cvoid})  = @ccall jl_unbox_uint32(ptr::Ptr{Cvoid})::UInt32
+unbox(::Type{UInt64}, ptr::Ptr{Cvoid})  = @ccall jl_unbox_uint64(ptr::Ptr{Cvoid})::UInt64
+unbox(::Type{Float32}, ptr::Ptr{Cvoid}) = @ccall jl_unbox_float32(ptr::Ptr{Cvoid})::Float32
+unbox(::Type{Float64}, ptr::Ptr{Cvoid}) = @ccall jl_unbox_float64(ptr::Ptr{Cvoid})::Float64
 unbox(T::Type, ptr::Integer) = unbox(T, Ptr{Cvoid}(UInt64(ptr)))
 
 
@@ -119,15 +118,15 @@ mutable struct Ffi_cif{N}
         ffi_rettype  = ffi_type(rettype)
         ffi_argtypes = [ ffi_type(a) for a in argtypes ]
         nargs = length(argtypes)
-        sz_cif = ccall((:get_sizeof_ffi_cif,path_libffihelpers[]), Csize_t, ())
+        sz_cif = @ccall libffihelpers_path[].get_sizeof_ffi_cif()::Csize_t
         @assert sz_cif > 0
         p_cif = Libc.malloc(sz_cif)
         @assert p_cif !== C_NULL
-        default_abi = ccall((:get_ffi_default_abi,path_libffihelpers[]), Cint, ())
+        default_abi = @ccall libffihelpers_path[].get_ffi_default_abi()::Cint
         status = @ccall libffi_path.ffi_prep_cif(
                                 p_cif::Ptr{Cvoid}, default_abi::Cint, nargs::Cint,
                                 ffi_rettype::Ptr{Cvoid}, ffi_argtypes::Ptr{Ptr{Cvoid}}
-                               )::Cint
+                                )::Cint
         if status == 0 # = FFI_OK
             cif = new{N}(p_cif, rettype, argtypes)
             return finalizer(cif) do cif

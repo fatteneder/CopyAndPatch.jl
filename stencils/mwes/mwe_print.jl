@@ -17,8 +17,8 @@ args = [ pointer_from_objref(s) ]
 nargs = length(args)
 
 # direct call
-ccall((:jl_invoke,CopyAndPatch.path_libjulia[]), Ptr{Cvoid}, (Ptr{Cvoid},Ptr{Cvoid},UInt32,Ptr{Cvoid}),
-      CopyAndPatch.pointer_from_function(ff), pointer(args), UInt32(nargs), pointer_from_objref(mi));
+@ccall jl_invoke(CopyAndPatch.pointer_from_function(ff)::Ptr{Cvoid}, pointer(args)::Ptr{Cvoid},
+                 nargs::UInt32, pointer_from_objref(mi)::Ptr{Cvoid})::Ptr{Cvoid}
 
 # jit it
 ret = Ref{Ptr{Cvoid}}(C_NULL)

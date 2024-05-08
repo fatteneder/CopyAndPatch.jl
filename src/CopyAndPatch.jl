@@ -20,21 +20,17 @@ TODO(prefix, msg) = error(prefix, " ", msg)
 
 
 
-const path_libjulia = Ref{String}("")
-const path_libjuliainternal = Ref{String}("")
-const path_libjl = Ref{String}("")
-const path_libffihelpers = Ref{String}("")
 const libjulia = Ref{Ptr{Cvoid}}(0)
 const libjuliainternal = Ref{Ptr{Cvoid}}(0)
 const libc = Ref{Ptr{Cvoid}}(0)
+const libjl_path = Ref{String}("")
+const libffihelpers_path = Ref{String}("")
 function __init__()
     libjulia[] = dlopen(dlpath("libjulia.so"))
     libjuliainternal[] = dlopen(dlpath("libjulia-internal.so"))
     libc[] = dlopen(dlpath("libc.so.6"))
-    path_libjulia[] = dlpath("libjulia.so")
-    path_libjuliainternal[] = dlpath("libjulia-internal.so")
-    path_libjl[] = normpath(joinpath(@__DIR__, "..", "stencils", "libjl.so"))
-    path_libffihelpers[] = normpath(joinpath(@__DIR__, "..", "stencils", "libffihelpers.so"))
+    libjl_path[] = normpath(joinpath(@__DIR__, "..", "stencils", "libjl.so"))
+    libffihelpers_path[] = normpath(joinpath(@__DIR__, "..", "stencils", "libffihelpers.so"))
     nothing
 end
 
