@@ -5,7 +5,6 @@ function init_stencils()
     stencildir = joinpath(@__DIR__, "..", "stencils")
     files = readdir(stencildir, join=true)
     filter!(files) do f
-        contains(f, "libjl") && return false
         endswith(f, ".json")
     end
     empty!(stencils)
@@ -160,24 +159,24 @@ function get_stencil(ex)
                 error("don't know how to handle intrinsic $name")
             end
         elseif fn isa Function
-            return stencils["jl_call"]
+            return stencils["ast_call"]
         else
             TODO(fn)
         end
     elseif isexpr(ex, :invoke)
-        return stencils["jl_invoke"]
+        return stencils["ast_invoke"]
     elseif isexpr(ex, :new)
-        return stencils["jl_new_structv"]
+        return stencils["ast_new"]
     elseif isexpr(ex, :foreigncall)
-        return stencils["jl_foreigncall"]
+        return stencils["ast_foreigncall"]
     else
         TODO("Stencil not implemented yet:", ex)
     end
 end
-get_stencil(ex::Core.ReturnNode) = stencils["jit_returnnode"]
-get_stencil(ex::Core.GotoIfNot)  = stencils["jit_gotoifnot"]
-get_stencil(ex::Core.GotoNode)   = stencils["jit_goto"]
-get_stencil(ex::Core.PhiNode)    = stencils["jit_phinode"]
+get_stencil(ex::Core.ReturnNode) = stencils["ast_returnnode"]
+get_stencil(ex::Core.GotoIfNot)  = stencils["ast_gotoifnot"]
+get_stencil(ex::Core.GotoNode)   = stencils["ast_goto"]
+get_stencil(ex::Core.PhiNode)    = stencils["ast_phinode"]
 
 
 # TODO Need to collect the a's which need to be GC.@preserved when their pointers are used.
@@ -238,19 +237,19 @@ end
 emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex) = TODO(typeof(ex))
 emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Nothing) = nothing
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.ReturnNode)
-    st, bvec, _ = stencils["jit_returnnode"]
+    st, bvec, _ = stencils["ast_returnnode"]
     retbox = ic in used_rets ? box_arg(ex.val, slots, ssas) : pointer([C_NULL])
     push!(preserve, retbox)
     patch!(bvec, st.code, "_JIT_RET", retbox)
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
 end
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.GotoNode)
-    st, bvec, _ = stencils["jit_goto"]
+    st, bvec, _ = stencils["ast_goto"]
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ex.label]))
 end
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.GotoIfNot)
-    st, bvec, _ = stencils["jit_gotoifnot"]
+    st, bvec, _ = stencils["ast_gotoifnot"]
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
     test = ssas[UInt64,ex.cond.id] # TODO Can this also be a slot?
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_TEST",  test)
@@ -258,7 +257,7 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
     patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT2", pointer(memory, stencil_starts[ic+1]))
 end
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.PhiNode)
-    st, bvec, _ = stencils["jit_phinode"]
+    st, bvec, _ = stencils["ast_phinode"]
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
     nedges = length(ex.edges)
     append!(preserve, ex.edges)
@@ -308,14 +307,14 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
             append!(preserve, boxes)
             retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
             push!(preserve, retbox)
-            st, bvec, _ = stencils["jit_call"]
+            st, bvec, _ = stencils["ast_call"]
+            TODO()
             copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
             patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
             patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS",  pointer(boxes))
             patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_FN",    pointer_from_function(fn))
             patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",   pointer(retbox))
             patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
-            TODO("still used?")
         else
             TODO(fn)
         end
@@ -329,7 +328,7 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         nargs = length(boxes)
         retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
         push!(preserve, retbox)
-        st, bvec, bvec2 = stencils["jl_invoke"]
+        st, bvec, bvec2 = stencils["ast_invoke"]
         copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS",  pointer(boxes))
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
@@ -342,7 +341,7 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         nargs = length(boxes)
         retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
         push!(preserve, retbox)
-        st, bvec, bvec2 = stencils["jl_new_structv"]
+        st, bvec, bvec2 = stencils["ast_new"]
         @assert length(bvec2) == 0
         copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
         patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS",  pointer(boxes))
@@ -366,7 +365,7 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
         push!(preserve, retbox)
         cif = Ffi_cif(rettype, argtypes)
-        st, bvec, bvec2 = stencils["jl_foreigncall"]
+        st, bvec, bvec2 = stencils["ast_foreigncall"]
         @assert length(bvec2) == 0
         handle = dlopen(libname[])
         fptr = dlsym(handle, fname)
