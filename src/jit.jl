@@ -144,7 +144,7 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
         emitcode!(memory, stencil_starts, ic, slots, ssas, preserve, used_rets, ex)
     end
 
-    return memory, preserve
+    return memory, preserve, rettype
 end
 
 
@@ -196,15 +196,15 @@ function box_arg(a, slots, ssas)
         return pointer_from_objref(a)
     elseif a isa GlobalRef
         # do it similar to src/interpreter.c:jl_eval_globalref
-        p = ccall(:jl_get_globalref_value, Ptr{Cvoid}, (Any,), a)
-        if p === C_NULL
-            throw(UndefVarError(a.name,a.mod))
-        end
+        p = @ccall jl_get_globalref_value(a::Any)::Ptr{Cvoid}
+        p === C_NULL && throw(UndefVarError(a.name,a.mod))
         return p
     elseif typeof(a) <: Boxable
         return box(a)
     elseif a isa MethodInstance
         return pointer_from_objref(a)
+    elseif a isa Nothing
+        return dlsym(libjulia[], :jl_nothing)
     else
         TODO(a)
     end
@@ -238,10 +238,10 @@ emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, prese
 emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Nothing) = nothing
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.ReturnNode)
     st, bvec, _ = stencils["ast_returnnode"]
-    retbox = ic in used_rets ? box_arg(ex.val, slots, ssas) : pointer([C_NULL])
+    retbox = isdefined(ex,:val) ? box_arg(ex.val, slots, ssas) : pointer([C_NULL])
     push!(preserve, retbox)
-    patch!(bvec, st.code, "_JIT_RET", retbox)
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
+    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET", retbox)
 end
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.GotoNode)
     st, bvec, _ = stencils["ast_goto"]

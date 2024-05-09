@@ -7,6 +7,10 @@ function foreign(x::Int64)
 end
 foreign(1)
 
+function myprint(x)
+    println("sers oida: ", x)
+end
+
 # @noinline function g(x,y)
 #     versioninfo()
 #     x + y
@@ -113,13 +117,15 @@ end
 # memory, preserve = jit(f, (Int64,))
 # memory = jit(eulers_sieve, (Int64,))
 # memory = jit(mul2, (Int64,))
-memory, preserve = jit(foreign, (Int64,))
+# memory, preserve = jit(foreign, (Int64,))
 # memory = jit(mycollect, (Int64,))
 # memory = jit(myrange, (Int64,))
-# memory = jit(myfn1, (Int64,))
+# memory, preserve = jit(myfn1, (Int64,))
 # memory = jit(myfn2, (Int64,))
 # memory = jit(f, (Int32,Int32))
+memory, preserve, rettype = jit(myprint, (Int64,))
 CopyAndPatch.code_native(memory)
-GC.@preserve preserve begin
-    ccall(pointer(memory), Cvoid, (Cint,), 1)
+fnptr = Base.unsafe_convert(Ptr{Cvoid},pointer(memory))
+res = GC.@preserve memory preserve begin
+    @ccall $fnptr(1::Cint)::Ptr{Cvoid}
 end

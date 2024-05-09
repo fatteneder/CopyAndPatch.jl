@@ -6,14 +6,19 @@
         versioninfo()
         (x+2)/3
     end
-    for T in (Int64,Int32), f in (f1,f2,f3)
-        @test try
-            memory, preserve = jit(f, (T,))
-            GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
-            true
-        catch e
-            @error "Failed $f(::$T) with" e
-            false
+    expected = (2,6,2/3,2/3)
+    for T in (Int64,Int32)
+        for (i,f) in enumerate([f1,f2,f3])
+            @test try
+                memory, preserve, rettype = jit(f, (T,))
+                ret = GC.@preserve preserve ccall(pointer(memory), Ptr{Cvoid}, (Cint,), 1)
+                # @show ret, expected[i]
+                # CopyAndPatch.unbox(rettype, ret) == convert(rettype, expected[i])
+                true
+            catch e
+                @error "Failed $f(::$T) with" e
+                false
+            end
         end
     end
 end
@@ -32,7 +37,7 @@ end
     end
     for T in (Int64,Int32)
         @test try
-            memory, preserve = jit(f, (T,))
+            memory, preserve, rettype = jit(f, (T,))
             GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
             true
         catch e
@@ -52,7 +57,7 @@ end
         # Maybe need to porperly handle the data section now?
         # my_redirect_stdout(io) do
             @test try
-                memory, preserve = jit(f, (T,))
+                memory, preserve, rettype = jit(f, (T,))
                 CopyAndPatch.code_native(memory)
                 GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
                 true
@@ -69,7 +74,7 @@ end
     f(x) = x > 1 ? 1 : 2
     for T in (Int64,Int32)
         @test try
-            memory, preserve = jit(f, (T,))
+            memory, preserve, rettype = jit(f, (T,))
             GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
             true
         catch e
@@ -91,7 +96,7 @@ end
     end
     for T in (Int64,Int32)
         @test try
-            memory, preserve = jit(f, (T,))
+            memory, preserve, rettype = jit(f, (T,))
             GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
             true
         catch e
@@ -107,7 +112,7 @@ end
     end
     for T in (Int64,Int32)
         @test try
-            memory, preserve = jit(f, (T,))
+            memory, preserve, rettype = jit(f, (T,))
             GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
             true
         catch e
@@ -127,7 +132,7 @@ end
         @ccall CopyAndPatch.libffihelpers_path[].my_square(x::Int64)::Int64
     end
     @test try
-        memory, preserve = jit(foreign, (Int64,))
+        memory, preserve, rettype = jit(foreign, (Int64,))
         GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
         true
     catch e
