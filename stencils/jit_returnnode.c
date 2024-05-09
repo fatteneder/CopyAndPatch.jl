@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include "common.h"
 
-void
+jl_value_t *
 _JIT_ENTRY(int ip) {
-    PATCH_VALUE(jl_value_t **, ret, _JIT_RET);
-    printf("WE ARE DONE!!!\n");
+    PATCH_VALUE(jl_value_t *, ret, _JIT_RET);
+    return ret;
 }

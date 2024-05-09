@@ -241,8 +241,7 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
     st, bvec, _ = stencils["jit_returnnode"]
     retbox = ic in used_rets ? box_arg(ex.val, slots, ssas) : pointer([C_NULL])
     push!(preserve, retbox)
-    # TODO Atm _JIT_RET is unused in stencils, so it is optimzed away and we can't patch it
-    # patch!(bvec, st.code, "_JIT_RET", retbox)
+    patch!(bvec, st.code, "_JIT_RET", retbox)
     copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
 end
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.GotoNode)
