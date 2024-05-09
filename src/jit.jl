@@ -366,7 +366,6 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         nargs = length(boxes)
         retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
         push!(preserve, retbox)
-        @show argtypes
         cif = Ffi_cif(rettype, argtypes)
         st, bvec, bvec2 = stencils["jl_foreigncall"]
         @assert length(bvec2) == 0
