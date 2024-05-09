@@ -9,7 +9,7 @@ mi = m.specializations isa Core.SimpleVector ? m.specializations[1] : m.speciali
 args = []
 nargs = 0
 ret = Ref{Ptr{Cvoid}}(C_NULL)
-_, jitend, _ = CopyAndPatch.stencils["jit_end"]
+_, jitend, _ = CopyAndPatch.stencils["jit_returnnode"]
 _, jl_invoke, _ = CopyAndPatch.stencils["jl_invoke"]
 stack = Ptr{Cvoid}[ pointer(jitend), # return
                     Base.unsafe_convert(Ptr{Cvoid},ret), CopyAndPatch.pointer_from_function(g), pointer(args), nargs, pointer_from_objref(mi), pointer(jl_invoke)

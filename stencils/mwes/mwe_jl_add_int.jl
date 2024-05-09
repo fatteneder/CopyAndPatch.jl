@@ -24,7 +24,7 @@ box_ret = @ccall jl_add_int(box_a::Ptr{Cvoid}, box_b::Ptr{Cvoid})::Ptr{Cvoid}
 # # @show CopyAndPatch.unbox(T,box_ret)
 
 ret = Ref{Ptr{Cvoid}}(C_NULL)
-_, jitend, _ = CopyAndPatch.stencils["jit_end"]
+_, jitend, _ = CopyAndPatch.stencils["jit_returnnode"]
 _, jl_add_int, _ = CopyAndPatch.stencils["jl_add_int"]
 stack = Ptr{Cvoid}[ pointer(jitend), Base.unsafe_convert(Ptr{Cvoid},ret), box_b, box_a, pointer(jl_add_int) ]
 

@@ -5,7 +5,7 @@ lib = dlopen(dlpath("libjulia"))
 libc = dlopen(dlpath("libc.so.6"))
 
 
-group = CopyAndPatch.StencilGroup(joinpath(@__DIR__, "..", "jit_end.json"))
+group = CopyAndPatch.StencilGroup(joinpath(@__DIR__, "..", "jit_returnnode.json"))
 holes = CopyAndPatch.holes(group)
 
 patches = Dict{String,Ptr}(
@@ -30,8 +30,8 @@ for h in holes
     bvec[h.offset+1] = p
 end
 
-jit_end = CopyAndPatch.MachineCode(bvec, Cvoid, (Ptr{Cvoid},))
-jit_end(C_NULL)
+jit_returnnode = CopyAndPatch.MachineCode(bvec, Cvoid, (Ptr{Cvoid},))
+jit_returnnode(C_NULL)
 
 
 
@@ -68,7 +68,7 @@ args = Ptr{UInt64}[]
 nargs = 0
 
 # stack
-st = Ptr{UInt64}[ fn, pointer(args), UInt64(nargs), pointer(jit_end) ]
+st = Ptr{UInt64}[ fn, pointer(args), UInt64(nargs), pointer(jit_returnnode) ]
 display(st)
 
 jl_continuation(pointer(st,length(st)))

@@ -174,7 +174,7 @@ function get_stencil(ex)
         TODO("Stencil not implemented yet:", ex)
     end
 end
-get_stencil(ex::Core.ReturnNode) = stencils["jit_end"]
+get_stencil(ex::Core.ReturnNode) = stencils["jit_returnnode"]
 get_stencil(ex::Core.GotoIfNot)  = stencils["jit_gotoifnot"]
 get_stencil(ex::Core.GotoNode)   = stencils["jit_goto"]
 get_stencil(ex::Core.PhiNode)    = stencils["jit_phinode"]
@@ -238,7 +238,7 @@ end
 emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex) = TODO(typeof(ex))
 emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Nothing) = nothing
 function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.ReturnNode)
-    st, bvec, _ = stencils["jit_end"]
+    st, bvec, _ = stencils["jit_returnnode"]
     retbox = ic in used_rets ? box_arg(ex.val, slots, ssas) : pointer([C_NULL])
     push!(preserve, retbox)
     # TODO Atm _JIT_RET is unused in stencils, so it is optimzed away and we can't patch it
