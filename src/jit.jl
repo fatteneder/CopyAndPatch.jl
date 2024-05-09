@@ -381,10 +381,6 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
 end
 
 
-const IntrinsicDispatchType = Union{Int8,Int16,Int32,Int64,UInt8,UInt16,UInt32,UInt64,Float16,Float32,Float64}
-
-
-# code_native(code::AbstractVector{<:AbstractVector}; syntax=:intel) = foreach(code_native(c; syntax) for c in code)
 code_native(code::AbstractVector; syntax=:intel) = code_native(UInt8.(code); syntax)
 code_native(code::Vector{UInt8}; syntax=:intel) = code_native(stdout, code; syntax)
 function code_native(io::IO, code::Vector{UInt8}; syntax=:intel)

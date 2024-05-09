@@ -2,10 +2,6 @@
     f1(x) = x+2
     f2(x) = (x+2)*3-x^3
     f3(x) = (x+2)/3
-    function f4(x)
-        versioninfo()
-        (x+2)/3
-    end
     expected = (2,6,2/3,2/3)
     for T in (Int64,Int32)
         for (i,f) in enumerate([f1,f2,f3])
