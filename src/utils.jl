@@ -25,6 +25,13 @@ function is_bool(b)
 end
 
 
+# This should not be used with immutables ... I mean really not ...
+# This returns the same ptrs as the box methods for primitives below.
+# The jl_box_... methods have a JL_NOSAFEPOINT, whereas jl_value_ptr doesn't.
+# TODO: What is even the purpose of the jl_box_... methods and jl_value_ptr?
+unsafe_pointer_from_objref(x) = @ccall jl_value_ptr(x::Any)::Ptr{Cvoid}
+
+
 # missing a few:
 # - jl_value_t *jl_box_char(uint32_t x);
 # - jl_value_t *jl_box_voidpointer(void *x);
