@@ -68,66 +68,28 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
 
     optimize = true
     codeinfo, rettype = only(code_typed(fn, args; optimize))
+    argtypes = length(codeinfo.slottypes) > 0 ? Tuple(codeinfo.slottypes[2:end]) : ()
 
-    # @show codeinfo
+    @show codeinfo
+    # @show propertynames(codeinfo)
     # @show codeinfo.code
     # @show codeinfo.slottypes
     # @show codeinfo.ssavaluetypes
     # @show propertynames(codeinfo)
 
     nslots = length(codeinfo.slottypes)
-    slots = ByteVector(nslots*sizeof(Ptr{UInt64}))
     nssas = length(codeinfo.ssavaluetypes)
+    slots = Ptr{UInt64}[ C_NULL for _ in 1:nslots ]
     # TODO we use this assumption to save return values into ssa array
     @assert nssas == length(codeinfo.code)
-    ssas = ByteVector(nssas*sizeof(Ptr{UInt64}))
-    boxes = Any[]
+    ssas = Ptr{UInt64}[ C_NULL for _ in 1:nssas ]
     used_rets = find_used(codeinfo)
-
-    # init ssas and slots
-    for i = 1:nslots
-        T = codeinfo.slottypes[i]
-        T isa Core.Const && continue
-        if T <: Number
-            # the rand(T) version can trigger random 'LoadError: sext_int: value is not a primitive type error'
-            # z = T(T === Bool ? true : rand(T))
-            z = T(T === Bool ? true : i)
-            b = box(z)
-            slots[UInt64,i] = b
-        elseif T <: String
-            str = "Slot$i"
-            b = pointer_from_objref(str)
-            slots[UInt64,i] = b
-            push!(boxes, str)
-        end
-    end
-    for i = 1:nssas
-        T = codeinfo.ssavaluetypes[i]
-        if T <: Number
-            z = T(T === Bool ? true : i)
-            b = box(z)
-            ssas[UInt64,i] = b
-        elseif T <: String
-            str = "SSA$i"
-            b = pointer_from_objref(str)
-            ssas[UInt64,i] = b
-            push!(boxes, str)
-        end
-    end
 
     nstencils = length(codeinfo.code)
     stencil_starts = zeros(Int64, nstencils)
     code_size = 0
     data_size = 0
     for (i,ex) in enumerate(codeinfo.code)
-        if isnothing(ex)
-            # FIXME This might cause problems with continuations when we patch with stencil_starts[ic+1]
-            # and ic+1 is a nothing node, I think...
-            if i > 1
-                stencil_starts[i] = stencil_starts[i-1]
-            end
-            continue
-        end
         st, bvec, _ = get_stencil(ex)
         stencil_starts[i] = 1+code_size
         code_size += length(only(st.code.body))
@@ -135,16 +97,20 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
             data_size += length(only(st.data.body))
         end
     end
-    memory = mmap(Vector{UInt8}, code_size, shared=false, exec=true)
+    # TODO If we store stencil_starts and codeinfo.code here then
+    # we can later relocate the stencils with statements in code_native
+    mc = MachineCode(code_size, rettype, argtypes)
+    memory, gc_roots = mc.buf, mc.gc_roots
+    push!(gc_roots, slots, ssas)
+    # memory = mmap(Vector{UInt8}, code_size, shared=false, exec=true)
     # memory = mmap(Vector{UInt8}, code_size+data_size, shared=false, exec=true)
     # bvec_code = view(memory, 1:code_size)
     # bvec_data = view(memory, code_size+1:code_size+data_size)
-    preserve = Any[]
-    for (ic,ex) in enumerate(codeinfo.code)
-        emitcode!(memory, stencil_starts, ic, slots, ssas, preserve, used_rets, ex)
+    for (ip,ex) in enumerate(codeinfo.code)
+        emitcode!(memory, stencil_starts, ip, slots, ssas, gc_roots, used_rets, ex)
     end
 
-    return memory, preserve, rettype
+    return mc
 end
 
 
@@ -177,40 +143,53 @@ get_stencil(ex::Core.ReturnNode) = stencils["ast_returnnode"]
 get_stencil(ex::Core.GotoIfNot)  = stencils["ast_gotoifnot"]
 get_stencil(ex::Core.GotoNode)   = stencils["ast_goto"]
 get_stencil(ex::Core.PhiNode)    = stencils["ast_phinode"]
+get_stencil(ex::Nothing)         = stencils["ast_goto"]
 
 
+# TODO About box: From https://docs.julialang.org/en/v1/devdocs/object/
+#   > A value may be stored "unboxed" in many circumstances
+#     (just the data, without the metadata, and possibly not even stored but
+#     just kept in registers), so it is unsafe to assume that the address of
+#     a box is a unique identifier.
+#     ...
+#   > Note that modification of a jl_value_t pointer in memory is permitted
+#     only if the object is mutable. Otherwise, modification of the value may
+#     corrupt the program and the result will be undefined.
+# Boxed stuff should be irrelevant too iff they have a stable memory address.
 # TODO Need to collect the a's which need to be GC.@preserved when their pointers are used.
 # - Anything to which we apply pointer_from_objref or pointer needs to be preserved when used.
 # - Also slots and ssas need to be kept alive till the function is finished.
 # - What about boxed stuff?
 function box_arg(a, slots, ssas)
     if a isa Core.Argument
-        return slots[UInt64,a.n]
+        return pointer(slots, a.n)
     elseif a isa Core.SSAValue
-        return ssas[UInt64,a.id]
+        return pointer(ssas, a.id)
     elseif a isa String
-        return pointer_from_objref(a)
+        @show pointer_from_objref(a)
+        return pointer([pointer_from_objref(a)])
     elseif a isa Number
-        return box(a)
+        return pointer([box(a)])
     elseif a isa Type
-        return pointer_from_objref(a)
+        return pointer([pointer_from_objref(a)])
     elseif a isa GlobalRef
         # do it similar to src/interpreter.c:jl_eval_globalref
         p = @ccall jl_get_globalref_value(a::Any)::Ptr{Cvoid}
         p === C_NULL && throw(UndefVarError(a.name,a.mod))
-        return p
+        return pointer([p])
     elseif typeof(a) <: Boxable
-        return box(a)
+        return pointer([box(a)])
     elseif a isa MethodInstance
-        return pointer_from_objref(a)
+        return pointer([pointer_from_objref(a)])
     elseif a isa Nothing
-        return dlsym(libjulia[], :jl_nothing)
+        return pointer([dlsym(libjulia[], :jl_nothing)])
     else
         TODO(a)
     end
 end
 function box_args(ex_args::AbstractVector, slots, ssas)
     # TODO Need to cast to Ptr{UInt64} here?
+    # return Ptr{Ptr{Cvoid}}[ box_arg(a, slots, ssas) for a in ex_args ]
     return Ptr{Cvoid}[ box_arg(a, slots, ssas) for a in ex_args ]
 end
 
@@ -234,45 +213,54 @@ end
 # - _2 ... slot variable; either a function argument or a local variable
 #          _1 refers to function, _2 to first arg, etc.
 #          see CodeInfo.slottypes, CodeInfo.slotnames
-emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex) = TODO(typeof(ex))
-emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Nothing) = nothing
-function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.ReturnNode)
+emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex) = TODO(typeof(ex))
+function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex::Nothing)
+    st, bvec, _ = stencils["ast_goto"]
+    copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",   ip)
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ip+1]))
+end
+function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex::Core.ReturnNode)
     st, bvec, _ = stencils["ast_returnnode"]
+    # TODO That [C_NULL] is not rooted!
     retbox = isdefined(ex,:val) ? box_arg(ex.val, slots, ssas) : pointer([C_NULL])
     push!(preserve, retbox)
-    copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
-    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET", retbox)
+    copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET", retbox)
 end
-function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.GotoNode)
+function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex::Core.GotoNode)
     st, bvec, _ = stencils["ast_goto"]
-    copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
-    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ex.label]))
+    copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",   ip)
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ex.label]))
 end
-function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.GotoIfNot)
+function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex::Core.GotoIfNot)
     st, bvec, _ = stencils["ast_gotoifnot"]
-    copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
-    test = ssas[UInt64,ex.cond.id] # TODO Can this also be a slot?
-    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_TEST",  test)
-    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT1", pointer(memory, stencil_starts[ex.dest]))
-    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT2", pointer(memory, stencil_starts[ic+1]))
+    copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
+    test = pointer(ssas, ex.cond.id) # TODO Can this also be a slot?
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",    ip)
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_TEST",  test)
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT1", pointer(memory, stencil_starts[ex.dest]))
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT2", pointer(memory, stencil_starts[ip+1]))
 end
-function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Core.PhiNode)
+function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex::Core.PhiNode)
     st, bvec, _ = stencils["ast_phinode"]
-    copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
+    copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
     nedges = length(ex.edges)
     append!(preserve, ex.edges)
     vals_boxes = box_args(ex.values, slots, ssas)
     append!(preserve, vals_boxes)
-    retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
+    # TODO That [C_NULL] is not rooted!
+    retbox = ip in used_rets ? pointer(ssas, ip) : pointer([C_NULL])
     push!(preserve, retbox)
-    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NEDGES",  nedges)
-    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_EDGES",   pointer(ex.edges))
-    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_VALS",    pointer(vals_boxes))
-    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",     pointer(retbox))
-    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_THIS_IP", ic)
-    patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",    pointer(memory, stencil_starts[ic+1]))
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",     ip)
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NEDGES", nedges)
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_EDGES",  pointer(ex.edges))
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_VALS",   pointer(vals_boxes))
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",    retbox)
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",   pointer(memory, stencil_starts[ip+1]))
 end
-function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVector, preserve, used_rets, ex::Expr)
+function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex::Expr)
     if isexpr(ex, :call)
         g = ex.args[1]
         @assert g isa GlobalRef
@@ -282,39 +270,38 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
             nargs = length(ex_args)
             boxes = box_args(ex_args, slots, ssas)
             append!(preserve, boxes)
-            retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
+            # TODO That [C_NULL] is not rooted!
+            retbox = ip in used_rets ? pointer(ssas, ip) : pointer([C_NULL])
             push!(preserve, retbox)
             name = string("jl_", Symbol(fn))
             st, bvec, bvec2 = get(stencils, name) do
                 error("don't know how to handle intrinsic $name")
             end
             @assert length(bvec2) == 0
-            copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
+            copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP", ip)
             for n in 1:nargs
-                # TODO I think one of the problems is that one
-                # box argument here is a literal and the other one a dynamic value.
-                # patch!(bvec, st.code, "_JIT_A$n", pointer(boxes, n))
-                patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_A$n", boxes[n])
+                patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_A$n", boxes[n])
             end
-            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",  pointer(retbox))
-            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ic+1]))
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",  retbox)
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ip+1]))
         elseif fn isa Function
             @assert iscallable(fn)
             fn_ptr = pointer_from_function(fn)
-            ex_args = @view ex.args[2:end]
+            ex_args = ex.args[2:end]
             nargs = length(ex_args)
             boxes = box_args(ex_args, slots, ssas)
             append!(preserve, boxes)
-            retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
+            retbox = [ip in used_rets ? pointer(ssas, ip) : C_NULL]
             push!(preserve, retbox)
             st, bvec, _ = stencils["ast_call"]
             TODO()
-            copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
-            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
-            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS",  pointer(boxes))
-            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_FN",    pointer_from_function(fn))
-            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",   pointer(retbox))
-            patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
+            copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS", nargs)
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",  pointer(boxes))
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_FN",    pointer_from_function(fn))
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",   retbox)
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ip+1]))
         else
             TODO(fn)
         end
@@ -326,28 +313,32 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         boxes = box_args(ex_args, slots, ssas)
         append!(preserve, boxes)
         nargs = length(boxes)
-        retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
+        # TODO That [C_NULL] is not rooted!
+        retbox = ip in used_rets ? pointer(ssas, ip) : pointer([C_NULL])
         push!(preserve, retbox)
         st, bvec, bvec2 = stencils["ast_invoke"]
-        copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS",  pointer(boxes))
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",   pointer(retbox))
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
+        copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP", ip)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",  pointer(boxes))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS", nargs)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",   retbox)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ip+1]))
     elseif isexpr(ex, :new)
         ex_args = ex.args
         boxes = box_args(ex_args, slots, ssas)
         append!(preserve, boxes)
         nargs = length(boxes)
-        retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
+        # TODO That [C_NULL] is not rooted!
+        retbox = ip in used_rets ? pointer(ssas, ip) : pointer([C_NULL])
         push!(preserve, retbox)
         st, bvec, bvec2 = stencils["ast_new"]
         @assert length(bvec2) == 0
-        copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS",  pointer(boxes))
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_NARGS", nargs)
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",   pointer(retbox))
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ic+1]))
+        copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP", ip)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",  pointer(boxes))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS", nargs)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",   retbox)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ip+1]))
     elseif isexpr(ex, :foreigncall)
         fname, libname = ex.args[1].args[2].value, unwrap(ex.args[1].args[3].args[2])
         rettype = ex.args[2]
@@ -362,19 +353,21 @@ function emitcode!(memory, stencil_starts, ic, slots::ByteVector, ssas::ByteVect
         boxes = box_args(args, slots, ssas)
         append!(preserve, boxes)
         nargs = length(boxes)
-        retbox = [ic in used_rets ? ssas[UInt64,ic] : C_NULL]
+        # TODO That [C_NULL] is not rooted!
+        retbox = ip in used_rets ? pointer(ssas, ip) : pointer([C_NULL])
         push!(preserve, retbox)
         cif = Ffi_cif(rettype, argtypes)
         st, bvec, bvec2 = stencils["ast_foreigncall"]
         @assert length(bvec2) == 0
         handle = dlopen(libname[])
         fptr = dlsym(handle, fname)
-        copyto!(memory, stencil_starts[ic], bvec, 1, length(bvec))
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CIF",  pointer(cif))
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_F",    fptr)
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_ARGS", pointer(boxes))
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_RET",  pointer(retbox))
-        patch!(memory, stencil_starts[ic]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ic+1]))
+        copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP", ip)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CIF",  pointer(cif))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_F",    fptr)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS", pointer(boxes))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",  retbox)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ip+1]))
     else
         TODO(ex.head)
     end
@@ -383,6 +376,7 @@ end
 
 code_native(code::AbstractVector; syntax=:intel) = code_native(UInt8.(code); syntax)
 code_native(code::Vector{UInt8}; syntax=:intel) = code_native(stdout, code; syntax)
+code_native(mc::MachineCode; syntax=:intel) = code_native(mc.buf; syntax)
 function code_native(io::IO, code::Vector{UInt8}; syntax=:intel)
     if syntax === :intel
         variant = 1

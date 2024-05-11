@@ -2,18 +2,16 @@
     f1(x) = x+2
     f2(x) = (x+2)*3-x^3
     f3(x) = (x+2)/3
-    expected = (2,6,2/3,2/3)
     for T in (Int64,Int32)
-        for (i,f) in enumerate([f1,f2,f3])
-            @test try
-                memory, preserve, rettype = jit(f, (T,))
-                ret = GC.@preserve preserve ccall(pointer(memory), Ptr{Cvoid}, (Cint,), 1)
-                # @show ret, expected[i]
-                # CopyAndPatch.unbox(rettype, ret) == convert(rettype, expected[i])
-                true
+        for (i,f) in enumerate((f1,f2,f3))
+            expected = f(one(T))
+            try
+                mc = jit(f, (T,))
+                res = CopyAndPatch.call(mc, one(T))
+                @test res == expected
             catch e
-                @error "Failed $f(::$T) with" e
-                false
+                @error "Failed $f(::$T)"
+                rethrow(e)
             end
         end
     end
@@ -31,14 +29,17 @@ end
         x += log(x)
         (x+2)/3
     end
+    xx = 1.0
+    expected = f(xx)
     for T in (Int64,Int32)
-        @test try
-            memory, preserve, rettype = jit(f, (T,))
-            GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
-            true
+        expected = f(one(T))
+        try
+            mc = jit(f, (T,))
+            res = CopyAndPatch.call(mc, one(T))
+            @test res == expected
         catch e
-            @error "Failed $f(::$T) with" e
-            false
+            @error "Failed $f(::$T)"
+            rethrow(e)
         end
     end
 end
@@ -48,18 +49,18 @@ end
         println("sers oida: ", x)
     end
     for T in (Int64,Int32)
+        expected = f(one(T))
         # io = IOBuffer()
         # TODO This segfaults when capturing stdout.
         # Maybe need to porperly handle the data section now?
         # my_redirect_stdout(io) do
-            @test try
-                memory, preserve, rettype = jit(f, (T,))
-                CopyAndPatch.code_native(memory)
-                GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
-                true
+            try
+                mc = jit(f, (T,))
+                res = CopyAndPatch.call(mc, one(T))
+                @test res == expected
             catch e
-                @error "Failed $f(::$T) with" e
-                false
+                @error "Failed $f(::$T)"
+                rethrow(e)
             end
         # end
         # @test contains(String(take!(io)), "sers oida: 2")
@@ -68,14 +69,16 @@ end
 
 @testset "GotoIfNot" begin
     f(x) = x > 1 ? 1 : 2
+    expected = f(1.0)
     for T in (Int64,Int32)
-        @test try
-            memory, preserve, rettype = jit(f, (T,))
-            GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
-            true
+        expected = f(one(T))
+        try
+            mc = jit(f, (T,))
+            res = CopyAndPatch.call(mc, one(T))
+            @test res == expected
         catch e
-            @error "Failed $f(::$T) with" e
-            false
+            @error "Failed $f(::$T)"
+            rethrow(e)
         end
     end
 end
@@ -91,13 +94,14 @@ end
         return x
     end
     for T in (Int64,Int32)
-        @test try
-            memory, preserve, rettype = jit(f, (T,))
-            GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
-            true
+        expected = f(one(T))
+        try
+            mc = jit(f, (T,))
+            res = CopyAndPatch.call(mc, one(T))
+            @test res == expected
         catch e
-            @error "Failed $f(::$T) with" e
-            false
+            @error "Failed $f(::$T)"
+            rethrow(e)
         end
     end
 end
@@ -107,13 +111,14 @@ end
         return 1:n
     end
     for T in (Int64,Int32)
-        @test try
-            memory, preserve, rettype = jit(f, (T,))
-            GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
-            true
+        expected = f(one(T))
+        try
+            mc = jit(f, (T,))
+            res = CopyAndPatch.call(mc, one(T))
+            @test res == expected
         catch e
-            @error "Failed $f(::$T) with" e
-            false
+            @error "Failed $f(::$T)"
+            rethrow(e)
         end
     end
 end
@@ -127,12 +132,13 @@ end
     function foreign(x::Int64)
         @ccall CopyAndPatch.libffihelpers_path[].my_square(x::Int64)::Int64
     end
-    @test try
-        memory, preserve, rettype = jit(foreign, (Int64,))
-        GC.@preserve preserve ccall(pointer(memory), Cvoid, (Cint,), 1)
-        true
+    try
+        expected = f(1)
+        mc = jit(f, (Int64,))
+        ret = CopyAndPatch.call(mc, 1)
+        @test ret == expected
     catch e
-        @error "Failed foreign(::Int64) with" e
-        false
+        @error "Failed $f(::$T)"
+        rethrow(e)
     end
 end
