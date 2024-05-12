@@ -1,20 +1,16 @@
 struct MachineCode{RetType,ArgTypes}
     buf::Vector{UInt8}
-    # TODO Remove ptr
-    ptr::Ptr{Cvoid}
     gc_roots::Vector{Any}
     function MachineCode(bvec::ByteVector, rettype::DataType, argtypes::NTuple{N,DataType},
                          gc_roots=Any[]) where N
         buf = mmap(Vector{UInt8}, length(bvec), shared=false, exec=true)
         copy!(buf, bvec)
-        ptr = pointer(buf)
-        new{rettype,Tuple{argtypes...}}(buf, ptr, Any[])
+        new{rettype,Tuple{argtypes...}}(buf, Any[])
     end
     function MachineCode(sz::Integer, rettype::DataType, argtypes::NTuple{N,DataType},
                          gc_roots=Any[]) where N
         buf = mmap(Vector{UInt8}, sz, shared=false, exec=true)
-        ptr = pointer(buf)
-        new{rettype,Tuple{argtypes...}}(buf, ptr, Any[])
+        new{rettype,Tuple{argtypes...}}(buf, Any[])
     end
 end
 MachineCode(bvec, rettype, argtypes, gc_roots=Any[]) = MachineCode(ByteVector(bvec), rettype, argtypes, gc_roots)
@@ -23,25 +19,9 @@ rettype(mc::MachineCode{RetType,ArgTypes}) where {RetType,ArgTypes} = RetType
 argtypes(mc::MachineCode{RetType,ArgTypes}) where {RetType,ArgTypes} = ArgTypes
 
 
-Base.pointer(code::MachineCode) = code.ptr
+Base.pointer(code::MachineCode) = Base.unsafe_convert(Ptr{Cvoid}, pointer(code.buf))
 
 
-@generated function (code::MachineCode{RetType,ArgTypes})(args...) where {RetType,ArgTypes}
-    rettype_ex = Symbol(RetType)
-    argtype_ex = Expr(:tuple)
-    for t in ArgTypes.types
-        push!(argtype_ex.args, t)
-    end
-    nargs = length(ArgTypes.types)
-    arg_ex = [ :(args[$i]) for i in 1:nargs ]
-    ex = quote
-        if length($args) != $nargs
-            throw(MethodError($(code),$(args)))
-        end
-        ccall(code.ptr, $rettype_ex, $argtype_ex, $(arg_ex...))
-    end
-    return ex
-end
 function call(code::MachineCode{RetType,ArgTypes}, args...) where {RetType,ArgTypes}
     nargs = length(ArgTypes.parameters)
     if length(args) != nargs
@@ -61,8 +41,9 @@ function call(code::MachineCode{RetType,ArgTypes}, args...) where {RetType,ArgTy
     #   everywhere, I think.
     # - Record the offsets in the memory for each slot and patch the values right
     #   before execution. This also sounds wrong.
-    p = GC.@preserve args gc_roots begin
-        ccall(code.ptr, Ptr{Cvoid}, (Cint,), 1)
+    @show pointer(code)
+    p = GC.@preserve code begin
+        ccall(pointer(code), Ptr{Cvoid}, (Cint,), 1)
     end
     @assert p !== C_NULL
     return if RetType <: Boxable
