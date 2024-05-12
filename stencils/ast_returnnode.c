@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include "common.h"
 
 jl_value_t *

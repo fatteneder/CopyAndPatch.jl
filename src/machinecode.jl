@@ -41,7 +41,6 @@ function call(code::MachineCode{RetType,ArgTypes}, args...) where {RetType,ArgTy
     #   everywhere, I think.
     # - Record the offsets in the memory for each slot and patch the values right
     #   before execution. This also sounds wrong.
-    @show pointer(code)
     p = GC.@preserve code begin
         ccall(pointer(code), Ptr{Cvoid}, (Cint,), 1)
     end

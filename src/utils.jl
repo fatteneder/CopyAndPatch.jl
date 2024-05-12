@@ -125,8 +125,8 @@ mutable struct Ffi_cif{N}
         @assert all(isbitstype, argtypes)
         # TODO Do we need to hold onto ffi_rettype, ffi_argtypes for the lifetime of Ffi_cfi?
         ffi_rettype  = ffi_type(rettype)
-        ffi_argtypes = [ ffi_type(a) for a in argtypes ]
         nargs = length(argtypes)
+        ffi_argtypes = nargs == 0 ? C_NULL : [ ffi_type(a) for a in argtypes ]
         sz_cif = @ccall libffihelpers_path[].get_sizeof_ffi_cif()::Csize_t
         @assert sz_cif > 0
         p_cif = Libc.malloc(sz_cif)

@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <ffi.h>
 #include <inttypes.h>
 
@@ -11,4 +12,8 @@ size_t get_sizeof_ffi_cif() {
 
 int64_t my_square(int64_t x) {
    return x*x;
+}
+
+void do_nothing(void) {
+   printf("doing nothing...\n");
 }

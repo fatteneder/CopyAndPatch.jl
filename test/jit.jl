@@ -124,21 +124,16 @@ end
 end
 
 @testset ":foreign node" begin
-    # The function tested here is declared as int64_t my_square(int64_t x),
-    # but IIUC we are passing in a boxed Int64, e.g. jl_value_t *.
-    # How do these jl_value_t * boxes work? Is it maybe just an ordinary int64_t * pointing
-    # to the value of x, and to determine what is boxed is determined by julia by looking just
-    # at its address?
     function foreign(x::Int64)
         @ccall CopyAndPatch.libffihelpers_path[].my_square(x::Int64)::Int64
     end
     try
-        expected = f(1)
-        mc = jit(f, (Int64,))
-        ret = CopyAndPatch.call(mc, 1)
+        expected = foreign(3)
+        mc = jit(foreign, (Int64,))
+        ret = CopyAndPatch.call(mc, 3)
         @test ret == expected
     catch e
-        @error "Failed $f(::$T)"
+        @error "Failed foreign(::Int64)"
         rethrow(e)
     end
 end
