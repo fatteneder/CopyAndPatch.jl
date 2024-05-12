@@ -2,7 +2,7 @@ const stencils = Dict{String,Any}()
 
 
 function init_stencils()
-    stencildir = joinpath(@__DIR__, "..", "stencils")
+    stencildir = joinpath(@__DIR__, "..", "stencils", "bin")
     files = readdir(stencildir, join=true)
     filter!(files) do f
         endswith(f, ".json")
@@ -61,9 +61,8 @@ end
 function jit(@nospecialize(fn::Function), @nospecialize(args))
 
     # this here does the linking of all non-copy-patched parts
-    # so that the stencils can be used as they already below
-    # this includes setting up the data part too, which is important
-    # because below we separate code and data parts in memory
+    # this includes setting up the data part too, which is important because below
+    # we separate code and data parts in memory
     init_stencils()
 
     optimize = true

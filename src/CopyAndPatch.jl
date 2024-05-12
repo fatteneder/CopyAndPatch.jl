@@ -29,8 +29,8 @@ function __init__()
     libjulia[] = dlopen(dlpath("libjulia.so"))
     libjuliainternal[] = dlopen(dlpath("libjulia-internal.so"))
     libc[] = dlopen(dlpath("libc.so.6"))
-    libjl_path[] = normpath(joinpath(@__DIR__, "..", "stencils", "libjl.so"))
-    libffihelpers_path[] = normpath(joinpath(@__DIR__, "..", "stencils", "libffihelpers.so"))
+    libjl_path[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libjl.so"))
+    libffihelpers_path[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libffihelpers.so"))
     nothing
 end
 

@@ -3,40 +3,36 @@ SRCMWES=$(wildcard mwe_*.c)
 SRC=$(wildcard *.c)
 SRC+=$(wildcard mwes/*.c)
 SRC:=$(filter-out $(SRCLIBS) $(SRCMWES),$(SRC))
-$(info $(SRC))
+
 OBJ=$(SRC:.c=.o)
 JSON=$(OBJ:.o=.json)
 SO=$(SRCLIBS:.c=.so)
-MWES=$(SRCMWES:.c=.o)
+MWES=$(SRCMWES:.c=)
 
-%.o: %.c compile
-	./compile $< $*.o
+BINOBJ=$(addprefix bin/,$(OBJ))
+BINJSON=$(addprefix bin/,$(JSON))
+BINSO=$(addprefix bin/,$(SO))
+BINMWES=$(addprefix bin/,$(MWES))
 
-%.json: %.o readobj
-	./readobj $< > $*.json
+$(shell mkdir -p bin/mwes)
+
+bin/%.o: %.c compile
+	./compile $< bin/$*.o
+
+bin/%.json: bin/%.o readobj
+	./readobj $< > bin/$*.json
 
 .SECONDARY:
-all: $(JSON) $(SO) $(OBJMWES)
+all: $(BINJSON) $(BINSO) $(BINMWES)
 
-libjl.so: libjl.c
-	gcc -std=gnu11 -I'${JULIA_INCLUDE}' -fPIC -L'${JULIA_LIB}' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' -ljulia -shared -o libjl.so libjl.c
+bin/libjl.so: libjl.c
+	gcc -std=gnu11 -I'${JULIA_INCLUDE}' -fPIC -L'${JULIA_LIB}' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' -ljulia -shared -o bin/libjl.so libjl.c
 
-libffihelpers.so: libffihelpers.c
-	gcc -std=gnu11 -I'${LIBFFI_INCLUDE}' -fPIC -lffi -shared -o libffihelpers.so libffihelpers.c
+bin/libffihelpers.so: libffihelpers.c
+	gcc -std=gnu11 -I'${LIBFFI_INCLUDE}' -fPIC -lffi -shared -o bin/libffihelpers.so libffihelpers.c
 
-mwe_libffi: mwe_libffi.c
-	gcc -std=gnu11 -I'${JULIA_INTERNAL_INCLUDE}' -I'${JULIA_INCLUDE}' -fPIC -L'${JULIA_LIB}' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' -I'${LIBFFI_INCLUDE}' -ljulia -ljulia-internal -lffi -o mwe_libffi mwe_libffi.c
+bin/mwe_libffi: mwe_libffi.c
+	gcc -std=gnu11 -I'${JULIA_INTERNAL_INCLUDE}' -I'${JULIA_INCLUDE}' -fPIC -L'${JULIA_LIB}' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' -I'${LIBFFI_INCLUDE}' -ljulia -ljulia-internal -lffi -o bin/mwe_libffi mwe_libffi.c
 
 clean:
-	@rm -f $(OBJ)
-	@rm -f $(JSON)
-	@rm -f $(SO)
-	@rm -f $(MWES)
-
-clean-all:
-	@rm -f $(wildcard *.o)
-	@rm -f $(wildcard mwes/*.o)
-	@rm -f $(wildcard *.json)
-	@rm -f $(wildcard mwes/*.json)
-	@rm -f $(wildcard *.so)
-	@rm -f $(wildcard mwes/*.so)
+	@rm -rf bin/
