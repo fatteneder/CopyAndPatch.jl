@@ -13,5 +13,5 @@ _JIT_ENTRY(int prev_ip) {
          PATCH_JUMP(_JIT_CONT, ip);
       }
    }
-   jl_error("jit_phinode: This should not have happened!");
+   jl_error("ast_phinode: This should not have happened!");
 }
