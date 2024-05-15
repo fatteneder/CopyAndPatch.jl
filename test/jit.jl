@@ -125,7 +125,7 @@ end
 
 @testset ":foreign node" begin
     function foreign(x::Int64)
-        @ccall CopyAndPatch.libffihelpers_path[].my_square(x::Int64)::Int64
+        @ccall CopyAndPatch.libmwes_path[].mwe_my_square(x::Int64)::Int64
     end
     try
         expected = foreign(3)
