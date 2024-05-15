@@ -139,6 +139,7 @@ for (jl_t, ffi_t) in [
                    ]
     @eval ffi_type(::Type{$jl_t}) = dlsym(libffi_handle,$(QuoteNode(ffi_t)))
 end
+ffi_type(p::Type{Cstring}) = dlsym(libffi_handle,:ffi_type_pointer)
 ffi_type(p::Type{Ptr}) = dlsym(libffi_handle,:ffi_type_pointer)
 ffi_type(@nospecialize(p::Type{Ptr{T}})) where T = dlsym(libffi_handle,:ffi_type_pointer)
 
@@ -171,6 +172,9 @@ mutable struct Ffi_cif{N}
         # TODO ismutable check enough or also need isbits check?
         ffi_rettype = to_ffi_type(rettype)
         nargs = N
+        if any(a -> a === Cvoid, argtypes)
+            throw(ArgumentError("Encountered bad argument type Cvoid"))
+        end
         ffi_argtypes = nargs == 0 ? C_NULL : [ to_ffi_type(at) for at in argtypes ]
         sz_cif = @ccall libffihelpers_path[].get_sizeof_ffi_cif()::Csize_t
         @assert sz_cif > 0
@@ -214,7 +218,12 @@ function ffi_call(cif::Ffi_cif{N}, fn::Ptr{Cvoid}, @nospecialize(args::Vector)) 
     slots = cif.slots
     for (i,a) in enumerate(args)
         if a isa Boxable
-            slots[i] = box(a)
+            if cif.argtypes[i] <: Ptr
+                slots[N+i] = box(a)
+                slots[i] = pointer(slots, N+i)
+            else
+                slots[i] = box(a)
+            end
         elseif a isa AbstractArray
             slots[i] = value_pointer(a)
         else

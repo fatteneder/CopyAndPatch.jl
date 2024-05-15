@@ -3,6 +3,7 @@ using Test
 using CopyAndPatch
 import CopyAndPatch: ByteVector, MachineCode, is_little_endian, jit
 using Libdl
+using Base.Libc
 
 
 # from https://github.com/JuliaLang/julia/issues/12711#issuecomment-912740865
@@ -93,24 +94,6 @@ end
 
 end
 
-@testset "libffi.ffi_type" begin
-
-    ctypes = Any[ Cvoid, Cuchar, Cshort, Cint, Cuint, Cfloat,
-                  Cdouble, Cuint, Cfloat, Cdouble, Clonglong, Culonglong,
-                  ComplexF32, ComplexF64 ]
-    for ct in ctypes
-        p = CopyAndPatch.ffi_type(ct)
-        @test p != C_NULL
-    end
-end
-
-@testset "libffi.ffi_call" begin
-    # Clonglong = Int64
-    cif = CopyAndPatch.Ffi_cif(Clonglong, (Clonglong,))
-    handle = dlopen(CopyAndPatch.libffihelpers_path[])
-    fn = dlsym(handle, :my_square)
-    @test CopyAndPatch.ffi_call(cif, fn, [123]) == 123^2
-end
-
 
 include("jit.jl")
+include("ffi.jl")
