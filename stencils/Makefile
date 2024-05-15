@@ -25,8 +25,8 @@ bin/%.json: bin/%.o readobj
 .SECONDARY:
 all: $(BINJSON) $(BINSO) $(BINMWES)
 
-bin/libjl.so: libjl.c
-	gcc -std=gnu11 -I'${JULIA_INCLUDE}' -fPIC -L'${JULIA_LIB}' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' -ljulia -shared -o bin/libjl.so libjl.c
+bin/libjuliahelpers.so: libjuliahelpers.c
+	gcc -std=gnu11 -I'${JULIA_INCLUDE}' -fPIC -L'${JULIA_LIB}' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' -ljulia -shared -o bin/libjuliahelpers.so libjuliahelpers.c
 
 bin/libffihelpers.so: libffihelpers.c
 	gcc -std=gnu11 -I'${LIBFFI_INCLUDE}' -fPIC -lffi -shared -o bin/libffihelpers.so libffihelpers.c

@@ -17,14 +17,14 @@ end
 
 function is_method_instance(mi)
     # TODO GC.@preserve not needed here
-    GC.@preserve mi @ccall libjl_path[].is_method_instance(mi::Any)::Cint
+    GC.@preserve mi @ccall libjuliahelpers_path[].is_method_instance(mi::Any)::Cint
 end
 function is_bool(b)
     p = box(b)
     # TODO Likely need the GC.@preserve here, because boxing goes through opaque C code.
     # Julia keeps track of the storage needed for p (e.g. the pointer), but does not know
     # that it also needs to hold onto b, where p is pointing at!!!
-    @ccall libjl_path[].is_bool(p::Ptr{Cvoid})::Cint
+    @ccall libjuliahelpers_path[].is_bool(p::Ptr{Cvoid})::Cint
 end
 
 
