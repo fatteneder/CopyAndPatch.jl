@@ -23,18 +23,32 @@ Base.pointer(code::MachineCode) = Base.unsafe_convert(Ptr{Cvoid}, pointer(code.b
 
 
 function call(code::MachineCode{RetType,ArgTypes}, args...) where {RetType,ArgTypes}
-    nargs = length(ArgTypes.parameters)
+    argtypes = [ a for a in ArgTypes.parameters ]
+    nargs = length(argtypes)
     if length(args) != nargs
         throw(MethodError(code, args))
     end
     gc_roots = code.gc_roots
     slots = first(gc_roots)
-    for (i,a) in enumerate(args)
-        # 1 is the method itself, which we skip for now
-        slots[i+1] = value_pointer(a)
+    N = nargs+1 # because slots[1] is the function itself
+    for (ii,a) in enumerate(args)
+        i = ii+1
+        if a isa Boxable
+            if argtypes[ii] <: Ptr
+                slots[N+i] = box(a)
+                slots[i] = pointer(slots, N+i)
+            else
+                slots[i] = box(a)
+            end
+        elseif a isa AbstractArray
+            slots[i] = value_pointer(a)
+        else
+            slots[N+i] = value_pointer(a)
+            slots[i] = pointer(slots, N+i)
+        end
     end
     p = GC.@preserve code begin
-        ccall(pointer(code), Ptr{Cvoid}, (Cint,), 1)
+        ccall(pointer(code), Ptr{Cvoid}, (Cint,), 1 #= ip =#)
     end
     @assert p !== C_NULL
     return if RetType <: Boxable

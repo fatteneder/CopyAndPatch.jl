@@ -78,7 +78,9 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
 
     nslots = length(codeinfo.slottypes)
     nssas = length(codeinfo.ssavaluetypes)
-    slots = Ptr{UInt64}[ C_NULL for _ in 1:nslots ]
+    # We use twice the number of slots here so that we can add another indirection layer
+    # for faster setup of slots when calling later. This is similar to how its done for ffi_call.
+    slots = Ptr{UInt64}[ C_NULL for _ in 1:2*nslots ]
     # TODO we use this assumption to save return values into ssa array
     @assert nssas == length(codeinfo.code)
     ssas = Ptr{UInt64}[ C_NULL for _ in 1:nssas ]
@@ -194,8 +196,7 @@ end
 
 
 # Based on base/compiler/ssair/ir.jl
-# JuliaInterpreter.jl implements its own version of scan_ssa_use!,
-# not sure why though.
+# JuliaInterpreter.jl implements its own version of scan_ssa_use!, not sure why though.
 function find_used(ci::CodeInfo)
     used = BitSet()
     for stmt in ci.code
