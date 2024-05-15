@@ -28,9 +28,12 @@ int main() {
    values[0] = (void *)&memory_type;
    values[1] = &nel;
 
+   // ffi_prep_cif(ffi_cif *cif, int abi, int nargs,
+   //              void *rettype, void  **argtypes);
    if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, 2,
                      &ffi_type_pointer, args) == FFI_OK) {
-      ffi_call(&cif, my_jl_alloc_genericmemory, &rc, values);
+      // ffi_call(ffi_cif *cif, void *fn, void *rvalue, void *avalues);
+      ffi_call(&cif, (void *)my_jl_alloc_genericmemory, &rc, values);
       jl_value_t *memory = (jl_value_t *)rc;
       printf("memory = %p\n", memory);
       printf("typeof(memory) = %s\n", jl_typeof_str(memory));
