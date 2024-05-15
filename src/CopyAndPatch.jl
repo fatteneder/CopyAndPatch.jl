@@ -25,12 +25,14 @@ const libjuliainternal = Ref{Ptr{Cvoid}}(0)
 const libc = Ref{Ptr{Cvoid}}(0)
 const libjuliahelpers_path = Ref{String}("")
 const libffihelpers_path = Ref{String}("")
+const libmwes_path = Ref{String}("")
 function __init__()
     libjulia[] = dlopen(dlpath("libjulia.so"))
     libjuliainternal[] = dlopen(dlpath("libjulia-internal.so"))
     libc[] = dlopen(dlpath("libc.so.6"))
     libjuliahelpers_path[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libjuliahelpers.so"))
     libffihelpers_path[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libffihelpers.so"))
+    libmwes_path[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libmwes.so"))
     nothing
 end
 

@@ -26,13 +26,30 @@ bin/%.json: bin/%.o readobj
 all: $(BINJSON) $(BINSO) $(BINMWES)
 
 bin/libjuliahelpers.so: libjuliahelpers.c
-	gcc -std=gnu11 -I'${JULIA_INCLUDE}' -fPIC -L'${JULIA_LIB}' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' -ljulia -shared -o bin/libjuliahelpers.so libjuliahelpers.c
+	gcc -I'${JULIA_INCLUDE}' \
+			-L'${JULIA_LIB}' \
+			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
+			-std=gnu11 -fPIC -ljulia -shared \
+			-o bin/libjuliahelpers.so libjuliahelpers.c
 
 bin/libffihelpers.so: libffihelpers.c
-	gcc -std=gnu11 -I'${LIBFFI_INCLUDE}' -fPIC -lffi -shared -o bin/libffihelpers.so libffihelpers.c
+	gcc -I'${LIBFFI_INCLUDE}' \
+			-std=gnu11 -fPIC -lffi -shared \
+			-o bin/libffihelpers.so libffihelpers.c
+
+bin/libmwes.so: libmwes.c
+	gcc -I'${JULIA_INTERNAL_INCLUDE}' -I'${JULIA_INCLUDE}' -I'${LIBFFI_INCLUDE}' \
+			-L'${JULIA_LIB}' \
+			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
+			-std=gnu11 -fPIC -ljulia -ljulia-internal -lffi -shared \
+			-o bin/libmwes.so libmwes.c
 
 bin/mwe_libffi: mwe_libffi.c
-	gcc -std=gnu11 -I'${JULIA_INTERNAL_INCLUDE}' -I'${JULIA_INCLUDE}' -fPIC -L'${JULIA_LIB}' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' -I'${LIBFFI_INCLUDE}' -ljulia -ljulia-internal -lffi -o bin/mwe_libffi mwe_libffi.c
+	gcc -I'${JULIA_INTERNAL_INCLUDE}' -I'${JULIA_INCLUDE}' -I'${LIBFFI_INCLUDE}' \
+			-L'${JULIA_LIB}' \
+			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
+			-std=gnu11 -fPIC -ljulia -ljulia-internal -lffi \
+			-o bin/mwe_libffi mwe_libffi.c
 
 clean:
 	@rm -rf bin/
