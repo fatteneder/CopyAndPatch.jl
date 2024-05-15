@@ -14,16 +14,10 @@ function pointer_from_function(fn::Function)
     return pf
 end
 
-function is_method_instance(mi)
-    # TODO GC.@preserve not needed here
-    GC.@preserve mi @ccall libjuliahelpers_path[].is_method_instance(mi::Any)::Cint
-end
+is_method_instance(mi) = @ccall libjuliahelpers_path[].is_method_instance(mi::Any)::Cint
 function is_bool(b)
     p = box(b)
-    # TODO Likely need the GC.@preserve here, because boxing goes through opaque C code.
-    # Julia keeps track of the storage needed for p (e.g. the pointer), but does not know
-    # that it also needs to hold onto b, where p is pointing at!!!
-    @ccall libjuliahelpers_path[].is_bool(p::Ptr{Cvoid})::Cint
+    GC.@preserve b @ccall libjuliahelpers_path[].is_bool(p::Ptr{Cvoid})::Cint
 end
 
 
@@ -162,7 +156,6 @@ mutable struct Ffi_cif{N}
     Ffi_cif(@nospecialize(rettype::Type), s::Core.SimpleVector) = Ffi_cif(rettype, tuple(s...))
     function Ffi_cif(@nospecialize(rettype::Type{T}), @nospecialize(argtypes::NTuple{N,DataType})) where {T,N}
         # TODO Do we need to hold onto ffi_rettype, ffi_argtypes for the lifetime of Ffi_cfi?
-        # TODO ismutable check enough or also need isbits check?
         ffi_rettype = to_ffi_type(rettype)
         nargs = N
         if any(a -> a === Cvoid, argtypes)

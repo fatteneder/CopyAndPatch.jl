@@ -31,16 +31,8 @@ function call(code::MachineCode{RetType,ArgTypes}, args...) where {RetType,ArgTy
     slots = first(gc_roots)
     for (i,a) in enumerate(args)
         # 1 is the method itself, which we skip for now
-        # slots[i+1] = box(a)
         slots[i+1] = value_pointer(a)
     end
-    # TODO I think the problem is that we 'hardcode' the argument values in the stencil
-    # when we jit it, and so overwriting slots here doesn't help.
-    # There would be two ways to fix this:
-    # - Add one more layer of indirection for slots, but this would require to use ***args
-    #   everywhere, I think.
-    # - Record the offsets in the memory for each slot and patch the values right
-    #   before execution. This also sounds wrong.
     p = GC.@preserve code begin
         ccall(pointer(code), Ptr{Cvoid}, (Cint,), 1)
     end
