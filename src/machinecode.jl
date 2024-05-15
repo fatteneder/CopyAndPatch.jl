@@ -32,7 +32,7 @@ function call(code::MachineCode{RetType,ArgTypes}, args...) where {RetType,ArgTy
     for (i,a) in enumerate(args)
         # 1 is the method itself, which we skip for now
         # slots[i+1] = box(a)
-        slots[i+1] = unsafe_pointer_from_objref(a)
+        slots[i+1] = value_pointer(a)
     end
     # TODO I think the problem is that we 'hardcode' the argument values in the stencil
     # when we jit it, and so overwriting slots here doesn't help.

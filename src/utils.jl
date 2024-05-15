@@ -6,7 +6,6 @@ iscallable(@nospecialize(f)) = !isempty(methods(f))
 
 
 # TODO Remove this, because we cannot reliably query jl_function_t * (clarified on Slack)
-# TODO What about jl_get_function from julia.h?
 function pointer_from_function(fn::Function)
     pm = pointer_from_objref(typeof(fn).name.module)
     ps = pointer_from_objref(nameof(fn))
@@ -28,12 +27,6 @@ function is_bool(b)
 end
 
 
-# This should not be used with immutables ... I mean really not ...
-# This returns the same ptrs as the box methods for primitives below.
-# The jl_box_... methods have a JL_NOSAFEPOINT, whereas jl_value_ptr doesn't.
-# TODO: What is even the purpose of the jl_box_... methods and jl_value_ptr?
-# TODO Remove this in favor of value_pointer
-unsafe_pointer_from_objref(x) = @ccall jl_value_ptr(x::Any)::Ptr{Cvoid}
 # @nospecialize is needed here to return the desired pointer also for immutables.
 # IIUC without it jl_value_ptr will not see the immutable container and instead
 # return a pointer to the first field in x.
