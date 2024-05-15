@@ -6,6 +6,7 @@ iscallable(@nospecialize(f)) = !isempty(methods(f))
 
 
 # TODO Remove this, because we cannot reliably query jl_function_t * (clarified on Slack)
+# TODO What about jl_get_function from julia.h?
 function pointer_from_function(fn::Function)
     pm = pointer_from_objref(typeof(fn).name.module)
     ps = pointer_from_objref(nameof(fn))
@@ -29,7 +30,31 @@ end
 # This returns the same ptrs as the box methods for primitives below.
 # The jl_box_... methods have a JL_NOSAFEPOINT, whereas jl_value_ptr doesn't.
 # TODO: What is even the purpose of the jl_box_... methods and jl_value_ptr?
+# TODO Remove this in favor of value_pointer
 unsafe_pointer_from_objref(x) = @ccall jl_value_ptr(x::Any)::Ptr{Cvoid}
+# @nospecialize is needed here to return the desired pointer also for immutables.
+# IIUC without it jl_value_ptr will not see the immutable container and instead
+# return a pointer to the first field in x.
+#
+# Consider this MWE:
+# ```julia
+# struct ImmutDummy
+#   x
+#   y
+# end
+#
+# x = ImmutDummy("string", 1)
+# p = @ccall jl_value_ptr(x::Any)::Ptr{Cvoid}
+# p1 = value_pointer(x)
+# p2 = value_pointer_without_nospecialize(x)
+#
+# GC.@preserve x begin
+#   unsafe_string(@ccall jl_typeof_str(p::Ptr{Cvoid})::Cstring)  # "ImmutDummy"
+#   unsafe_string(@ccall jl_typeof_str(p1::Ptr{Cvoid})::Cstring) # "ImmutDummy"
+#   unsafe_string(@ccall jl_typeof_str(p2::Ptr{Cvoid})::Cstring) # segfaults in global scope, but gives "ImmutDummy" inside function
+#end
+# ```
+value_pointer(@nospecialize(x)) = @ccall jl_value_ptr(x::Any)::Ptr{Cvoid}
 
 
 # missing a few:
@@ -48,19 +73,21 @@ unsafe_pointer_from_objref(x) = @ccall jl_value_ptr(x::Any)::Ptr{Cvoid}
 #
 # Why are there box methods for char, ssavalue, slotnumber, but no unbox methods?
 #
-const Boxable   = Union{Bool,Int8,Int16,Int32,Int64,UInt8,UInt32,UInt64,Float32,Float64}
+const Boxable   = Union{Bool,Int8,Int16,Int32,Int64,UInt8,UInt32,UInt64,Float32,Float64,Ptr}
 const Unboxable = Union{Bool,Int8,Int16,Int32,Int64,UInt8,UInt32,UInt64,Float32,Float64}
-box(x::Bool)    = @ccall jl_box_bool(x::Int8)::Ptr{Cvoid}
-box(x::Int8)    = @ccall jl_box_int8(x::Int8)::Ptr{Cvoid}
-box(x::Int16)   = @ccall jl_box_int16(x::Int16)::Ptr{Cvoid}
-box(x::Int32)   = @ccall jl_box_int32(x::Int32)::Ptr{Cvoid}
-box(x::Int64)   = @ccall jl_box_int64(x::Int64)::Ptr{Cvoid}
-box(x::UInt8)   = @ccall jl_box_uint8(x::UInt8)::Ptr{Cvoid}
-box(x::UInt16)  = @ccall jl_box_uint16(x::UInt16)::Ptr{Cvoid}
-box(x::UInt32)  = @ccall jl_box_uint32(x::UInt32)::Ptr{Cvoid}
-box(x::UInt64)  = @ccall jl_box_uint64(x::UInt64)::Ptr{Cvoid}
-box(x::Float32) = @ccall jl_box_float32(x::Float32)::Ptr{Cvoid}
-box(x::Float64) = @ccall jl_box_float64(x::Float64)::Ptr{Cvoid}
+box(x::Bool)           = @ccall jl_box_bool(x::Int8)::Ptr{Cvoid}
+box(x::Int8)           = @ccall jl_box_int8(x::Int8)::Ptr{Cvoid}
+box(x::Int16)          = @ccall jl_box_int16(x::Int16)::Ptr{Cvoid}
+box(x::Int32)          = @ccall jl_box_int32(x::Int32)::Ptr{Cvoid}
+box(x::Int64)          = @ccall jl_box_int64(x::Int64)::Ptr{Cvoid}
+box(x::UInt8)          = @ccall jl_box_uint8(x::UInt8)::Ptr{Cvoid}
+box(x::UInt16)         = @ccall jl_box_uint16(x::UInt16)::Ptr{Cvoid}
+box(x::UInt32)         = @ccall jl_box_uint32(x::UInt32)::Ptr{Cvoid}
+box(x::UInt64)         = @ccall jl_box_uint64(x::UInt64)::Ptr{Cvoid}
+box(x::Float32)        = @ccall jl_box_float32(x::Float32)::Ptr{Cvoid}
+box(x::Float64)        = @ccall jl_box_float64(x::Float64)::Ptr{Cvoid}
+box(x::Ptr{UInt8})     = @ccall jl_box_uint8pointer(x::Any)::Ptr{Cvoid}
+box(x::Ptr{T}) where T = @ccall jl_box_voidpointer(x::Any)::Ptr{Cvoid}
 unbox(::Type{Bool}, ptr::Ptr{Cvoid})    = @ccall jl_unbox_bool(ptr::Ptr{Cvoid})::Bool
 unbox(::Type{Int8}, ptr::Ptr{Cvoid})    = @ccall jl_unbox_int8(ptr::Ptr{Cvoid})::Int8
 unbox(::Type{Int16}, ptr::Ptr{Cvoid})   = @ccall jl_unbox_int16(ptr::Ptr{Cvoid})::Int16
@@ -110,23 +137,39 @@ for (jl_t, ffi_t) in [
                    ]
     @eval ffi_type(::Type{$jl_t}) = dlsym(libffi_handle,$(QuoteNode(ffi_t)))
 end
+ffi_type(p::Type{Ptr}) = dlsym(libffi_handle,:ffi_type_pointer)
+ffi_type(@nospecialize(p::Type{Ptr{T}})) where T = dlsym(libffi_handle,:ffi_type_pointer)
+
+const Ctypes = Union{Cchar,Cuchar,Cshort,Cstring,Cushort,Cint,Cuint,Clong,Culong,
+                     Clonglong,Culonglong,Cintmax_t,Cuintmax_t,Csize_t,Cssize_t,
+                     Cptrdiff_t,Cwchar_t,Cwstring,Cfloat,Cdouble,Cvoid}
+function to_ffi_type(t)
+    return if t <: Ctypes
+        return ffi_type(t)
+    elseif ismutabletype(t) || t <: Ptr
+        return ffi_type(Ptr{Cvoid})
+    else
+        TODO(t)
+    end
+end
 
 
 mutable struct Ffi_cif{N}
     p::Ptr{Cvoid}
     rettype::Type
+    # TODO This should be a vector, and remove the type variable N
     argtypes::NTuple{N,DataType}
+    slots::Vector{Ptr{Cvoid}}
 
     # https://www.chiark.greenend.org.uk/doc/libffi-dev/html/The-Basics.html
     # TODO do we need splat here?
     Ffi_cif(@nospecialize(rettype::Type), s::Core.SimpleVector) = Ffi_cif(rettype, tuple(s...))
-    function Ffi_cif(@nospecialize(rettype::Type), @nospecialize(argtypes::NTuple{N,DataType})) where N
-        @assert isbitstype(rettype)
-        @assert all(isbitstype, argtypes)
+    function Ffi_cif(@nospecialize(rettype::Type{T}), @nospecialize(argtypes::NTuple{N,DataType})) where {T,N}
         # TODO Do we need to hold onto ffi_rettype, ffi_argtypes for the lifetime of Ffi_cfi?
-        ffi_rettype  = ffi_type(rettype)
-        nargs = length(argtypes)
-        ffi_argtypes = nargs == 0 ? C_NULL : [ ffi_type(a) for a in argtypes ]
+        # TODO ismutable check enough or also need isbits check?
+        ffi_rettype = to_ffi_type(rettype)
+        nargs = N
+        ffi_argtypes = nargs == 0 ? C_NULL : [ to_ffi_type(at) for at in argtypes ]
         sz_cif = @ccall libffihelpers_path[].get_sizeof_ffi_cif()::Csize_t
         @assert sz_cif > 0
         p_cif = Libc.malloc(sz_cif)
@@ -137,7 +180,8 @@ mutable struct Ffi_cif{N}
                                 ffi_rettype::Ptr{Cvoid}, ffi_argtypes::Ptr{Ptr{Cvoid}}
                                 )::Cint
         if status == 0 # = FFI_OK
-            cif = new{N}(p_cif, rettype, argtypes)
+            slots = Vector{Ptr{Cvoid}}(undef, 2*N)
+            cif = new{N}(p_cif, rettype, argtypes, slots)
             return finalizer(cif) do cif
                 if cif.p !== C_NULL
                     Libc.free(cif.p)
@@ -145,7 +189,7 @@ mutable struct Ffi_cif{N}
                 end
             end
         else
-            msg = "Failed to prepare ffi_cif for f($(join(argtypes,',')))::$rettype; ffi_prep_cif returned "
+            msg = "Failed to prepare ffi_cif for f(::$(join(argtypes,",::")))::$rettype; ffi_prep_cif returned "
             if status == 1
                 error(msg * "FFI_BAD_TYPEDEF")
             elseif status == 2
@@ -161,14 +205,24 @@ end
 
 Base.pointer(cif::Ffi_cif) = cif.p
 
-
 function ffi_call(cif::Ffi_cif{N}, fn::Ptr{Cvoid}, @nospecialize(args::Vector)) where N
     @assert fn !== C_NULL
     @assert N == length(args)
-    @assert all( typeof(a) == cif.argtypes[i] for (i,a) in enumerate(args) )
     ret = Ref{cif.rettype}()
-    p_args = convert(Vector{Any}, args)
-    @ccall libffi_path.ffi_call(cif.p::Ptr{Cvoid}, fn::Ptr{Cvoid},
-                                ret::Ptr{Cvoid}, p_args::Ptr{Any})::Cvoid
+    slots = cif.slots
+    for (i,a) in enumerate(args)
+        if a isa Boxable
+            slots[i] = box(a)
+        elseif a isa AbstractArray
+            slots[i] = value_pointer(a)
+        else
+            slots[N+i] = value_pointer(a)
+            slots[i] = pointer(slots, N+i)
+        end
+    end
+    GC.@preserve cif args begin
+        @ccall libffi_path.ffi_call(cif.p::Ptr{Cvoid}, fn::Ptr{Cvoid},
+                                    ret::Ptr{Cvoid}, slots::Ptr{Cvoid})::Cvoid
+    end
     return ret[]
 end
