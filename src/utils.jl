@@ -144,36 +144,32 @@ function to_ffi_type(t)
 end
 
 
-mutable struct Ffi_cif{N}
+mutable struct Ffi_cif
     p::Ptr{Cvoid}
     rettype::Type
-    # TODO This should be a vector, and remove the type variable N
-    argtypes::NTuple{N,DataType}
+    argtypes::Vector{DataType}
     slots::Vector{Ptr{Cvoid}}
 
     # https://www.chiark.greenend.org.uk/doc/libffi-dev/html/The-Basics.html
-    # TODO do we need splat here?
-    Ffi_cif(@nospecialize(rettype::Type), s::Core.SimpleVector) = Ffi_cif(rettype, tuple(s...))
     function Ffi_cif(@nospecialize(rettype::Type{T}), @nospecialize(argtypes::NTuple{N,DataType})) where {T,N}
         # TODO Do we need to hold onto ffi_rettype, ffi_argtypes for the lifetime of Ffi_cfi?
         ffi_rettype = to_ffi_type(rettype)
-        nargs = N
         if any(a -> a === Cvoid, argtypes)
             throw(ArgumentError("Encountered bad argument type Cvoid"))
         end
-        ffi_argtypes = nargs == 0 ? C_NULL : [ to_ffi_type(at) for at in argtypes ]
+        ffi_argtypes = N == 0 ? C_NULL : [ to_ffi_type(at) for at in argtypes ]
         sz_cif = @ccall libffihelpers_path[].get_sizeof_ffi_cif()::Csize_t
         @assert sz_cif > 0
         p_cif = Libc.malloc(sz_cif)
         @assert p_cif !== C_NULL
         default_abi = @ccall libffihelpers_path[].get_ffi_default_abi()::Cint
         status = @ccall libffi_path.ffi_prep_cif(
-                                p_cif::Ptr{Cvoid}, default_abi::Cint, nargs::Cint,
+                                p_cif::Ptr{Cvoid}, default_abi::Cint, N::Cint,
                                 ffi_rettype::Ptr{Cvoid}, ffi_argtypes::Ptr{Ptr{Cvoid}}
                                 )::Cint
         if status == 0 # = FFI_OK
             slots = Vector{Ptr{Cvoid}}(undef, 2*N)
-            cif = new{N}(p_cif, rettype, argtypes, slots)
+            cif = new(p_cif, rettype, [ a for a in argtypes], slots)
             return finalizer(cif) do cif
                 if cif.p !== C_NULL
                     Libc.free(cif.p)
@@ -194,11 +190,13 @@ mutable struct Ffi_cif{N}
         end
     end
 end
+Ffi_cif(@nospecialize(rettype::Type), @nospecialize(s::Core.SimpleVector)) = Ffi_cif(rettype, tuple(s...))
 
 Base.pointer(cif::Ffi_cif) = cif.p
 
-function ffi_call(cif::Ffi_cif{N}, fn::Ptr{Cvoid}, @nospecialize(args::Vector)) where N
+function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
     @assert fn !== C_NULL
+    N = length(cif.argtypes)
     @assert N == length(args)
     ret = Ref{cif.rettype}()
     slots = cif.slots
