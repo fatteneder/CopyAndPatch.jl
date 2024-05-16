@@ -34,12 +34,7 @@ function call(code::MachineCode{RetType,ArgTypes}, args...) where {RetType,ArgTy
     for (ii,a) in enumerate(args)
         i = ii+1
         if a isa Boxable
-            if argtypes[ii] <: Ptr
-                slots[N+i] = box(a)
-                slots[i] = pointer(slots, N+i)
-            else
-                slots[i] = box(a)
-            end
+            slots[i] = box(a)
         elseif a isa AbstractArray
             slots[i] = value_pointer(a)
         else
