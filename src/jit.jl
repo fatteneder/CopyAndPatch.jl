@@ -225,9 +225,7 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
 end
 function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserve, used_rets, ex::Core.ReturnNode)
     st, bvec, _ = stencils["ast_returnnode"]
-    # TODO That [C_NULL] is not rooted! Should be fixed by using a stencil without returns.
-    retbox = isdefined(ex,:val) ? box_arg(ex.val, slots, ssas, static_prms) : pointer([C_NULL])
-    push!(preserve, retbox)
+    retbox = isdefined(ex,:val) ? box_arg(ex.val, slots, ssas, static_prms) : C_NULL
     copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
     patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET", retbox)
 end
@@ -253,15 +251,14 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
     append!(preserve, ex.edges)
     vals_boxes = box_args(ex.values, slots, ssas, static_prms)
     append!(preserve, vals_boxes)
-    # TODO That [C_NULL] is not rooted! Should be fixed by using a stencil without returns.
-    retbox = ip in used_rets ? pointer(ssas, ip) : pointer([C_NULL])
-    push!(preserve, retbox)
-    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",     ip)
-    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NEDGES", nedges)
-    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_EDGES",  pointer(ex.edges))
-    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_VALS",   pointer(vals_boxes))
-    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",    retbox)
-    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",   pointer(memory, stencil_starts[ip+1]))
+    retbox = ip in used_rets ? pointer(ssas, ip) : C_NULL
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_EDGES",   pointer(ex.edges))
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",      ip)
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NEDGES",  nedges)
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",     retbox)
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RETUSED", Cint(ip in used_rets))
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_VALS",    pointer(vals_boxes))
+    patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",    pointer(memory, stencil_starts[ip+1]))
 end
 function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserve, used_rets, ex::Expr)
     if isexpr(ex, :call)
@@ -273,9 +270,8 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
             nargs = length(ex_args)
             boxes = box_args(ex_args, slots, ssas, static_prms)
             append!(preserve, boxes)
-            # TODO That [C_NULL] is not rooted! Should be fixed by using a stencil without returns.
-            retbox = ip in used_rets ? pointer(ssas, ip) : pointer([C_NULL])
-            push!(preserve, retbox)
+            retbox = ip in used_rets ? pointer(ssas, ip) : C_NULL
+            @assert retbox !== C_NULL
             name = string("jl_", Symbol(fn))
             st, bvec, bvec2 = get(stencils, name) do
                 error("don't know how to handle intrinsic $name")
@@ -295,16 +291,17 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
             nargs = length(ex_args)
             boxes = box_args(ex_args, slots, ssas, static_prms)
             append!(preserve, boxes)
-            retbox = [ip in used_rets ? pointer(ssas, ip) : C_NULL]
-            push!(preserve, retbox)
+            retbox = ip in used_rets ? pointer(ssas, ip) : C_NULL
+            @assert retbox !== C_NULL
             st, bvec, _ = stencils["ast_call"]
             TODO()
             copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
-            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS", nargs)
-            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",  pointer(boxes))
-            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_FN",    pointer_from_function(fn))
-            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",   retbox)
-            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ip+1]))
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_FN",      pointer_from_function(fn))
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS",   nargs)
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",     retbox)
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RETUSED", Cint(ip in used_rets))
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",    pointer(memory, stencil_starts[ip+1]))
         else
             TODO(fn)
         end
@@ -316,32 +313,30 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
         boxes = box_args(ex_args, slots, ssas, static_prms)
         append!(preserve, boxes)
         nargs = length(boxes)
-        # TODO That [C_NULL] is not rooted! Should be fixed by using a stencil without returns.
-        retbox = ip in used_rets ? pointer(ssas, ip) : pointer([C_NULL])
-        push!(preserve, retbox)
+        retbox = ip in used_rets ? pointer(ssas, ip) : C_NULL
         st, bvec, bvec2 = stencils["ast_invoke"]
         copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP", ip)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",  pointer(boxes))
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS", nargs)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",   retbox)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ip+1]))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",      ip)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS",   nargs)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",     retbox)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RETUSED", Cint(ip in used_rets))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",    pointer(memory, stencil_starts[ip+1]))
     elseif isexpr(ex, :new)
         ex_args = ex.args
         boxes = box_args(ex_args, slots, ssas, static_prms)
         append!(preserve, boxes)
         nargs = length(boxes)
-        # TODO That [C_NULL] is not rooted! Should be fixed by using a stencil without returns.
-        retbox = ip in used_rets ? pointer(ssas, ip) : pointer([C_NULL])
-        push!(preserve, retbox)
+        retbox = ip in used_rets ? pointer(ssas, ip) : C_NULL
         st, bvec, bvec2 = stencils["ast_new"]
         @assert length(bvec2) == 0
         copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP", ip)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",  pointer(boxes))
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS", nargs)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",   retbox)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ip+1]))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",      ip)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS",   nargs)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",     retbox)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RETUSED", Cint(ip in used_rets))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",    pointer(memory, stencil_starts[ip+1]))
     elseif isexpr(ex, :foreigncall)
         fname, libname = ex.args[1].args[2].value, unwrap(ex.args[1].args[3].args[2])
         rettype = ex.args[2]
@@ -356,8 +351,14 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
         boxes = box_args(args, slots, ssas, static_prms)
         append!(preserve, boxes)
         nargs = length(boxes)
-        # TODO That [C_NULL] is not rooted! Should be fixed by using a stencil without returns.
-        retbox = ip in used_rets ? pointer(ssas, ip) : pointer([C_NULL])
+        retbox = if ip in used_rets
+            pointer(ssas, ip)
+        else
+            # ffi_call asks for an address for the return value,
+            # and because clang optimizes our `int retused` away we can't just pass a NULL
+            push!(static_prms, C_NULL)
+            pointer(static_prms, length(static_prms))
+        end
         # TODO Can we not move the allocation here into C? How can we teach the GC that
         # there is a new variable?
         retval = Ref{rettype}()
@@ -369,13 +370,13 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
         handle = dlopen(libname[])
         fptr = dlsym(handle, fname)
         copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",    ip)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CIF",   pointer(cif))
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_F",     fptr)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",  pointer(boxes))
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS", nargs)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",   retbox)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ip+1]))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",      ip)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CIF",     pointer(cif))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_F",       fptr)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS",   nargs)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",     retbox)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",    pointer(memory, stencil_starts[ip+1]))
     else
         TODO(ex.head)
     end
