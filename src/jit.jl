@@ -85,6 +85,7 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     @assert nssas == length(codeinfo.code)
     ssas = Ptr{UInt64}[ C_NULL for _ in 1:nssas ]
     used_rets = find_used(codeinfo)
+    static_prms = Ptr{UInt64}[]
 
     nstencils = length(codeinfo.code)
     stencil_starts = zeros(Int64, nstencils)
@@ -102,13 +103,13 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     # we can later relocate the stencils with statements in code_native
     mc = MachineCode(code_size, rettype, argtypes)
     memory, gc_roots = mc.buf, mc.gc_roots
-    push!(gc_roots, slots, ssas)
+    push!(gc_roots, slots, ssas, static_prms)
     # memory = mmap(Vector{UInt8}, code_size, shared=false, exec=true)
     # memory = mmap(Vector{UInt8}, code_size+data_size, shared=false, exec=true)
     # bvec_code = view(memory, 1:code_size)
     # bvec_data = view(memory, code_size+1:code_size+data_size)
     for (ip,ex) in enumerate(codeinfo.code)
-        emitcode!(memory, stencil_starts, ip, slots, ssas, gc_roots, used_rets, ex)
+        emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, gc_roots, used_rets, ex)
     end
 
     return mc
@@ -161,37 +162,39 @@ get_stencil(ex::Nothing)         = stencils["ast_goto"]
 # - Anything to which we apply pointer_from_objref or pointer needs to be preserved when used.
 # - Also slots and ssas need to be kept alive till the function is finished.
 # - What about boxed stuff?
-function box_arg(a, slots, ssas)
+function box_arg(a, slots, ssas, static_prms)
     if a isa Core.Argument
         return pointer(slots, a.n)
     elseif a isa Core.SSAValue
         return pointer(ssas, a.id)
-    elseif a isa String
-        @show pointer_from_objref(a)
-        return pointer([pointer_from_objref(a)])
-    elseif a isa Number
-        return pointer([box(a)])
-    elseif a isa Type
-        return pointer([pointer_from_objref(a)])
-    elseif a isa GlobalRef
-        # do it similar to src/interpreter.c:jl_eval_globalref
-        p = @ccall jl_get_globalref_value(a::Any)::Ptr{Cvoid}
-        p === C_NULL && throw(UndefVarError(a.name,a.mod))
-        return pointer([p])
-    elseif typeof(a) <: Boxable
-        return pointer([box(a)])
-    elseif a isa MethodInstance
-        return pointer([pointer_from_objref(a)])
-    elseif a isa Nothing
-        return pointer([dlsym(libjulia[], :jl_nothing)])
     else
-        TODO(a)
+        if a isa String
+            push!(static_prms, pointer_from_objref(a))
+        elseif a isa Number
+            push!(static_prms, box(a))
+        elseif a isa Type
+            push!(static_prms, pointer_from_objref(a))
+        elseif a isa GlobalRef
+            # do it similar to src/interpreter.c:jl_eval_globalref
+            p = @ccall jl_get_globalref_value(a::Any)::Ptr{Cvoid}
+            p === C_NULL && throw(UndefVarError(a.name,a.mod))
+            push!(static_prms, p)
+        elseif typeof(a) <: Boxable
+            push!(static_prms, box(a))
+        elseif a isa MethodInstance
+            push!(static_prms, pointer_from_objref(a))
+        elseif a isa Nothing
+            push!(static_prms, dlsym(libjulia[], :jl_nothing))
+        else
+            TODO(a)
+        end
+        return pointer(static_prms, length(static_prms))
     end
 end
-function box_args(ex_args::AbstractVector, slots, ssas)
+function box_args(ex_args::AbstractVector, slots, ssas, static_prms)
     # TODO Need to cast to Ptr{UInt64} here?
     # return Ptr{Ptr{Cvoid}}[ box_arg(a, slots, ssas) for a in ex_args ]
-    return Ptr{Cvoid}[ box_arg(a, slots, ssas) for a in ex_args ]
+    return Ptr{Cvoid}[ box_arg(a, slots, ssas, static_prms) for a in ex_args ]
 end
 
 
@@ -214,27 +217,27 @@ end
 #          _1 refers to function, _2 to first arg, etc.
 #          see CodeInfo.slottypes, CodeInfo.slotnames
 emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex) = TODO(typeof(ex))
-function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex::Nothing)
+function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserve, used_rets, ex::Nothing)
     st, bvec, _ = stencils["ast_goto"]
     copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
     patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",   ip)
     patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ip+1]))
 end
-function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex::Core.ReturnNode)
+function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserve, used_rets, ex::Core.ReturnNode)
     st, bvec, _ = stencils["ast_returnnode"]
     # TODO That [C_NULL] is not rooted! Should be fixed by using a stencil without returns.
-    retbox = isdefined(ex,:val) ? box_arg(ex.val, slots, ssas) : pointer([C_NULL])
+    retbox = isdefined(ex,:val) ? box_arg(ex.val, slots, ssas, static_prms) : pointer([C_NULL])
     push!(preserve, retbox)
     copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
     patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET", retbox)
 end
-function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex::Core.GotoNode)
+function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserve, used_rets, ex::Core.GotoNode)
     st, bvec, _ = stencils["ast_goto"]
     copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
     patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",   ip)
     patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ex.label]))
 end
-function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex::Core.GotoIfNot)
+function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserve, used_rets, ex::Core.GotoIfNot)
     st, bvec, _ = stencils["ast_gotoifnot"]
     copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
     test = pointer(ssas, ex.cond.id) # TODO Can this also be a slot?
@@ -243,12 +246,12 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets,
     patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT1", pointer(memory, stencil_starts[ex.dest]))
     patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT2", pointer(memory, stencil_starts[ip+1]))
 end
-function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex::Core.PhiNode)
+function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserve, used_rets, ex::Core.PhiNode)
     st, bvec, _ = stencils["ast_phinode"]
     copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
     nedges = length(ex.edges)
     append!(preserve, ex.edges)
-    vals_boxes = box_args(ex.values, slots, ssas)
+    vals_boxes = box_args(ex.values, slots, ssas, static_prms)
     append!(preserve, vals_boxes)
     # TODO That [C_NULL] is not rooted! Should be fixed by using a stencil without returns.
     retbox = ip in used_rets ? pointer(ssas, ip) : pointer([C_NULL])
@@ -260,7 +263,7 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets,
     patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",    retbox)
     patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",   pointer(memory, stencil_starts[ip+1]))
 end
-function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets, ex::Expr)
+function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserve, used_rets, ex::Expr)
     if isexpr(ex, :call)
         g = ex.args[1]
         @assert g isa GlobalRef
@@ -268,7 +271,7 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets,
         if fn isa Core.IntrinsicFunction
             ex_args = @view ex.args[2:end]
             nargs = length(ex_args)
-            boxes = box_args(ex_args, slots, ssas)
+            boxes = box_args(ex_args, slots, ssas, static_prms)
             append!(preserve, boxes)
             # TODO That [C_NULL] is not rooted! Should be fixed by using a stencil without returns.
             retbox = ip in used_rets ? pointer(ssas, ip) : pointer([C_NULL])
@@ -290,7 +293,7 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets,
             fn_ptr = pointer_from_function(fn)
             ex_args = ex.args[2:end]
             nargs = length(ex_args)
-            boxes = box_args(ex_args, slots, ssas)
+            boxes = box_args(ex_args, slots, ssas, static_prms)
             append!(preserve, boxes)
             retbox = [ip in used_rets ? pointer(ssas, ip) : C_NULL]
             push!(preserve, retbox)
@@ -310,7 +313,7 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets,
         @assert mi isa MethodInstance
         @assert g isa GlobalRef
         ex_args = ex.args
-        boxes = box_args(ex_args, slots, ssas)
+        boxes = box_args(ex_args, slots, ssas, static_prms)
         append!(preserve, boxes)
         nargs = length(boxes)
         # TODO That [C_NULL] is not rooted! Should be fixed by using a stencil without returns.
@@ -325,7 +328,7 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets,
         patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",  pointer(memory, stencil_starts[ip+1]))
     elseif isexpr(ex, :new)
         ex_args = ex.args
-        boxes = box_args(ex_args, slots, ssas)
+        boxes = box_args(ex_args, slots, ssas, static_prms)
         append!(preserve, boxes)
         nargs = length(boxes)
         # TODO That [C_NULL] is not rooted! Should be fixed by using a stencil without returns.
@@ -350,7 +353,7 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, preserve, used_rets,
         args = ex.args[6:5+length(ex.args[3])]
         gc_roots = ex.args[6+length(ex.args[3])+1:end]
         @assert length(gc_roots) == 0
-        boxes = box_args(args, slots, ssas)
+        boxes = box_args(args, slots, ssas, static_prms)
         append!(preserve, boxes)
         nargs = length(boxes)
         # TODO That [C_NULL] is not rooted! Should be fixed by using a stencil without returns.
