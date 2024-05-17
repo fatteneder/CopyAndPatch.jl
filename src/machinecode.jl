@@ -1,19 +1,22 @@
 struct MachineCode{RetType,ArgTypes}
     buf::Vector{UInt8}
     gc_roots::Vector{Any}
-    function MachineCode(bvec::ByteVector, rettype::DataType, argtypes::NTuple{N,DataType},
-                         gc_roots=Any[]) where N
+    function MachineCode(bvec::ByteVector, @nospecialize(rettype::Type{T}), argtypes::NTuple{N,DataType},
+                         gc_roots::Vector{Any}=Any[]) where {T,N}
+        rt = rettype <: Union{} ? Nothing : rettype
         buf = mmap(Vector{UInt8}, length(bvec), shared=false, exec=true)
         copy!(buf, bvec)
-        new{rettype,Tuple{argtypes...}}(buf, Any[])
+        new{rt,Tuple{argtypes...}}(buf, gc_roots)
     end
-    function MachineCode(sz::Integer, rettype::DataType, argtypes::NTuple{N,DataType},
-                         gc_roots=Any[]) where N
+    function MachineCode(sz::Integer, @nospecialize(rettype::Type{T}), argtypes::NTuple{N,DataType},
+                         gc_roots::Vector{Any}=Any[]) where {T,N}
+        rt = rettype <: Union{} ? Nothing : rettype
         buf = mmap(Vector{UInt8}, sz, shared=false, exec=true)
-        new{rettype,Tuple{argtypes...}}(buf, Any[])
+        new{rt,Tuple{argtypes...}}(buf, gc_roots)
     end
 end
-MachineCode(bvec, rettype, argtypes, gc_roots=Any[]) = MachineCode(ByteVector(bvec), rettype, argtypes, gc_roots)
+MachineCode(bvec, rettype, argtypes, gc_roots::Vector{Any}=Any[]) =
+    MachineCode(ByteVector(bvec), rettype, argtypes, gc_roots)
 
 rettype(mc::MachineCode{RetType,ArgTypes}) where {RetType,ArgTypes} = RetType
 argtypes(mc::MachineCode{RetType,ArgTypes}) where {RetType,ArgTypes} = ArgTypes
