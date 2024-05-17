@@ -464,8 +464,8 @@ mutable struct CopyAndPatchMenu{T_MC<:MachineCode} <: TerminalMenus.ConfiguredMe
     config::TerminalMenus.Config
 end
 
-function CopyAndPatchMenu(mc, syntax; kwargs...)
-    config = TerminalMenus.Config(; kwargs...)
+function CopyAndPatchMenu(mc, syntax)
+    config = TerminalMenus.Config(scroll_wrap=true)
     options = string.(mc.codeinfo.code)
     pagesize = 10
     pageoffset = 0
@@ -495,53 +495,82 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
         stencilinfo, buf, _ = get_stencil(menu.mc.codeinfo.code[cursor])
         relocs = stencilinfo.code.relocations
         ex = menu.mc.codeinfo.code[cursor]
-        _code_native!(ioc, ex, buf, cursor; syntax=menu.syntax)
-        # we use uncolored code_native output to ignore ansii color codes, need for
-        # correct computation of the max line width
+        # we use uncolored code_native output to ignore ansii color codes, needed for
+        # correct computation of max line width
+        _code_native!(ioc, ex, buf, cursor; syntax=menu.syntax, color=false)
         unpatched_code = String(take!(io))
         _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, color=false)
         uncolored_code = String(take!(io))
-        max_w = maximum(eachline(IOBuffer(uncolored_code))) do line
-            ncodeunits(line)
+        max_w = maximum(split(uncolored_code,'\n')[2:end]) do line
+            # ignore first line which contains the SSA expression
+            ncodeunits(repr(line))
         end
         nreloc = 1
-        for (i,(uc_line, line, line_up)) in enumerate(zip(eachline(IOBuffer(uncolored_code)),
+        for (i,(uc_line, line, up_line)) in enumerate(zip(eachline(IOBuffer(uncolored_code)),
                                                           eachline(IOBuffer(code)),
                                                           eachline(IOBuffer(unpatched_code))))
-            w = ncodeunits(uc_line)
+            w = length(uc_line)
             Δw = max_w - w
             print(ioc, line)
-            if line == line_up
+            if uc_line == up_line
                 print(ioc, '\n')
             else
-                @assert nreloc <= length(relocs) "relocation might have failed"
                 printstyled(ioc, ' '^Δw, "    # $(relocs[nreloc].symbol)\n", color=:light_blue)
+                nreloc == length(relocs) && break
                 nreloc += 1
             end
+        end
+        if nreloc > length(relocs)
+            println()
+            @warn "relocation has likely failed"
+            println()
         end
         code = String(take!(io))
     end
     return code
 end
-function TerminalMenus.move_down!(menu::CopyAndPatchMenu, cursor::Int64, lastpos::Int64)
+function annotated_code_native_with_newlines(menu::CopyAndPatchMenu, cursor::Int64)
     N = length(menu.mc.codeinfo.code)
-    next = min(N,cursor+1)
-    if cursor < N
-        menu.selected = next
-        n = min(N,menu.pagesize)+menu.nheader-1
-        println(stdout, '\n'^(menu.nheader-1), annotated_code_native(menu, next), '\n'^n)
-    end
-    next
+    n = min(N,menu.pagesize)+menu.nheader-1
+    println(stdout, '\n'^(menu.nheader-1), annotated_code_native(menu, cursor), '\n'^n)
 end
-function TerminalMenus.move_up!(menu::CopyAndPatchMenu, cursor::Int64, lastpos::Int64)
-    N = length(menu.mc.codeinfo.code)
-    next = max(1,cursor-1)
-    if cursor > 1
-        menu.selected = next
-        n = min(N,menu.pagesize)+menu.nheader-1
-        println(stdout, '\n'^(menu.nheader-1), annotated_code_native(menu, next), '\n'^n)
+
+function TerminalMenus.move_down!(menu::CopyAndPatchMenu, cursor::Int64, lastoption::Int64)
+    # from stdlib/REPL/TerminalMenus/AbstractMenu.jl
+    if cursor < lastoption
+        cursor += 1 # move selection down
+        pagepos = menu.pagesize + menu.pageoffset
+        if pagepos <= cursor && pagepos < lastoption
+            menu.pageoffset += 1 # scroll page down
+        end
+    elseif TerminalMenus.scroll_wrap(menu)
+        # wrap to top
+        cursor = 1
+        menu.pageoffset = 0
     end
-    next
+    if cursor != menu.selected
+        menu.selected = cursor
+        annotated_code_native_with_newlines(menu, cursor)
+    end
+    cursor
+end
+function TerminalMenus.move_up!(menu::CopyAndPatchMenu, cursor::Int64, lastoption::Int64)
+    # from stdlib/REPL/TerminalMenus/AbstractMenu.jl
+    if cursor > 1
+        cursor -= 1 # move selection up
+        if cursor < (2+menu.pageoffset) && menu.pageoffset > 0
+            menu.pageoffset -= 1 # scroll page up
+        end
+    elseif TerminalMenus.scroll_wrap(menu)
+        # wrap to bottom
+        cursor = lastoption
+        menu.pageoffset = max(0, lastoption - menu.pagesize)
+    end
+    if cursor != menu.selected
+        menu.selected = cursor
+        annotated_code_native_with_newlines(menu, cursor)
+    end
+    cursor
 end
 
 function TerminalMenus.pick(menu::CopyAndPatchMenu, cursor::Int)
@@ -572,7 +601,7 @@ end
 function TerminalMenus.writeline(buf::IOBuffer, menu::CopyAndPatchMenu, idx::Int, iscursor::Bool)
     ioc = IOContext(buf, stdout)
     sidx = format(menu.ip_fmt, idx)
-    if idx == menu.selected
+    if iscursor
         printstyled(ioc, sidx, " | ", menu.options[idx], bold=true, color=:green)
     else
         print(ioc, sidx, " | ", menu.options[idx])
@@ -583,14 +612,10 @@ end
 function TerminalMenus.keypress(menu::CopyAndPatchMenu, key::UInt32)
     if key == UInt32('s')
         menu.syntax = (menu.syntax === :intel) ? :att : :intel
-        idx = menu.selected
-        TerminalMenus.move_down!(menu, idx-1)
-        menu.selected = idx
+        annotated_code_native_with_newlines(menu, menu.selected)
     elseif key == UInt32('r')
         menu.print_relocs ⊻= true
-        idx = menu.selected
-        TerminalMenus.move_down!(menu, idx-1)
-        menu.selected = idx
+        annotated_code_native_with_newlines(menu, menu.selected)
     end
     return false
 end
