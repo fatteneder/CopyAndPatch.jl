@@ -383,22 +383,24 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
     end
 end
 
+default_terminal() = REPL.LineEdit.terminal(Base.active_repl)
 
 code_native(code::AbstractVector; syntax=:intel) = code_native(UInt8.(code); syntax)
 code_native(code::Vector{UInt8}; syntax=:intel) = code_native(stdout, code; syntax)
-function code_native(mc::MachineCode; syntax=:intel)
-    io = IOBuffer()
-    ioc = IOContext(io, stdout) # to kepp the colors!!
-    starts = mc.stencil_starts
-    nstarts = length(starts)
-    for i in 1:nstarts
-        rng = starts[i]:(i < nstarts ? starts[i+1] : length(mc.buf))
-        st = view(mc.buf, rng)
-        ex = mc.codeinfo.code[i]
-        println(ioc, ex)
-        native = code_native(ioc, st; syntax)
+function code_native(mc::MachineCode; syntax=:intel, interactive=false)
+    if interactive
+        menu = CopyAndPatchMenu(mc, syntax)
+        term = default_terminal()
+        TerminalMenus.request(term, "", menu; cursor=1)
+    else
+        io = IOBuffer()
+        ioc = IOContext(io, stdout) # to kepp the colors!!
+        for i in 1:length(mc.codeinfo.code)
+            _code_native!(ioc, mc, i; syntax)
+        end
+        println(stdout, String(take!(io)))
     end
-    println(stdout, String(take!(io)))
+    nothing
 end
 function code_native(io::IO, code::AbstractVector{UInt8}; syntax=:intel)
     if syntax === :intel
@@ -426,4 +428,87 @@ function code_native(io::IO, code::AbstractVector{UInt8}; syntax=:intel)
     #   add     byte ptr [rax], al
     # whenever there are just zeros. Is that a bug?
     print_native(io, str_out)
+end
+function _code_native!(io::IO, mc::MachineCode, iex::Int64; syntax=:intel)
+    starts = mc.stencil_starts
+    nstarts = length(starts)
+    rng = starts[iex]:(iex < nstarts ? starts[iex+1] : length(mc.buf))
+    st = view(mc.buf, rng)
+    ex = mc.codeinfo.code[iex]
+    printstyled(io, ex, '\n', bold=true, color=:green)
+    native = code_native(io, st; syntax)
+    return length(rng)
+end
+
+
+
+mutable struct CopyAndPatchMenu{T_MC<:MachineCode} <: TerminalMenus.ConfiguredMenu{TerminalMenus.Config}
+    mc::T_MC
+    syntax::Symbol
+    options::Vector{String}
+    selected::Int
+    pagesize::Int
+    pageoffset::Int
+    config::TerminalMenus.Config
+end
+
+function CopyAndPatchMenu(mc, syntax; kwargs...)
+    config = TerminalMenus.Config(; kwargs...)
+    options = string.(mc.codeinfo.code)
+    pagesize = 10
+    pageoffset = 0
+    CopyAndPatchMenu(mc, syntax, options, 1, pagesize, pageoffset, config)
+end
+
+TerminalMenus.options(m::CopyAndPatchMenu) = m.options
+TerminalMenus.cancel(m::CopyAndPatchMenu) = m.selected = -1
+function TerminalMenus.move_down!(menu::CopyAndPatchMenu, cursor::Int64, lastpos::Int64)
+    N = length(menu.mc.codeinfo.code)
+    n = min(N,menu.pagesize)
+    next = min(N,cursor+1)
+    if cursor < N
+        menu.selected = next
+        io = IOBuffer()
+        ioc = IOContext(io, stdout)
+        print(ioc, '\n'^2)
+        _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax)
+        print(ioc, '\n'^n)
+        println(stdout, String(take!(io)))
+    end
+    next
+end
+function TerminalMenus.move_up!(menu::CopyAndPatchMenu, cursor::Int64, lastpos::Int64)
+    N = length(menu.mc.codeinfo.code)
+    n = min(N,menu.pagesize)
+    next = max(1,cursor-1)
+    if cursor > 1
+        menu.selected = next
+        io = IOBuffer()
+        ioc = IOContext(io, stdout)
+        print(ioc, '\n'^2)
+        _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax)
+        print(ioc, '\n'^n)
+        println(stdout, String(take!(io)))
+    end
+    next
+end
+
+function TerminalMenus.pick(menu::CopyAndPatchMenu, cursor::Int)
+    menu.selected = cursor
+    return false
+end
+
+function TerminalMenus.header(menu::CopyAndPatchMenu)
+    """
+    Scroll through expressions for analysis (q to quit):
+    """
+end
+
+function TerminalMenus.writeline(buf::IOBuffer, menu::CopyAndPatchMenu, idx::Int, iscursor::Bool)
+    ioc = IOContext(buf, stdout)
+    if idx == menu.selected
+        printstyled(ioc, menu.options[idx], bold=true, color=:green)
+    else
+        print(ioc, menu.options[idx])
+    end
 end

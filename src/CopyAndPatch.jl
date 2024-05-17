@@ -9,6 +9,9 @@ import JSON: parsefile
 import Libffi_jll: libffi_handle, libffi_path
 import Mmap: mmap
 import Printf: Format, format
+import REPL
+import REPL: TerminalMenus
+
 
 
 export jit
