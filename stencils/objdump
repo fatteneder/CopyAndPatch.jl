@@ -1,4 +1,3 @@
 #!/usr/bin/env bash
 
-# llvm-objdump --full-contents --disassemble-all --reloc $1
 llvm-objdump --disassemble --reloc $1

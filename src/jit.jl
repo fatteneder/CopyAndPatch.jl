@@ -31,6 +31,7 @@ end
 
 function patch_default_deps!(bvec::ByteVector, bvec_data::ByteVector, s::StencilGroup)
     holes = s.code.relocations
+    patched = Hole[]
     for h in holes
         # TODO Is there a list of intrinsics which I can skip here?
         # Shall we use _JIT_ENTRY here?
@@ -54,6 +55,10 @@ function patch_default_deps!(bvec::ByteVector, bvec_data::ByteVector, s::Stencil
             dlsym(libc[], h.symbol)
         end
         bvec[h.offset+1] = ptr
+        push!(patched, h)
+    end
+    filter!(holes) do h
+        !(h in patched)
     end
 end
 
@@ -385,24 +390,25 @@ end
 
 default_terminal() = REPL.LineEdit.terminal(Base.active_repl)
 
-code_native(code::AbstractVector; syntax=:intel) = code_native(UInt8.(code); syntax)
-code_native(code::Vector{UInt8}; syntax=:intel) = code_native(stdout, code; syntax)
-function code_native(mc::MachineCode; syntax=:intel, interactive=false)
+code_native(code::AbstractVector; syntax::Symbol=:intel, color::Bool=true) = code_native(UInt8.(code); syntax, color)
+code_native(code::Vector{UInt8};  syntax::Symbol=:intel, color::Bool=true) = code_native(stdout, code; syntax, color)
+function code_native(mc::MachineCode; syntax::Symbol=:intel, interactive::Bool=false, color::Bool=true)
     if interactive
         menu = CopyAndPatchMenu(mc, syntax)
         term = default_terminal()
-        TerminalMenus.request(term, "", menu; cursor=1)
+        print('\n', annotated_code_native(menu, 1), '\n')
+        TerminalMenus.request(term, menu; cursor=1)
     else
         io = IOBuffer()
         ioc = IOContext(io, stdout) # to kepp the colors!!
         for i in 1:length(mc.codeinfo.code)
-            _code_native!(ioc, mc, i; syntax)
+            _code_native!(ioc, mc, i; syntax, color)
         end
         println(stdout, String(take!(io)))
     end
     nothing
 end
-function code_native(io::IO, code::AbstractVector{UInt8}; syntax=:intel)
+function code_native(io::IO, code::AbstractVector{UInt8}; syntax::Symbol=:intel, color::Bool=true)
     if syntax === :intel
         variant = 1
     elseif syntax === :att
@@ -415,7 +421,7 @@ function code_native(io::IO, code::AbstractVector{UInt8}; syntax=:intel)
     # TODO src/disasm.cpp also exports exports a disassembler which is based on llvm-mc
     # jl_value_t *jl_dump_fptr_asm_impl(uint64_t fptr, char emit_mc, const char* asm_variant, const char *debuginfo, char binary)
     # maybe we can repurpose that to avoid the extra llvm-mc dependence?
-    cmd = `llvm-mc --disassemble --triple=$(Sys.MACHINE) --output-asm-variant=$variant`
+    cmd = `llvm-mc --disassemble --output-asm-variant=$variant --print-imm-hex`
     pipe = pipeline(cmd, stdout=out, stderr=err)
     open(pipe, "w", stdin) do p
         println(p, codestr)
@@ -427,17 +433,19 @@ function code_native(io::IO, code::AbstractVector{UInt8}; syntax=:intel)
     # TODO print_native outputs a place holder expression like
     #   add     byte ptr [rax], al
     # whenever there are just zeros. Is that a bug?
-    print_native(io, str_out)
+    color ? print_native(io, str_out) : print(io, str_out)
 end
-function _code_native!(io::IO, mc::MachineCode, iex::Int64; syntax=:intel)
+function _code_native!(io::IO, mc::MachineCode, i::Int64; syntax::Symbol=:intel, color::Bool=true)
     starts = mc.stencil_starts
     nstarts = length(starts)
-    rng = starts[iex]:(iex < nstarts ? starts[iex+1] : length(mc.buf))
-    st = view(mc.buf, rng)
-    ex = mc.codeinfo.code[iex]
-    printstyled(io, ex, '\n', bold=true, color=:green)
-    native = code_native(io, st; syntax)
-    return length(rng)
+    rng = starts[i]:(i < nstarts ? starts[i+1] : length(mc.buf))
+    stencil = view(mc.buf, rng)
+    ex = mc.codeinfo.code[i]
+    _code_native!(io, ex, stencil, i; syntax, color)
+end
+@inline function _code_native!(io::IO, ex, stencil, i; syntax::Symbol=:intel, color::Bool=true)
+    printstyled(io, i, ' ', ex, '\n', bold=true, color=:green)
+    code_native(io, stencil; syntax, color)
 end
 
 
@@ -449,6 +457,10 @@ mutable struct CopyAndPatchMenu{T_MC<:MachineCode} <: TerminalMenus.ConfiguredMe
     selected::Int
     pagesize::Int
     pageoffset::Int
+    ip_col_width::Int
+    ip_fmt::Format
+    nheader::Int
+    print_relocs::Bool
     config::TerminalMenus.Config
 end
 
@@ -457,38 +469,77 @@ function CopyAndPatchMenu(mc, syntax; kwargs...)
     options = string.(mc.codeinfo.code)
     pagesize = 10
     pageoffset = 0
-    CopyAndPatchMenu(mc, syntax, options, 1, pagesize, pageoffset, config)
+    ip_col_width = max(ndigits(length(options)),2)
+    ip_fmt = Format("%-$(ip_col_width)d")
+    nheader = 0
+    print_relocs = true
+    menu = CopyAndPatchMenu(mc, syntax, options, 1, pagesize, pageoffset,
+                            ip_col_width, ip_fmt, nheader, print_relocs, config)
+    header = TerminalMenus.header(menu)
+    menu.nheader = countlines(IOBuffer(header))
+    return menu
 end
 
 TerminalMenus.options(m::CopyAndPatchMenu) = m.options
 TerminalMenus.cancel(m::CopyAndPatchMenu) = m.selected = -1
+function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
+    io = IOBuffer()
+    ioc = IOContext(io, stdout)
+    _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax)
+    code = String(take!(io))
+    if menu.print_relocs
+        # this is a hacky way to relocate the _JIT_* patches in the native code output
+        # we are given formatted and colored native code of a patched stencil: code
+        # we compute the native code of an unpatched stencil (only _JIT_* args are unpatched): unpatched_code
+        # we compare code vs unpatched_code line by line, and every mismatch is a line where we patched
+        stencilinfo, buf, _ = get_stencil(menu.mc.codeinfo.code[cursor])
+        relocs = stencilinfo.code.relocations
+        ex = menu.mc.codeinfo.code[cursor]
+        _code_native!(ioc, ex, buf, cursor; syntax=menu.syntax)
+        # we use uncolored code_native output to ignore ansii color codes, need for
+        # correct computation of the max line width
+        unpatched_code = String(take!(io))
+        _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, color=false)
+        uncolored_code = String(take!(io))
+        max_w = maximum(eachline(IOBuffer(uncolored_code))) do line
+            ncodeunits(line)
+        end
+        nreloc = 1
+        for (i,(uc_line, line, line_up)) in enumerate(zip(eachline(IOBuffer(uncolored_code)),
+                                                          eachline(IOBuffer(code)),
+                                                          eachline(IOBuffer(unpatched_code))))
+            w = ncodeunits(uc_line)
+            Δw = max_w - w
+            print(ioc, line)
+            if line == line_up
+                print(ioc, '\n')
+            else
+                @assert nreloc <= length(relocs) "relocation might have failed"
+                printstyled(ioc, ' '^Δw, "    # $(relocs[nreloc].symbol)\n", color=:light_blue)
+                nreloc += 1
+            end
+        end
+        code = String(take!(io))
+    end
+    return code
+end
 function TerminalMenus.move_down!(menu::CopyAndPatchMenu, cursor::Int64, lastpos::Int64)
     N = length(menu.mc.codeinfo.code)
-    n = min(N,menu.pagesize)
     next = min(N,cursor+1)
     if cursor < N
         menu.selected = next
-        io = IOBuffer()
-        ioc = IOContext(io, stdout)
-        print(ioc, '\n'^2)
-        _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax)
-        print(ioc, '\n'^n)
-        println(stdout, String(take!(io)))
+        n = min(N,menu.pagesize)+menu.nheader-1
+        println(stdout, '\n'^(menu.nheader-1), annotated_code_native(menu, next), '\n'^n)
     end
     next
 end
 function TerminalMenus.move_up!(menu::CopyAndPatchMenu, cursor::Int64, lastpos::Int64)
     N = length(menu.mc.codeinfo.code)
-    n = min(N,menu.pagesize)
     next = max(1,cursor-1)
     if cursor > 1
         menu.selected = next
-        io = IOBuffer()
-        ioc = IOContext(io, stdout)
-        print(ioc, '\n'^2)
-        _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax)
-        print(ioc, '\n'^n)
-        println(stdout, String(take!(io)))
+        n = min(N,menu.pagesize)+menu.nheader-1
+        println(stdout, '\n'^(menu.nheader-1), annotated_code_native(menu, next), '\n'^n)
     end
     next
 end
@@ -499,16 +550,47 @@ function TerminalMenus.pick(menu::CopyAndPatchMenu, cursor::Int)
 end
 
 function TerminalMenus.header(menu::CopyAndPatchMenu)
+    io = IOBuffer(); ioc = IOContext(io, stdout)
+    printstyled(ioc, 'q', color=:light_red, bold=true)
+    q_str = String(take!(io))
+    printstyled(ioc, 's', bold=true,
+                color = menu.syntax === :intel ? :light_magenta : :light_yellow)
+    s_str = String(take!(io))
+    printstyled(ioc, menu.syntax,
+                color = menu.syntax === :intel ? :light_magenta : :light_yellow)
+    syntax_str = String(take!(io))
+    printstyled(ioc, 'r', bold=true,
+                color = menu.print_relocs ? :light_blue : :none)
+    r_str = String(take!(io))
     """
-    Scroll through expressions for analysis (q to quit):
+    Scroll through expressions for analysis:
+    [$q_str]uit, [$s_str]yntax = $(syntax_str), [$r_str]elocations
+       ip$('n'^(menu.ip_col_width-2)) | SSA
     """
 end
 
 function TerminalMenus.writeline(buf::IOBuffer, menu::CopyAndPatchMenu, idx::Int, iscursor::Bool)
     ioc = IOContext(buf, stdout)
+    sidx = format(menu.ip_fmt, idx)
     if idx == menu.selected
-        printstyled(ioc, menu.options[idx], bold=true, color=:green)
+        printstyled(ioc, sidx, " | ", menu.options[idx], bold=true, color=:green)
     else
-        print(ioc, menu.options[idx])
+        print(ioc, sidx, " | ", menu.options[idx])
     end
+end
+
+
+function TerminalMenus.keypress(menu::CopyAndPatchMenu, key::UInt32)
+    if key == UInt32('s')
+        menu.syntax = (menu.syntax === :intel) ? :att : :intel
+        idx = menu.selected
+        TerminalMenus.move_down!(menu, idx-1)
+        menu.selected = idx
+    elseif key == UInt32('r')
+        menu.print_relocs ⊻= true
+        idx = menu.selected
+        TerminalMenus.move_down!(menu, idx-1)
+        menu.selected = idx
+    end
+    return false
 end
