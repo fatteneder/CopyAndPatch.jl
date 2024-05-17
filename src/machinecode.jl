@@ -1,18 +1,22 @@
-struct MachineCode{RetType,ArgTypes}
+mutable struct MachineCode{RetType,ArgTypes}
     buf::Vector{UInt8}
     gc_roots::Vector{Any}
+    # TODO Remove union
+    codeinfo::Union{Nothing,CodeInfo}
+    stencil_starts::Vector{Int64}
+
     function MachineCode(bvec::ByteVector, @nospecialize(rettype::Type{T}), argtypes::NTuple{N,DataType},
                          gc_roots::Vector{Any}=Any[]) where {T,N}
         rt = rettype <: Union{} ? Nothing : rettype
         buf = mmap(Vector{UInt8}, length(bvec), shared=false, exec=true)
         copy!(buf, bvec)
-        new{rt,Tuple{argtypes...}}(buf, gc_roots)
+        new{rt,Tuple{argtypes...}}(buf, gc_roots, nothing, Int64[])
     end
     function MachineCode(sz::Integer, @nospecialize(rettype::Type{T}), argtypes::NTuple{N,DataType},
                          gc_roots::Vector{Any}=Any[]) where {T,N}
         rt = rettype <: Union{} ? Nothing : rettype
         buf = mmap(Vector{UInt8}, sz, shared=false, exec=true)
-        new{rt,Tuple{argtypes...}}(buf, gc_roots)
+        new{rt,Tuple{argtypes...}}(buf, gc_roots, nothing, Int64[])
     end
 end
 MachineCode(bvec, rettype, argtypes, gc_roots::Vector{Any}=Any[]) =

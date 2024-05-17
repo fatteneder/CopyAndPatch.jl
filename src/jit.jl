@@ -104,10 +104,11 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     mc = MachineCode(code_size, rettype, argtypes)
     memory, gc_roots = mc.buf, mc.gc_roots
     push!(gc_roots, slots, ssas, static_prms)
-    # memory = mmap(Vector{UInt8}, code_size, shared=false, exec=true)
-    # memory = mmap(Vector{UInt8}, code_size+data_size, shared=false, exec=true)
-    # bvec_code = view(memory, 1:code_size)
-    # bvec_data = view(memory, code_size+1:code_size+data_size)
+    mc.stencil_starts = stencil_starts
+    mc.codeinfo = codeinfo
+    @show stencil_starts
+    # bvec_code = view(mc.buf, 1:code_size)
+    # bvec_data = view(mc.buf, code_size+1:code_size+data_size)
     for (ip,ex) in enumerate(codeinfo.code)
         emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, gc_roots, used_rets, ex)
     end
@@ -385,8 +386,21 @@ end
 
 code_native(code::AbstractVector; syntax=:intel) = code_native(UInt8.(code); syntax)
 code_native(code::Vector{UInt8}; syntax=:intel) = code_native(stdout, code; syntax)
-code_native(mc::MachineCode; syntax=:intel) = code_native(mc.buf; syntax)
-function code_native(io::IO, code::Vector{UInt8}; syntax=:intel)
+function code_native(mc::MachineCode; syntax=:intel)
+    io = IOBuffer()
+    ioc = IOContext(io, stdout) # to kepp the colors!!
+    starts = mc.stencil_starts
+    nstarts = length(starts)
+    for i in 1:nstarts
+        rng = starts[i]:(i < nstarts ? starts[i+1] : length(mc.buf))
+        st = view(mc.buf, rng)
+        ex = mc.codeinfo.code[i]
+        println(ioc, ex)
+        native = code_native(ioc, st; syntax)
+    end
+    println(stdout, String(take!(io)))
+end
+function code_native(io::IO, code::AbstractVector{UInt8}; syntax=:intel)
     if syntax === :intel
         variant = 1
     elseif syntax === :att
