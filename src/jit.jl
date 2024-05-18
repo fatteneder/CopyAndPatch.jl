@@ -390,11 +390,13 @@ end
 
 default_terminal() = REPL.LineEdit.terminal(Base.active_repl)
 
-code_native(code::AbstractVector; syntax::Symbol=:intel, color::Bool=true) = code_native(UInt8.(code); syntax, color)
-code_native(code::Vector{UInt8};  syntax::Symbol=:intel, color::Bool=true) = code_native(stdout, code; syntax, color)
-function code_native(mc::MachineCode; syntax::Symbol=:intel, interactive::Bool=false, color::Bool=true)
+code_native(code::AbstractVector; kwargs...) = code_native(UInt8.(code); kwargs...)
+code_native(code::Vector{UInt8};  kwargs...) = code_native(stdout, code; kwargs...)
+function code_native(mc::MachineCode;
+                     syntax::Symbol=:intel, interactive::Bool=false, color::Bool=true,
+                     hex_for_imm::Bool=true)
     if interactive
-        menu = CopyAndPatchMenu(mc, syntax)
+        menu = CopyAndPatchMenu(mc, syntax, hex_for_imm)
         term = default_terminal()
         print('\n', annotated_code_native(menu, 1), '\n')
         TerminalMenus.request(term, menu; cursor=1)
@@ -402,13 +404,14 @@ function code_native(mc::MachineCode; syntax::Symbol=:intel, interactive::Bool=f
         io = IOBuffer()
         ioc = IOContext(io, stdout) # to kepp the colors!!
         for i in 1:length(mc.codeinfo.code)
-            _code_native!(ioc, mc, i; syntax, color)
+            _code_native!(ioc, mc, i; syntax, color, hex_for_imm)
         end
         println(stdout, String(take!(io)))
     end
     nothing
 end
-function code_native(io::IO, code::AbstractVector{UInt8}; syntax::Symbol=:intel, color::Bool=true)
+function code_native(io::IO, code::AbstractVector{UInt8};
+                     syntax::Symbol=:intel, color::Bool=true, hex_for_imm::Bool=true)
     if syntax === :intel
         variant = 1
     elseif syntax === :att
@@ -421,7 +424,11 @@ function code_native(io::IO, code::AbstractVector{UInt8}; syntax::Symbol=:intel,
     # TODO src/disasm.cpp also exports exports a disassembler which is based on llvm-mc
     # jl_value_t *jl_dump_fptr_asm_impl(uint64_t fptr, char emit_mc, const char* asm_variant, const char *debuginfo, char binary)
     # maybe we can repurpose that to avoid the extra llvm-mc dependence?
-    cmd = `llvm-mc --disassemble --output-asm-variant=$variant --print-imm-hex`
+    if hex_for_imm
+        cmd = `llvm-mc --disassemble --output-asm-variant=$variant --print-imm-hex`
+    else
+        cmd = `llvm-mc --disassemble --output-asm-variant=$variant`
+    end
     pipe = pipeline(cmd, stdout=out, stderr=err)
     open(pipe, "w", stdin) do p
         println(p, codestr)
@@ -435,17 +442,19 @@ function code_native(io::IO, code::AbstractVector{UInt8}; syntax::Symbol=:intel,
     # whenever there are just zeros. Is that a bug?
     color ? print_native(io, str_out) : print(io, str_out)
 end
-function _code_native!(io::IO, mc::MachineCode, i::Int64; syntax::Symbol=:intel, color::Bool=true)
+function _code_native!(io::IO, mc::MachineCode, i::Int64;
+                       syntax::Symbol=:intel, color::Bool=true, hex_for_imm::Bool=true)
     starts = mc.stencil_starts
     nstarts = length(starts)
     rng = starts[i]:(i < nstarts ? starts[i+1] : length(mc.buf))
     stencil = view(mc.buf, rng)
     ex = mc.codeinfo.code[i]
-    _code_native!(io, ex, stencil, i; syntax, color)
+    _code_native!(io, ex, stencil, i; syntax, color, hex_for_imm)
 end
-@inline function _code_native!(io::IO, ex, stencil, i; syntax::Symbol=:intel, color::Bool=true)
+@inline function _code_native!(io::IO, ex, stencil, i;
+                               syntax::Symbol=:intel, color::Bool=true, hex_for_imm::Bool=true)
     printstyled(io, i, ' ', ex, '\n', bold=true, color=:green)
-    code_native(io, stencil; syntax, color)
+    code_native(io, stencil; syntax, color, hex_for_imm)
 end
 
 
@@ -453,6 +462,7 @@ end
 mutable struct CopyAndPatchMenu{T_MC<:MachineCode} <: TerminalMenus.ConfiguredMenu{TerminalMenus.Config}
     mc::T_MC
     syntax::Symbol
+    hex_for_imm::Bool
     options::Vector{String}
     selected::Int
     pagesize::Int
@@ -464,7 +474,7 @@ mutable struct CopyAndPatchMenu{T_MC<:MachineCode} <: TerminalMenus.ConfiguredMe
     config::TerminalMenus.Config
 end
 
-function CopyAndPatchMenu(mc, syntax)
+function CopyAndPatchMenu(mc, syntax, hex_for_imm)
     config = TerminalMenus.Config(scroll_wrap=true)
     options = string.(mc.codeinfo.code)
     pagesize = 10
@@ -473,7 +483,7 @@ function CopyAndPatchMenu(mc, syntax)
     ip_fmt = Format("%-$(ip_col_width)d")
     nheader = 0
     print_relocs = true
-    menu = CopyAndPatchMenu(mc, syntax, options, 1, pagesize, pageoffset,
+    menu = CopyAndPatchMenu(mc, syntax, hex_for_imm, options, 1, pagesize, pageoffset,
                             ip_col_width, ip_fmt, nheader, print_relocs, config)
     header = TerminalMenus.header(menu)
     menu.nheader = countlines(IOBuffer(header))
@@ -485,7 +495,7 @@ TerminalMenus.cancel(m::CopyAndPatchMenu) = m.selected = -1
 function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
     io = IOBuffer()
     ioc = IOContext(io, stdout)
-    _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax)
+    _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, hex_for_imm=menu.hex_for_imm)
     code = String(take!(io))
     if menu.print_relocs
         # this is a hacky way to relocate the _JIT_* patches in the native code output
@@ -497,9 +507,9 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
         ex = menu.mc.codeinfo.code[cursor]
         # we use uncolored code_native output to ignore ansii color codes, needed for
         # correct computation of max line width
-        _code_native!(ioc, ex, buf, cursor; syntax=menu.syntax, color=false)
+        _code_native!(ioc, ex, buf, cursor; syntax=menu.syntax, color=false, hex_for_imm=menu.hex_for_imm)
         unpatched_code = String(take!(io))
-        _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, color=false)
+        _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, color=false, hex_for_imm=menu.hex_for_imm)
         uncolored_code = String(take!(io))
         max_w = maximum(split(uncolored_code,'\n')[2:end]) do line
             # ignore first line which contains the SSA expression
@@ -590,9 +600,12 @@ function TerminalMenus.header(menu::CopyAndPatchMenu)
     printstyled(ioc, 'r', bold=true,
                 color = menu.print_relocs ? :light_blue : :none)
     r_str = String(take!(io))
+    printstyled(ioc, 'h', bold=true,
+                color = menu.hex_for_imm ? :light_blue : :none)
+    h_str = String(take!(io))
     """
     Scroll through expressions for analysis:
-    [$q_str]uit, [$s_str]yntax = $(syntax_str), [$r_str]elocations
+    [$q_str]uit, [$s_str]yntax = $(syntax_str), [$r_str]elocations, [$h_str]ex for immediate values
        ip$('n'^(menu.ip_col_width-2)) | SSA
     """
 end
@@ -614,6 +627,9 @@ function TerminalMenus.keypress(menu::CopyAndPatchMenu, key::UInt32)
         annotated_code_native_with_newlines(menu, menu.selected)
     elseif key == UInt32('r')
         menu.print_relocs ⊻= true
+        annotated_code_native_with_newlines(menu, menu.selected)
+    elseif key == UInt32('h')
+        menu.hex_for_imm ⊻= true
         annotated_code_native_with_newlines(menu, menu.selected)
     end
     return false
