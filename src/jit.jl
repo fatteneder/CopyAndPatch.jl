@@ -191,6 +191,9 @@ function box_arg(a, slots, ssas, static_prms)
             push!(static_prms, pointer_from_objref(a))
         elseif a isa Nothing
             push!(static_prms, dlsym(libjulia[], :jl_nothing))
+        elseif a isa Tuple
+            push!(static_prms, value_pointer(a))
+            @show a, static_prms[end]
         else
             TODO(a)
         end
@@ -290,23 +293,18 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
             end
             patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",  retbox)
             patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT", pointer(memory, stencil_starts[ip+1]))
-        elseif fn isa Function
-            @assert iscallable(fn)
-            fn_ptr = pointer_from_function(fn)
-            ex_args = ex.args[2:end]
-            nargs = length(ex_args)
-            boxes = box_args(ex_args, slots, ssas, static_prms)
+        elseif iscallable(fn)
+            nargs = length(ex.args)
+            boxes = box_args(ex.args, slots, ssas, static_prms)
             append!(preserve, boxes)
             retbox = ip in used_rets ? pointer(ssas, ip) : C_NULL
-            @assert retbox !== C_NULL
             st, bvec, _ = stencils["ast_call"]
-            TODO()
             copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
             patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
-            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_FN",      pointer_from_function(fn))
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",      ip)
             patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS",   nargs)
             patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",     retbox)
-            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RETUSED", Cint(ip in used_rets))
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RETUSED", Int64(ip in used_rets))
             patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",    pointer(memory, stencil_starts[ip+1]))
         else
             TODO(fn)

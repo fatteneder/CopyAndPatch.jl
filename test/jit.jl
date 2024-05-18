@@ -137,3 +137,19 @@ end
         rethrow(e)
     end
 end
+
+@testset ":foreign node" begin
+    function mytuple(n::Int64)
+        tpl = (n,2*n)
+        return tpl
+    end
+    try
+        expected = mytuple(3)
+        mc = jit(mytuple, (Int64,))
+        ret = CopyAndPatch.call(mc, 3)
+        @test ret == expected
+    catch e
+        @error "Failed mytuple(::Int64)"
+        rethrow(e)
+    end
+end
