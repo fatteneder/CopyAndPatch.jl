@@ -505,7 +505,7 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
             # ignore first line which contains the SSA expression
             ncodeunits(repr(line))
         end
-        nreloc = 1
+        nreloc = 0
         for (i,(uc_line, line, up_line)) in enumerate(zip(eachline(IOBuffer(uncolored_code)),
                                                           eachline(IOBuffer(code)),
                                                           eachline(IOBuffer(unpatched_code))))
@@ -515,14 +515,13 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
             if uc_line == up_line
                 print(ioc, '\n')
             else
-                printstyled(ioc, ' '^Δw, "    # $(relocs[nreloc].symbol)\n", color=:light_blue)
-                nreloc == length(relocs) && break
                 nreloc += 1
+                printstyled(ioc, ' '^Δw, "    # $(relocs[nreloc].symbol)\n", color=:light_blue)
             end
         end
-        if nreloc > length(relocs)
+        if nreloc != length(relocs)
             println()
-            @warn "relocation has likely failed"
+            @warn "relocation is likely wrong, found $nreloc but expected $(length(relocs)))"
             println()
         end
         code = String(take!(io))
