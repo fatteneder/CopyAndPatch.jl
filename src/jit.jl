@@ -526,13 +526,19 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
                 print(ioc, '\n')
             else
                 nreloc += 1
-                printstyled(ioc, ' '^Δw, "    # $(relocs[nreloc].symbol)\n", color=:light_blue)
+                if nreloc <= length(relocs)
+                    printstyled(ioc, ' '^Δw, "    # $(relocs[nreloc].symbol)\n", color=:light_blue)
+                else
+                    println(ioc)
+                end
             end
         end
         if nreloc != length(relocs)
-            println()
-            @warn "relocation is likely wrong, found $nreloc but expected $(length(relocs)))"
-            println()
+            s = SimpleLogger(ioc)
+            with_logger(s) do
+                println(ioc)
+                @error "relocation is wrong, found $nreloc but expected $(length(relocs))"
+            end
         end
         code = String(take!(io))
     end
