@@ -6,6 +6,7 @@ let
 
 Drawing(600, 600, joinpath(@__DIR__, "logo.png"))
 origin()
+# background("white")
 
 center = Point(gettranslation())
 
@@ -34,7 +35,7 @@ circle(gray_pt_green, jl_radius, action = :fill)
     circle(O, jl_radius, action = :clip)
     lw, N = 10, 10
     dir = Point(0,1)
-    setcolor("green4")
+    setcolor(sethue("darkgreen")...,0.6)
     rotate(-π*2/5)
     for i = -N:N
       box(O+dir*lw*2*i, 400, lw, action=:fill)
@@ -57,7 +58,7 @@ end
     w, h = 20, 20
     dx, dy = Point(w,0), Point(0,h)
     Nx, Ny = 10, 10
-    setcolor("red4")
+    setcolor(sethue("red4")...,0.5)
     rotate(-π*3/5)
     for ix = -Nx:Nx, iy=-Ny:Ny
       isodd(ix) && isodd(iy) && continue
@@ -74,30 +75,32 @@ end
     origin(p)
     circle(O, jl_radius, action = :fill)
     circle(O, jl_radius, action = :clip)
-    dx, dy = Point(20,0), Point(0,20)
+    dx, dy = Point(25,0), Point(0,25)
     Nx, Ny = 10, 10
-    setcolor("purple4")
+    setcolor(sethue("purple4")...,0.5)
     rotate(-π*6/5)
     for ix = -Nx:Nx, iy = -Ny:Ny
       isodd(ix) && isodd(iy) && continue
       iseven(ix) && iseven(iy) && continue
-      circle(O+dx*ix+dy*iy, 8, action=:fill)
+      circle(O+dx*ix+dy*iy, 10, action=:fill)
     end
-    setcolor(sethue("yellow2")...,0.4)
+    setcolor(sethue("orchid1")...,0.5)
     for ix = -Nx:Nx, iy = -Ny:Ny
       isodd(ix) && isodd(iy) && continue
       iseven(ix) && iseven(iy) && continue
-      circle(O+dx*(1+ix)+dy*iy, 6, action=:fill)
+      circle(O+dx*(1+ix)+dy*iy, 8, action=:fill)
     end
     circle(O, jl_radius, action = :clip)
 end
 
 # stiches v2
-setcolor("black")
 setline(8)
 setlinecap(:round)
-for c in (patch_pt_red,patch_pt_purple,patch_pt_green)
-  ps = ngon(c, jl_radius, 12, rand((-π/3,π/3)), vertices=true)
+for (c,color) in ((patch_pt_red,"darkred"),
+                  (patch_pt_purple,"purple4"),
+                  (patch_pt_green,"darkgreen"))
+  setcolor(color)
+  ps = ngon(c, jl_radius, 20, rand((-π/3,π/3)), vertices=true)
   pp1 = ps[1]
   for p in ps
     dir = (c-p)/norm(c-p)
@@ -123,8 +126,9 @@ end
 # circle(p2, 10, action=:fill)
 # circle(p3, 10, action=:fill)
 
-setcolor("black")
-
+# setcolor("black")
+# setcolor("darkgray")
+setcolor("grey55")
 d = patch_pt_purple-gray_pt_purple
 dd = d/norm(d)
 pc = gray_pt_purple+d/2
