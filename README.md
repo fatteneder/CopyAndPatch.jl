@@ -1,4 +1,9 @@
-# CopyAndPatch.jl
+<p align="center">
+<img width="250px" src="./logo/logo.png" alt="CopyAndPatch.jl" />
+</p>
+<h1 align="center">
+CopyAndPatch.jl
+</h1>
 
 
 ## Preparing stencils
