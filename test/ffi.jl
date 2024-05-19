@@ -85,8 +85,16 @@ end
 
     cif = CopyAndPatch.Ffi_cif(Ptr{Cvoid}, (Csize_t,))
     fn = dlsym(handle, :mwe_jl_alloc_genericmemory)
+    res = CopyAndPatch.ffi_call(cif, fn, [Csize_t(15)])
+    result = unsafe_pointer_to_objref(res)
+    @test typeof(result) <: GenericMemory
+    @test length(result) == 15
+
+    cif = CopyAndPatch.Ffi_cif(GenericMemory, (Csize_t,))
+    fn = dlsym(handle, :mwe_jl_alloc_genericmemory)
     result = CopyAndPatch.ffi_call(cif, fn, [Csize_t(15)])
-    # TODO How to convert this to a julia type?
+    @test typeof(result) <: GenericMemory
+    @test length(result) == 15
 
     # test Cstring return types
     handle = dlopen(dlpath("libjulia.so"))

@@ -370,19 +370,38 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
         end
         # TODO Can we not move the allocation here into C? How can we teach the GC that
         # there is a new variable?
-        retval = Ref{rettype}()
-        ssas[ip] = Base.unsafe_convert(Ptr{Cvoid}, retval)
+        if rettype <: Ref
+            rettype = eltype(rettype)
+        end
+        retval = if !isbitstype(rettype)
+            # TODO I think this branch here requires ffi_call(..., ret, ...) in the stencil.
+            ssas[ip] = C_NULL
+            pointer(ssas, ip)
+        else
+            # TODO I think this branch here requires ffi_call(..., (*ret), ...) in the stencil.
+            retval = Ref{rettype}()
+            ssas[ip] = Base.unsafe_convert(Ptr{Cvoid}, retval)
+            retval
+        end
         push!(preserve, retval)
-        cif = Ffi_cif(rettype, argtypes)
+        cif = Ffi_cif(rettype, tuple(argtypes...))
         st, bvec, bvec2 = stencils["ast_foreigncall"]
-        @assert length(bvec2) == 0
-        handle = dlopen(libname[])
-        fptr = dlsym(handle, fname)
+        fptr = if isnothing(libname)
+            h = dlopen(dlpath("libjulia.so"))
+            p = dlsym(h, fname, throw_error=false)
+            if isnothing(p)
+                h = dlopen(dlpath("libjulia-internal.so"))
+                p = dlsym(h, fname)
+            end
+            p
+        else
+            dlsym(dlopen(libname[]), fname)
+        end
         copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",      ip)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
         patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CIF",     pointer(cif))
         patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_F",       fptr)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",      ip)
         patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS",   nargs)
         patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",     retbox)
         patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",    pointer(memory, stencil_starts[ip+1]))

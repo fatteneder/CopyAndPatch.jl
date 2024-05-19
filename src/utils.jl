@@ -136,10 +136,8 @@ const Ctypes = Union{Cchar,Cuchar,Cshort,Cstring,Cushort,Cint,Cuint,Clong,Culong
 function to_ffi_type(t)
     return if t <: Ctypes
         return ffi_type(t)
-    elseif ismutabletype(t) || t <: Ptr
-        return ffi_type(Ptr{Cvoid})
     else
-        TODO(t)
+        return ffi_type(Ptr{Cvoid})
     end
 end
 
@@ -147,11 +145,10 @@ end
 mutable struct Ffi_cif
     p::Ptr{Cvoid}
     rettype::Type
-    argtypes::Vector{DataType}
+    argtypes::Vector{Type}
     slots::Vector{Ptr{Cvoid}}
 
-    # https://www.chiark.greenend.org.uk/doc/libffi-dev/html/The-Basics.html
-    function Ffi_cif(@nospecialize(rettype::Type{T}), @nospecialize(argtypes::NTuple{N,DataType})) where {T,N}
+    function Ffi_cif(@nospecialize(rettype::Type{T}), @nospecialize(argtypes::NTuple{N,Type})) where {T,N}
         # TODO Do we need to hold onto ffi_rettype, ffi_argtypes for the lifetime of Ffi_cfi?
         ffi_rettype = to_ffi_type(rettype)
         if any(a -> a === Cvoid, argtypes)
@@ -163,13 +160,14 @@ mutable struct Ffi_cif
         p_cif = Libc.malloc(sz_cif)
         @assert p_cif !== C_NULL
         default_abi = @ccall libffihelpers_path[].get_ffi_default_abi()::Cint
+        # https://www.chiark.greenend.org.uk/doc/libffi-dev/html/The-Basics.html
         status = @ccall libffi_path.ffi_prep_cif(
                                 p_cif::Ptr{Cvoid}, default_abi::Cint, N::Cint,
                                 ffi_rettype::Ptr{Cvoid}, ffi_argtypes::Ptr{Ptr{Cvoid}}
                                 )::Cint
         if status == 0 # = FFI_OK
             slots = Vector{Ptr{Cvoid}}(undef, 2*N)
-            cif = new(p_cif, rettype, [ a for a in argtypes], slots)
+            cif = new(p_cif, T, [ a for a in argtypes ], slots)
             return finalizer(cif) do cif
                 if cif.p !== C_NULL
                     Libc.free(cif.p)
@@ -177,7 +175,7 @@ mutable struct Ffi_cif
                 end
             end
         else
-            msg = "Failed to prepare ffi_cif for f(::$(join(argtypes,",::")))::$rettype; ffi_prep_cif returned "
+            msg = "Failed to prepare ffi_cif for f(::$(join(argtypes,",::")))::$T; ffi_prep_cif returned "
             if status == 1
                 error(msg * "FFI_BAD_TYPEDEF")
             elseif status == 2
@@ -198,7 +196,9 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
     @assert fn !== C_NULL
     N = length(cif.argtypes)
     @assert N == length(args)
-    ret = Ref{cif.rettype}()
+    # TODO Would like to always use Ref{cif.rettype}(), but for non-is-bits types this
+    # initializes to #undef and errors inside ffi_call.
+    ret = cif.rettype <: Ctypes ?  Ref{cif.rettype}() : Ref{Ptr{Cvoid}}(C_NULL)
     slots = cif.slots
     for (i,a) in enumerate(args)
         if a isa Boxable
@@ -219,5 +219,11 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
         @ccall libffi_path.ffi_call(cif.p::Ptr{Cvoid}, fn::Ptr{Cvoid},
                                     ret::Ptr{Cvoid}, slots::Ptr{Cvoid})::Cvoid
     end
-    return ret[]
+    return if cif.rettype <: Ptr
+        Base.unsafe_convert(cif.rettype, ret[])
+    elseif cif.rettype <: Ctypes
+        ret[]
+    else
+        unsafe_pointer_to_objref(ret[])
+    end
 end
