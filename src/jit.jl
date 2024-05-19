@@ -1,4 +1,5 @@
 const stencils = Dict{String,Any}()
+const MAGICNR = 0x8070605040302010
 
 
 function init_stencils()
@@ -18,6 +19,10 @@ function init_stencils()
                 ByteVector(0)
             end
             patch_default_deps!(bvec, bvec_data, s)
+            for h in s.code.relocations
+                @assert h.kind == "R_X86_64_64"
+                bvec[h.offset+1] = MAGICNR
+            end
             name = first(splitext(basename(f)))
             stencils[name] = (s,bvec,bvec_data)
         catch e
