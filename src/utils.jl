@@ -133,11 +133,11 @@ ffi_type(@nospecialize(p::Type{Ptr{T}})) where T = dlsym(libffi_handle,:ffi_type
 const Ctypes = Union{Cchar,Cuchar,Cshort,Cstring,Cushort,Cint,Cuint,Clong,Culong,
                      Clonglong,Culonglong,Cintmax_t,Cuintmax_t,Csize_t,Cssize_t,
                      Cptrdiff_t,Cwchar_t,Cwstring,Cfloat,Cdouble,Cvoid}
-function to_ffi_type(t)
+function to_c_type(t)
     return if t <: Ctypes
-        return ffi_type(t)
+        return t
     else
-        return ffi_type(Ptr{Cvoid})
+        return Ptr{Cvoid}
     end
 end
 
@@ -150,11 +150,11 @@ mutable struct Ffi_cif
 
     function Ffi_cif(@nospecialize(rettype::Type{T}), @nospecialize(argtypes::NTuple{N,Type})) where {T,N}
         # TODO Do we need to hold onto ffi_rettype, ffi_argtypes for the lifetime of Ffi_cfi?
-        ffi_rettype = to_ffi_type(rettype)
+        ffi_rettype = ffi_type(to_c_type(T))
         if any(a -> a === Cvoid, argtypes)
             throw(ArgumentError("Encountered bad argument type Cvoid"))
         end
-        ffi_argtypes = N == 0 ? C_NULL : [ to_ffi_type(at) for at in argtypes ]
+        ffi_argtypes = N == 0 ? C_NULL : [ ffi_type(to_c_type(at)) for at in argtypes ]
         sz_cif = @ccall libffihelpers_path[].get_sizeof_ffi_cif()::Csize_t
         @assert sz_cif > 0
         p_cif = Libc.malloc(sz_cif)
@@ -219,7 +219,9 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
         @ccall libffi_path.ffi_call(cif.p::Ptr{Cvoid}, fn::Ptr{Cvoid},
                                     ret::Ptr{Cvoid}, slots::Ptr{Cvoid})::Cvoid
     end
-    return if cif.rettype <: Ptr
+    return if cif.rettype <: Ref
+        # TODO Need to distinguish Ptr and Ref?
+        # note: Ptr <: Ref == true
         Base.unsafe_convert(cif.rettype, ret[])
     elseif cif.rettype <: Ctypes
         ret[]

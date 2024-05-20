@@ -41,16 +41,21 @@ function call(code::MachineCode{RetType,ArgTypes}, args...) where {RetType,ArgTy
     for (ii,a) in enumerate(args)
         i = ii+1
         if a isa Boxable
-            slots[i] = box(a)
+            if argtypes[ii] <: Ptr
+                slots[N+ii] = box(a)
+                slots[i] = pointer(slots, N+ii)
+            else
+                slots[i] = box(a)
+            end
         elseif a isa AbstractArray
             slots[i] = value_pointer(a)
         else
-            slots[N+i] = value_pointer(a)
-            slots[i] = pointer(slots, N+i)
+            slots[N+ii] = value_pointer(a)
+            slots[i] = pointer(slots, N+ii)
         end
     end
     p = GC.@preserve code begin
-        ccall(pointer(code), Ptr{Cvoid}, (Cint,), 1 #= ip =#)
+        ccall(pointer(code), Ptr{Cvoid}, (Cint,), 0 #= ip =#)
     end
     @assert p !== C_NULL
     return if RetType <: Boxable

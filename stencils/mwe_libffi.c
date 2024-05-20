@@ -19,7 +19,7 @@ int main() {
    ffi_cif cif;
    ffi_type *args[2];
    void *values[2];
-   ffi_arg *rc;
+   jl_value_t *rc;
 
    jl_value_t *memory_type = jl_eval_string("Memory{Int64}");
    size_t nel = 3;
@@ -32,9 +32,8 @@ int main() {
    //              void *rettype, void  **argtypes);
    if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, 2,
                      &ffi_type_pointer, args) == FFI_OK) {
-      // ffi_call(ffi_cif *cif, void *fn, void *rvalue, void *avalues);
-      ffi_call(&cif, (void *)my_jl_alloc_genericmemory, &rc, values);
-      jl_value_t *memory = (jl_value_t *)rc;
+      ffi_call(&cif, (void *)my_jl_alloc_genericmemory, (ffi_arg *)&rc, values);
+      jl_value_t *memory = rc;
       printf("memory = %p\n", memory);
       printf("typeof(memory) = %s\n", jl_typeof_str(memory));
    } else {

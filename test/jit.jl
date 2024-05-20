@@ -123,18 +123,53 @@ end
     end
 end
 
+mutable struct JIT_MutDummy
+    x
+end
+struct JIT_ImmutDummy
+    x
+end
 @testset ":foreign node" begin
-    function foreign(x::Int64)
+    function foreign_1(x::Int64)
         @ccall CopyAndPatch.libmwes_path[].mwe_my_square(x::Int64)::Int64
     end
-    try
-        expected = foreign(3)
-        mc = jit(foreign, (Int64,))
-        ret = CopyAndPatch.call(mc, 3)
-        @test ret == expected
-    catch e
-        @error "Failed foreign(::Int64)"
-        rethrow(e)
+    function foreign_2(n::Int64)
+        @ccall CopyAndPatch.libmwes_path[].mwe_foreign_carg_cret(n::Clonglong)::Clonglong
+    end
+    function foreign_3(n::Int64)
+        @ccall CopyAndPatch.libmwes_path[].mwe_foreign_carg_jlret(n::Clonglong)::Any
+    end
+    for f in (foreign_1,foreign_2,foreign_3)
+        try
+            expected = f(3)
+            mc = jit(f, (Int64,))
+            ret = CopyAndPatch.call(mc, 3)
+            @test ret == expected
+        catch e
+            @error "Failed $f(::Int64)"
+            rethrow(e)
+        end
+    end
+
+    function foreign_w_jl_1(n)
+        @ccall CopyAndPatch.libmwes_path[].mwe_foreign_jlarg_cret(n::Any)::Clonglong
+    end
+    function foreign_w_jl_2(n)
+        @ccall CopyAndPatch.libmwes_path[].mwe_foreign_jlarg_jlret(n::Any)::Any
+    end
+    for f in (foreign_w_jl_1,foreign_w_jl_2)
+        for T in (JIT_MutDummy,JIT_ImmutDummy)
+            arg = T(3)
+            try
+                expected = f(arg)
+                mc = jit(f, (T,))
+                ret = CopyAndPatch.call(mc, arg)
+                @test ret == expected
+            catch e
+                @error "Failed $f(::$T)"
+                rethrow(e)
+            end
+        end
     end
 end
 

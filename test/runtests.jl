@@ -95,5 +95,10 @@ end
 end
 
 
-include("jit.jl")
-include("ffi.jl")
+try
+    GC.enable(false)
+    include("jit.jl")
+    include("ffi.jl")
+finally
+    GC.enable(true)
+end

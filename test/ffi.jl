@@ -50,11 +50,11 @@ end
     @test_throws ArgumentError("Encountered bad argument type Cvoid") CopyAndPatch.Ffi_cif(Cvoid, (Cvoid,))
 end
 
-mutable struct MutDummy
+mutable struct FFI_MutDummy
     x::String
     y::Int64
 end
-struct ImmutDummy
+struct FFI_ImmutDummy
     x::String
     y::Int64
 end
@@ -70,7 +70,7 @@ end
     # mutable type
     cif = CopyAndPatch.Ffi_cif(Clonglong, (Ptr{Cvoid},))
     fn = dlsym(handle, :mwe_accept_jl_type)
-    x = MutDummy("sers",12321)
+    x = FFI_MutDummy("sers",12321)
     result = CopyAndPatch.ffi_call(cif, fn, [x])
     expected = 12321
     @test result == expected
@@ -78,7 +78,7 @@ end
     # immutable type
     cif = CopyAndPatch.Ffi_cif(Clonglong, (Ptr{Cvoid},))
     fn = dlsym(handle, :mwe_accept_jl_type)
-    x = ImmutDummy("sers",12321)
+    x = FFI_ImmutDummy("sers",12321)
     result = CopyAndPatch.ffi_call(cif, fn, [x])
     expected = 12321
     @test result == expected
@@ -96,20 +96,29 @@ end
     @test typeof(result) <: GenericMemory
     @test length(result) == 15
 
+    # call libjulia-internal:jl_alloc_genericmemory directly
+    handle = dlopen(dlpath("libjulia-internal.so"))
+
+    cif = CopyAndPatch.Ffi_cif(Any, (Any,Csize_t,))
+    fn = dlsym(handle, :jl_alloc_genericmemory)
+    result = CopyAndPatch.ffi_call(cif, fn, [Memory{Int64},Csize_t(15)])
+    @test typeof(result) <: GenericMemory
+    @test length(result) == 15
+
     # test Cstring return types
     handle = dlopen(dlpath("libjulia.so"))
 
     cif = CopyAndPatch.Ffi_cif(Cstring, (Ptr{Cvoid},))
     fn = dlsym(handle, :jl_typeof_str)
-    x = MutDummy("sers",12321)
+    x = FFI_MutDummy("sers",12321)
     result = CopyAndPatch.ffi_call(cif, fn, [x])
-    expected = "MutDummy"
+    expected = "FFI_MutDummy"
     @test unsafe_string(result) == expected
 
     cif = CopyAndPatch.Ffi_cif(Cstring, (Ptr{Cvoid},))
     fn = dlsym(handle, :jl_typeof_str)
-    x = ImmutDummy("sers",12321)
+    x = FFI_ImmutDummy("sers",12321)
     result = CopyAndPatch.ffi_call(cif, fn, [x])
-    expected = "ImmutDummy"
+    expected = "FFI_ImmutDummy"
     @test unsafe_string(result) == expected
 end

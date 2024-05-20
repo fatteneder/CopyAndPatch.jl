@@ -290,7 +290,6 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
             st, bvec, bvec2 = get(stencils, name) do
                 error("don't know how to handle intrinsic $name")
             end
-            @assert length(bvec2) == 0
             copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
             patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP", ip)
             for n in 1:nargs
@@ -309,7 +308,7 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
             patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",      ip)
             patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS",   nargs)
             patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",     retbox)
-            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RETUSED", Int64(ip in used_rets))
+            patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RETUSED", ip in used_rets)
             patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",    pointer(memory, stencil_starts[ip+1]))
         else
             TODO(fn)
@@ -326,10 +325,10 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
         st, bvec, bvec2 = stencils["ast_invoke"]
         copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
         patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",      ip)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",      Cint(ip))
         patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS",   nargs)
         patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",     retbox)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RETUSED", Cint(ip in used_rets))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RETUSED", ip in used_rets)
         patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",    pointer(memory, stencil_starts[ip+1]))
     elseif isexpr(ex, :new)
         ex_args = ex.args
@@ -338,7 +337,6 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
         nargs = length(boxes)
         retbox = ip in used_rets ? pointer(ssas, ip) : C_NULL
         st, bvec, bvec2 = stencils["ast_new"]
-        @assert length(bvec2) == 0
         copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
         patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
         patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",      ip)
@@ -360,31 +358,11 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
         boxes = box_args(args, slots, ssas, static_prms)
         append!(preserve, boxes)
         nargs = length(boxes)
-        retbox = if ip in used_rets
-            pointer(ssas, ip)
-        else
-            # ffi_call asks for an address for the return value,
-            # and because clang optimizes our `int retused` away we can't just pass a NULL
-            push!(static_prms, C_NULL)
-            pointer(static_prms, length(static_prms))
-        end
-        # TODO Can we not move the allocation here into C? How can we teach the GC that
-        # there is a new variable?
-        if rettype <: Ref
-            rettype = eltype(rettype)
-        end
-        retval = if !isbitstype(rettype)
-            # TODO I think this branch here requires ffi_call(..., ret, ...) in the stencil.
-            ssas[ip] = C_NULL
-            pointer(ssas, ip)
-        else
-            # TODO I think this branch here requires ffi_call(..., (*ret), ...) in the stencil.
-            retval = Ref{rettype}()
-            ssas[ip] = Base.unsafe_convert(Ptr{Cvoid}, retval)
-            retval
-        end
-        push!(preserve, retval)
+        push!(static_prms, C_NULL)
+        ssas[ip] = pointer(static_prms, length(static_prms))
+        retbox = pointer(ssas, ip)
         cif = Ffi_cif(rettype, tuple(argtypes...))
+        isptr_ret = Int64(to_c_type(rettype) <: Ptr)
         st, bvec, bvec2 = stencils["ast_foreigncall"]
         fptr = if isnothing(libname)
             h = dlopen(dlpath("libjulia.so"))
@@ -398,13 +376,14 @@ function emitcode!(memory, stencil_starts, ip, slots, ssas, static_prms, preserv
             dlsym(dlopen(libname[]), fname)
         end
         copyto!(memory, stencil_starts[ip], bvec, 1, length(bvec))
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CIF",     pointer(cif))
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_F",       fptr)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",      ip)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS",   nargs)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",     retbox)
-        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",    pointer(memory, stencil_starts[ip+1]))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ARGS",      pointer(boxes))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CIF",       pointer(cif))
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_F",         fptr)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_IP",        ip)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_ISPTR_RET", isptr_ret)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_NARGS",     nargs)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_RET",       retbox)
+        patch!(memory, stencil_starts[ip]-1, st.code, "_JIT_CONT",      pointer(memory, stencil_starts[ip+1]))
     else
         TODO(ex.head)
     end
