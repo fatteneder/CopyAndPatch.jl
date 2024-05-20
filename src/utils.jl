@@ -143,6 +143,7 @@ end
 
 
 mutable struct Ffi_cif
+    mem_cif::Vector{UInt8}
     p::Ptr{Cvoid}
     rettype::Type
     argtypes::Vector{Type}
@@ -157,8 +158,8 @@ mutable struct Ffi_cif
         ffi_argtypes = N == 0 ? C_NULL : [ ffi_type(to_c_type(at)) for at in argtypes ]
         sz_cif = @ccall libffihelpers_path[].get_sizeof_ffi_cif()::Csize_t
         @assert sz_cif > 0
-        p_cif = Libc.malloc(sz_cif)
-        @assert p_cif !== C_NULL
+        mem_cif = Vector{UInt8}(undef, sizeof(UInt8)*sz_cif)
+        p_cif = pointer(mem_cif)
         default_abi = @ccall libffihelpers_path[].get_ffi_default_abi()::Cint
         # https://www.chiark.greenend.org.uk/doc/libffi-dev/html/The-Basics.html
         status = @ccall libffi_path.ffi_prep_cif(
@@ -167,13 +168,7 @@ mutable struct Ffi_cif
                                 )::Cint
         if status == 0 # = FFI_OK
             slots = Vector{Ptr{Cvoid}}(undef, 2*N)
-            cif = new(p_cif, T, [ a for a in argtypes ], slots)
-            return finalizer(cif) do cif
-                if cif.p !== C_NULL
-                    Libc.free(cif.p)
-                    cif.p = C_NULL
-                end
-            end
+            return new(mem_cif, p_cif, T, [ a for a in argtypes ], slots)
         else
             msg = "Failed to prepare ffi_cif for f(::$(join(argtypes,",::")))::$T; ffi_prep_cif returned "
             if status == 1
