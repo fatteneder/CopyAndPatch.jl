@@ -403,7 +403,7 @@ function code_native(mc::MachineCode;
         TerminalMenus.request(term, menu; cursor=1)
     else
         io = IOBuffer()
-        ioc = IOContext(io, stdout) # to kepp the colors!!
+        ioc = IOContext(io, stdout) # to keep the colors!!
         for i in 1:length(mc.codeinfo.code)
             _code_native!(ioc, mc, i; syntax, color, hex_for_imm)
         end
@@ -613,7 +613,7 @@ function TerminalMenus.header(menu::CopyAndPatchMenu)
     """
     Scroll through expressions for analysis:
     [$q_str]uit, [$s_str]yntax = $(syntax_str), [$r_str]elocations, [$h_str]ex for immediate values
-       ip$('n'^(menu.ip_col_width-2)) | SSA
+       ip$(' '^(menu.ip_col_width-2)) | SSA
     """
 end
 
