@@ -122,3 +122,12 @@ end
     expected = "FFI_ImmutDummy"
     @test unsafe_string(result) == expected
 end
+
+@testset "intrinsics" begin
+    handle = dlopen(dlpath("libjulia-internal.so"))
+    cif = CopyAndPatch.Ffi_cif(Ptr{Cvoid}, (Any,Any,))
+    fn = dlsym(handle, :jl_bitcast)
+    result = CopyAndPatch.ffi_call(cif, fn, [UInt,C_NULL])
+    expected = C_NULL
+    @test CopyAndPatch.unbox(Ptr{Cvoid},result) == expected
+end

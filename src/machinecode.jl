@@ -29,7 +29,7 @@ argtypes(mc::MachineCode{RetType,ArgTypes}) where {RetType,ArgTypes} = ArgTypes
 Base.pointer(code::MachineCode) = Base.unsafe_convert(Ptr{Cvoid}, pointer(code.buf))
 
 
-function call(code::MachineCode{RetType,ArgTypes}, args...) where {RetType,ArgTypes}
+function call(code::MachineCode{RetType,ArgTypes}, @nospecialize(args...)) where {RetType,ArgTypes}
     argtypes = [ a for a in ArgTypes.parameters ]
     nargs = length(argtypes)
     if length(args) != nargs
@@ -41,12 +41,7 @@ function call(code::MachineCode{RetType,ArgTypes}, args...) where {RetType,ArgTy
     for (ii,a) in enumerate(args)
         i = ii+1
         if a isa Boxable
-            if argtypes[ii] <: Ptr
-                slots[N+ii] = box(a)
-                slots[i] = pointer(slots, N+ii)
-            else
-                slots[i] = box(a)
-            end
+            slots[i] = box(a)
         elseif a isa AbstractArray
             slots[i] = value_pointer(a)
         else

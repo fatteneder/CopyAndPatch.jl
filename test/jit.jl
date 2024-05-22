@@ -17,6 +17,21 @@
     end
 end
 
+@testset "bit" begin
+    function mybitcast(x)
+        Core.bitcast(UInt, x)
+    end
+    expected = mybitcast(C_NULL)
+    try
+        mc = jit(mybitcast, (typeof(C_NULL),))
+        res = CopyAndPatch.call(mc, C_NULL)
+        @test res == expected
+    catch e
+        @error "Failed mybitcast(::$(typeof(C_NULL)))"
+        rethrow(e)
+    end
+end
+
 @noinline function g(x,y)
     versioninfo()
     x + y

@@ -48,8 +48,6 @@ value_pointer(@nospecialize(x)) = @ccall jl_value_ptr(x::Any)::Ptr{Cvoid}
 
 # missing a few:
 # - jl_value_t *jl_box_char(uint32_t x);
-# - jl_value_t *jl_box_voidpointer(void *x);
-# - jl_value_t *jl_box_uint8pointer(uint8_t *x);
 # - jl_value_t *jl_box_ssavalue(size_t x);
 # - jl_value_t *jl_box_slotnumber(size_t x);
 #
@@ -75,19 +73,22 @@ box(x::UInt32)         = @ccall jl_box_uint32(x::UInt32)::Ptr{Cvoid}
 box(x::UInt64)         = @ccall jl_box_uint64(x::UInt64)::Ptr{Cvoid}
 box(x::Float32)        = @ccall jl_box_float32(x::Float32)::Ptr{Cvoid}
 box(x::Float64)        = @ccall jl_box_float64(x::Float64)::Ptr{Cvoid}
-box(x::Ptr{UInt8})     = @ccall jl_box_uint8pointer(x::Any)::Ptr{Cvoid}
-box(x::Ptr{T}) where T = @ccall jl_box_voidpointer(x::Any)::Ptr{Cvoid}
-unbox(::Type{Bool}, ptr::Ptr{Cvoid})    = @ccall jl_unbox_bool(ptr::Ptr{Cvoid})::Bool
-unbox(::Type{Int8}, ptr::Ptr{Cvoid})    = @ccall jl_unbox_int8(ptr::Ptr{Cvoid})::Int8
-unbox(::Type{Int16}, ptr::Ptr{Cvoid})   = @ccall jl_unbox_int16(ptr::Ptr{Cvoid})::Int16
-unbox(::Type{Int32}, ptr::Ptr{Cvoid})   = @ccall jl_unbox_int32(ptr::Ptr{Cvoid})::Int32
-unbox(::Type{Int64}, ptr::Ptr{Cvoid})   = @ccall jl_unbox_int64(ptr::Ptr{Cvoid})::Int64
-unbox(::Type{UInt8}, ptr::Ptr{Cvoid})   = @ccall jl_unbox_uint8(ptr::Ptr{Cvoid})::UInt8
-unbox(::Type{UInt16}, ptr::Ptr{Cvoid})  = @ccall jl_unbox_uint16(ptr::Ptr{Cvoid})::UInt16
-unbox(::Type{UInt32}, ptr::Ptr{Cvoid})  = @ccall jl_unbox_uint32(ptr::Ptr{Cvoid})::UInt32
-unbox(::Type{UInt64}, ptr::Ptr{Cvoid})  = @ccall jl_unbox_uint64(ptr::Ptr{Cvoid})::UInt64
-unbox(::Type{Float32}, ptr::Ptr{Cvoid}) = @ccall jl_unbox_float32(ptr::Ptr{Cvoid})::Float32
-unbox(::Type{Float64}, ptr::Ptr{Cvoid}) = @ccall jl_unbox_float64(ptr::Ptr{Cvoid})::Float64
+box(x::Ptr{UInt8})     = @ccall jl_box_uint8pointer(x::Ptr{UInt8})::Ptr{Cvoid}
+box(x::Ptr{T}) where T = @ccall jl_box_voidpointer(x::Ptr{T})::Ptr{Cvoid}
+unbox(::Type{Bool}, ptr::Ptr{Cvoid})           = @ccall jl_unbox_bool(ptr::Ptr{Cvoid})::Bool
+unbox(::Type{Int8}, ptr::Ptr{Cvoid})           = @ccall jl_unbox_int8(ptr::Ptr{Cvoid})::Int8
+unbox(::Type{Int16}, ptr::Ptr{Cvoid})          = @ccall jl_unbox_int16(ptr::Ptr{Cvoid})::Int16
+unbox(::Type{Int32}, ptr::Ptr{Cvoid})          = @ccall jl_unbox_int32(ptr::Ptr{Cvoid})::Int32
+unbox(::Type{Int64}, ptr::Ptr{Cvoid})          = @ccall jl_unbox_int64(ptr::Ptr{Cvoid})::Int64
+unbox(::Type{UInt8}, ptr::Ptr{Cvoid})          = @ccall jl_unbox_uint8(ptr::Ptr{Cvoid})::UInt8
+unbox(::Type{UInt16}, ptr::Ptr{Cvoid})         = @ccall jl_unbox_uint16(ptr::Ptr{Cvoid})::UInt16
+unbox(::Type{UInt32}, ptr::Ptr{Cvoid})         = @ccall jl_unbox_uint32(ptr::Ptr{Cvoid})::UInt32
+unbox(::Type{UInt64}, ptr::Ptr{Cvoid})         = @ccall jl_unbox_uint64(ptr::Ptr{Cvoid})::UInt64
+unbox(::Type{Float32}, ptr::Ptr{Cvoid})        = @ccall jl_unbox_float32(ptr::Ptr{Cvoid})::Float32
+unbox(::Type{Float64}, ptr::Ptr{Cvoid})        = @ccall jl_unbox_float64(ptr::Ptr{Cvoid})::Float64
+unbox(::Type{Ptr{UInt8}}, ptr::Ptr{Cvoid})     = @ccall jl_unbox_uint8pointer(ptr::Ptr{UInt8})::Ptr{UInt8}
+unbox(::Type{Ptr{T}}, ptr::Ptr{Cvoid}) where T = @ccall jl_unbox_voidpointer(ptr::Ptr{Cvoid})::Ptr{T}
+# TODO This def needed?
 unbox(T::Type, ptr::Integer) = unbox(T, Ptr{Cvoid}(UInt64(ptr)))
 
 
@@ -197,7 +198,9 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
     slots = cif.slots
     for (i,a) in enumerate(args)
         if a isa Boxable
-            if cif.argtypes[i] <: Ptr
+            # TODO I think this and call(::MachineCode, ...) should be the same,
+            # but they aren't atm. There might be something wrong somewhere.
+            if (a isa Ptr && !(cif.argtypes[i] <: Ptr)) || cif.argtypes[i] <: Ptr
                 slots[N+i] = box(a)
                 slots[i] = pointer(slots, N+i)
             else
@@ -212,11 +215,9 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
     end
     GC.@preserve cif args begin
         @ccall libffi_path.ffi_call(cif.p::Ptr{Cvoid}, fn::Ptr{Cvoid},
-                                    ret::Ptr{Cvoid}, slots::Ptr{Cvoid})::Cvoid
+                                    ret::Ptr{Cvoid}, slots::Ptr{Ptr{Cvoid}})::Cvoid
     end
     return if cif.rettype <: Ref
-        # TODO Need to distinguish Ptr and Ref?
-        # note: Ptr <: Ref == true
         Base.unsafe_convert(cif.rettype, ret[])
     elseif cif.rettype <: Ctypes
         ret[]
