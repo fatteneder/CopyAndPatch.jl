@@ -1,7 +1,9 @@
 #include "common.h"
 
 void
-_JIT_ENTRY(int prev_ip) {
+_JIT_ENTRY(int prev_ip)
+{
+   DEBUGSTMT("ast_phinode", prev_ip);
    PATCH_VALUE(int *,          edges,   _JIT_EDGES);
    PATCH_VALUE(int,            ip,      _JIT_IP);
    PATCH_VALUE(int,            nedges,  _JIT_NEDGES);

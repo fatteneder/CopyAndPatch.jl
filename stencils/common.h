@@ -14,3 +14,11 @@ do {                               \
     __attribute__((musttail))      \
     return (ALIAS)(IP);            \
 } while (0);
+
+#ifdef JITDEBUG
+    #define DEBUGSTMT(NAME, IP) \
+        printf("[JITDEBUG] ip %-4d reached " NAME "\n", (IP)); \
+        fflush(stdout)
+#else
+    #define DEBUGSTMT(NAME, IP)
+#endif

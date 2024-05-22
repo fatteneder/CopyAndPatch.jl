@@ -16,14 +16,19 @@ BINMWES=$(addprefix bin/,$(MWES))
 
 $(shell mkdir -p bin/mwes)
 
-bin/%.o: %.c compile
-	./compile $< bin/$*.o
-
-bin/%.json: bin/%.o readobj
-	./readobj $< > bin/$*.json
+CFLAGS =
 
 .SECONDARY:
 all: $(BINJSON) $(BINSO) $(BINMWES)
+
+debug: CFLAGS+=-DJITDEBUG
+debug: all
+
+bin/%.o: %.c compile
+	./compile $(CFLAGS) $< bin/$*.o
+
+bin/%.json: bin/%.o readobj
+	./readobj $< > bin/$*.json
 
 bin/libjuliahelpers.so: libjuliahelpers.c
 	gcc -I'${JULIA_INCLUDE}' \

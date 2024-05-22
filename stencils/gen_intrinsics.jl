@@ -137,6 +137,7 @@ for line in split(signatures,'\n')
 void
 _JIT_ENTRY(int prev_ip)
 {
+DEBUGSTMT(\"$fn_name\", prev_ip);
 PATCH_VALUE(int, ip, _JIT_IP);
 $patch_args
 PATCH_VALUE(jl_value_t **, ret, _JIT_RET);

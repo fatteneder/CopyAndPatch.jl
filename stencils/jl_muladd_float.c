@@ -5,6 +5,7 @@
 void
 _JIT_ENTRY(int prev_ip)
 {
+DEBUGSTMT("jl_muladd_float", prev_ip);
 PATCH_VALUE(int, ip, _JIT_IP);
 PATCH_VALUE(jl_value_t **, a1, _JIT_A1);
 PATCH_VALUE(jl_value_t **, a2, _JIT_A2);

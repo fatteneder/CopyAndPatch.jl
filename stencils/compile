@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+CFLAGS=$1
+SRCNAME=$2
+OBJNAME=$3
+
 clang -O3 \
       -c \
       -fno-asynchronous-unwind-tables \
@@ -8,13 +12,14 @@ clang -O3 \
       -fno-stack-protector \
       -mcmodel=large \
       -std=gnu11 \
+      $CFLAGS \
       -I"$JULIA_INCLUDE" \
       -I"$JULIA_INCLUDE2" \
       -I"$JULIA_INTERNAL_INCLUDE" \
       -I"$LIBFFI_INCLUDE" \
       -I"$(pwd)" \
-      -o $2 \
-      $1
+      -o $OBJNAME \
+      $SRCNAME
 
 # comments from CPython/Tools/jit/build.py
 # # FA: remove SHT_X86_64_UNWIND sections (using -O3 alone does not remove them)

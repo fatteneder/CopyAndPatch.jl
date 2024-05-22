@@ -1,7 +1,9 @@
 #include "common.h"
 
 void
-_JIT_ENTRY(int prev_ip) {
+_JIT_ENTRY(int prev_ip)
+{
+   DEBUGSTMT("ast_foreigncall", prev_ip);
    PATCH_VALUE(void ***, args,      _JIT_ARGS);
    PATCH_VALUE(void *,   cif,       _JIT_CIF);
    PATCH_VALUE(void *,   f,         _JIT_F);

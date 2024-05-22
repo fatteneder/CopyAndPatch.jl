@@ -5,6 +5,7 @@
 void
 _JIT_ENTRY(int prev_ip)
 {
+DEBUGSTMT("jl_sqrt_llvm", prev_ip);
 PATCH_VALUE(int, ip, _JIT_IP);
 PATCH_VALUE(jl_value_t **, a1, _JIT_A1);
 PATCH_VALUE(jl_value_t **, ret, _JIT_RET);

@@ -3,6 +3,7 @@
 void
 _JIT_ENTRY(int prev_ip)
 {
+   DEBUGSTMT("ast_invoke", prev_ip);
    PATCH_VALUE(jl_value_t ***, args,    _JIT_ARGS);
    PATCH_VALUE(int,            ip,      _JIT_IP);
    PATCH_VALUE(uint32_t,       nargs,   _JIT_NARGS);
