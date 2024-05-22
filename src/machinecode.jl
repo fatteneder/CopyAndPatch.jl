@@ -1,5 +1,8 @@
 mutable struct MachineCode{RetType,ArgTypes}
     buf::Vector{UInt8}
+    slots::Vector{Ptr{UInt64}}
+    ssas::Vector{Ptr{UInt64}}
+    static_prms::Vector{Ptr{UInt64}}
     gc_roots::Vector{Any}
     # TODO Remove union
     codeinfo::Union{Nothing,CodeInfo}
@@ -10,13 +13,13 @@ mutable struct MachineCode{RetType,ArgTypes}
         rt = rettype <: Union{} ? Nothing : rettype
         buf = mmap(Vector{UInt8}, length(bvec), shared=false, exec=true)
         copy!(buf, bvec)
-        new{rt,Tuple{argtypes...}}(buf, gc_roots, nothing, Int64[])
+        new{rt,Tuple{argtypes...}}(buf, UInt64[], UInt64[], UInt64[], gc_roots, nothing, Int64[])
     end
     function MachineCode(sz::Integer, @nospecialize(rettype::Type{T}), argtypes::NTuple{N,DataType},
                          gc_roots::Vector{Any}=Any[]) where {T,N}
         rt = rettype <: Union{} ? Nothing : rettype
         buf = mmap(Vector{UInt8}, sz, shared=false, exec=true)
-        new{rt,Tuple{argtypes...}}(buf, gc_roots, nothing, Int64[])
+        new{rt,Tuple{argtypes...}}(buf, UInt64[], UInt64[], UInt64[], gc_roots, nothing, Int64[])
     end
 end
 MachineCode(bvec, rettype, argtypes, gc_roots::Vector{Any}=Any[]) =
@@ -36,7 +39,7 @@ function call(code::MachineCode{RetType,ArgTypes}, @nospecialize(args...)) where
         throw(MethodError(code, args))
     end
     gc_roots = code.gc_roots
-    slots = first(gc_roots)
+    slots = code.slots
     N = nargs+1 # because slots[1] is the function itself
     for (ii,a) in enumerate(args)
         i = ii+1
