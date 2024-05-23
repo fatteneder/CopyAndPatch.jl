@@ -450,7 +450,7 @@ function _code_native!(io::IO, mc::MachineCode, i::Int64;
                        syntax::Symbol=:intel, color::Bool=true, hex_for_imm::Bool=true)
     starts = mc.stencil_starts
     nstarts = length(starts)
-    rng = starts[i]:(i < nstarts ? starts[i+1] : length(mc.buf))
+    rng = starts[i]:(i < nstarts ? starts[i+1]-1 : length(mc.buf))
     stencil = view(mc.buf, rng)
     ex = mc.codeinfo.code[i]
     _code_native!(io, ex, stencil, i; syntax, color, hex_for_imm)
@@ -501,51 +501,46 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
     ioc = IOContext(io, stdout)
     _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, hex_for_imm=menu.hex_for_imm)
     code = String(take!(io))
-    if menu.print_relocs
-        # this is a hacky way to relocate the _JIT_* patches in the native code output
-        # we are given formatted and colored native code of a patched stencil: code
-        # we compute the native code of an unpatched stencil (only _JIT_* args are unpatched): unpatched_code
-        # we compare code vs unpatched_code line by line, and every mismatch is a line where we patched
-        stencilinfo, buf, _ = get_stencil(menu.mc.codeinfo.code[cursor])
-        relocs = stencilinfo.code.relocations
-        ex = menu.mc.codeinfo.code[cursor]
-        # we use uncolored code_native output to ignore ansii color codes, needed for
-        # correct computation of max line width
-        _code_native!(ioc, ex, buf, cursor; syntax=menu.syntax, color=false, hex_for_imm=menu.hex_for_imm)
-        unpatched_code = String(take!(io))
-        _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, color=false, hex_for_imm=menu.hex_for_imm)
-        uncolored_code = String(take!(io))
-        max_w = maximum(split(uncolored_code,'\n')[2:end]) do line
-            # ignore first line which contains the SSA expression
-            ncodeunits(repr(line))
-        end
-        nreloc = 0
-        for (i,(uc_line, line, up_line)) in enumerate(zip(eachline(IOBuffer(uncolored_code)),
-                                                          eachline(IOBuffer(code)),
-                                                          eachline(IOBuffer(unpatched_code))))
+    menu.print_relocs || return code
+    # TODO Toggeling print_relocs shows an extra line!!!
+    # this is a hacky way to relocate the _JIT_* patches in the native code output
+    # we are given formatted and colored native code output of a patched stencil: code
+    # we compute the native code output of an unpatched stencil (only _JIT_* args are unpatched): unpatched_code
+    # we then compare code vs unpatched_code line by line, and every mismatch is a line where we patched
+    # in practice we use the uncolored version of code_native to ignore any ansii color codes,
+    # because we also need to compute the max line width for each line
+    stencilinfo, buf, _ = get_stencil(menu.mc.codeinfo.code[cursor])
+    relocs = stencilinfo.code.relocations
+    ex = menu.mc.codeinfo.code[cursor]
+    _code_native!(ioc, ex, buf, cursor; syntax=menu.syntax, color=false, hex_for_imm=menu.hex_for_imm)
+    unpatched_code = String(take!(io))
+    _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, color=false, hex_for_imm=menu.hex_for_imm)
+    uncolored_code = String(take!(io))
+    max_w = maximum(split(uncolored_code,'\n')[2:end]) do line
+        # ignore first line which contains the SSA expression
+        length(repr(line))
+    end
+    nreloc = 0
+    for (i,(uc_line, line, up_line)) in enumerate(zip(eachline(IOBuffer(uncolored_code)),
+                                                      eachline(IOBuffer(code)),
+                                                      eachline(IOBuffer(unpatched_code))))
+        print(ioc, line)
+        if !isempty(line) && uc_line != up_line && nreloc <= length(relocs)
+            nreloc += 1
             w = length(uc_line)
             Δw = max_w - w
-            print(ioc, line)
-            if uc_line == up_line
-                print(ioc, '\n')
-            else
-                nreloc += 1
-                if nreloc <= length(relocs)
-                    printstyled(ioc, ' '^Δw, "    # $(relocs[nreloc].symbol)\n", color=:light_blue)
-                else
-                    println(ioc)
-                end
-            end
+            printstyled(ioc, ' '^Δw, "    # $(relocs[nreloc].symbol)", color=:light_blue)
         end
-        if nreloc != length(relocs)
-            s = SimpleLogger(ioc)
-            with_logger(s) do
-                println(ioc)
-                @error "relocation is wrong, found $nreloc but expected $(length(relocs))"
-            end
-        end
-        code = String(take!(io))
+        print(ioc, '\n')
     end
+    if nreloc != length(relocs)
+        s = SimpleLogger(ioc)
+        with_logger(s) do
+            println(ioc)
+            @error "relocation is wrong, found $nreloc but expected $(length(relocs))"
+        end
+    end
+    code = String(take!(io))
     return code
 end
 function annotated_code_native_with_newlines(menu::CopyAndPatchMenu, cursor::Int64)
