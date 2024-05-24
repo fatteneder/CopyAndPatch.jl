@@ -25,6 +25,8 @@ end
 MachineCode(bvec, rettype, argtypes, gc_roots::Vector{Any}=Any[]) =
     MachineCode(ByteVector(bvec), rettype, argtypes, gc_roots)
 
+const MC = MachineCode
+
 rettype(mc::MachineCode{RetType,ArgTypes}) where {RetType,ArgTypes} = RetType
 argtypes(mc::MachineCode{RetType,ArgTypes}) where {RetType,ArgTypes} = ArgTypes
 
@@ -52,9 +54,10 @@ function call(code::MachineCode{RetType,ArgTypes}, @nospecialize(args...)) where
             slots[i] = pointer(slots, N+ii)
         end
     end
-    p = GC.@preserve code begin
-        ccall(pointer(code), Ptr{Cvoid}, (Cint,), 0 #= ip =#)
+    GC.@preserve code begin
+        ccall(pointer(code), Cvoid, (Cint,), 0 #= ip =#)
     end
+    p = code.static_prms[end]
     @assert p !== C_NULL
     return if RetType <: Boxable
         unsafe_load(Base.unsafe_convert(Ptr{RetType}, p))

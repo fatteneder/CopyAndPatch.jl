@@ -242,9 +242,12 @@ function emitcode!(mc, ip, used_rets, ex::Nothing)
 end
 function emitcode!(mc, ip, used_rets, ex::Core.ReturnNode)
     st, bvec, _ = stencils["ast_returnnode"]
-    retbox = isdefined(ex,:val) ? box_arg(ex.val, mc) : C_NULL
+    val = isdefined(ex,:val) ? box_arg(ex.val, mc) : C_NULL
+    push!(mc.static_prms, C_NULL)
+    ret = pointer(mc.static_prms, length(mc.static_prms))
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
-    patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RET", retbox)
+    patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_VAL", val)
+    patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RET", ret)
 end
 function emitcode!(mc, ip, used_rets, ex::Core.GotoNode)
     st, bvec, _ = stencils["ast_goto"]
