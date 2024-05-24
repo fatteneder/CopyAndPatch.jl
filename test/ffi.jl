@@ -90,11 +90,18 @@ end
     @test typeof(result) <: GenericMemory
     @test length(result) == 15
 
+    # TODO Rettype should be Any, and loading should be done by user!
     cif = CopyAndPatch.Ffi_cif(GenericMemory, (Csize_t,))
     fn = dlsym(handle, :mwe_jl_alloc_genericmemory_carg)
     result = CopyAndPatch.ffi_call(cif, fn, [Csize_t(15)])
     @test typeof(result) <: GenericMemory
     @test length(result) == 15
+
+    cif = CopyAndPatch.Ffi_cif(Any, (Any,))
+    fn = dlsym(handle, :mwe_jl_alloc_genericmemory_jlarg)
+    result = CopyAndPatch.ffi_call(cif, fn, [Memory{Int64}])
+    @test typeof(result) === Memory{Int64}
+    @test length(result) == 3
 
     # call libjulia-internal:jl_alloc_genericmemory directly
     handle = dlopen(dlpath("libjulia-internal.so"))
