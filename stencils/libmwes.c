@@ -21,6 +21,8 @@ jl_value_t * mwe_jl_alloc_genericmemory_jlarg(jl_value_t *memory_type) {
    printf("memory_type_from_eval = %p\n", memory_type_from_eval);
    printf("jl_typeof_str(memory_type) = %s\n", jl_typeof_str(memory_type));
    printf("jl_typeof_str(memory_type_from_eval) = %s\n", jl_typeof_str(memory_type_from_eval));
+   if (memory_type != memory_type_from_eval)
+      jl_errorf("mwe_jl_alloc_genericmemory_jlarg: jl_value_t *memory_type is wrong: %p", memory_type);
    jl_value_t *memory = (jl_value_t *)jl_alloc_genericmemory(memory_type, nel);
    printf("memory = %p\n", memory);
    printf("jl_typeof_str(memory) = %s\n", jl_typeof_str(memory));
@@ -39,6 +41,7 @@ int64_t mwe_my_square_jl(jl_value_t *x) {
 }
 
 int mwe_my_square(int x) {
+   printf("SERS x = %d\n", x);
    return x*x;
 }
 
@@ -85,7 +88,6 @@ jl_value_t * mwe_foreign_carg_jlret(int64_t n) {
    printf("n = %d\n", n);
    jl_value_t *v = jl_eval_string("1");
    return v;
-   /** return 1; */
 }
 
 jl_value_t * mwe_foreign_jlarg_jlret(jl_value_t *n) {
@@ -93,5 +95,4 @@ jl_value_t * mwe_foreign_jlarg_jlret(jl_value_t *n) {
    printf("jl_typeof_str(n) = %s\n", jl_typeof_str(n));
    jl_value_t *v = jl_eval_string("1");
    return v;
-   /** return 1; */
 }

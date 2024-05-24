@@ -2,50 +2,6 @@ using CopyAndPatch
 using Libdl
 
 
-function foreign(x::Int64)
-    @ccall CopyAndPatch.libffihelpers_path[].my_square(x::Int64)::Int64
-end
-foreign(1)
-
-function myprint(x)
-    println("sers oida: ", x)
-end
-
-# @noinline function g(x,y)
-#     versioninfo()
-#     x + y
-# end
-# # f(x) = nothing
-# # f(x) = (x+2)*2
-# # f(x) = x
-# # f(x) = x+2
-# # f(x) = (x+2)*3-x^3
-# # f(x) = (x+2)/3
-# f(x) = x < 1 ? 1 : 2
-# # function f(x)
-# #     versioninfo()
-# #     g(x,2*x)
-# #     x += log(x)
-# #     (x+2)/3
-# # end
-
-# @noinline function g(x,y)
-#     versioninfo()
-#     x + y
-# end
-# # TODO Moving f(x) to here gives a segfault
-# function f(x)
-#     versioninfo()
-#     g(x,2*x)
-#     x += log(x)
-#     (x+2)/3
-# end
-function f(x)
-    versioninfo()
-    x+1
-end
-
-
 function eulers_sieve(n)
     qs = collect(1:n)
     ms = zeros(Int64, length(qs))
@@ -69,28 +25,21 @@ function eulers_sieve(n)
     ps = [ q for (i,q) in enumerate(qs) if ms[i] == 0 ]
     ps
 end
-# eulers_sieve(10)
 
-# function mul2(n)
-#     a = collect(1:n)
-#     b = zeros(Int64, length(a))
-#     for i in 1:length(a)
-#         b[i] = 2*a[i]
-#     end
-#     return b
-# end
-# mul2(3)
+function myarray(n)
+    # return [1, 2]
+    return [1]
+end
 
-# function mycollect(n)
-#     return collect(1:n)
-# end
-# mycollect(3)
+function mytuple(n)
+    tpl = (n,2*n)
+    println(tpl)
+    return tpl
+end
 
-
-# function myrange(n)
-#     return myrange(1:n)
-# end
-# mycollect(3)
+function myrange(n)
+    return 1:n
+end
 
 function myfn1(n)
     x = 2
@@ -101,31 +50,79 @@ function myfn1(n)
     end
     return x
 end
-# myfn1(3)
 
-# function myfn2(n)
-#     x = 2
-#     if n > 3
-#         x *= 2
-#     else
-#         x -= 3
-#     end
-#     return x
-# end
-# myfn2(3)
-
-# memory, preserve = jit(f, (Int64,))
-# memory = jit(eulers_sieve, (Int64,))
-# memory = jit(mul2, (Int64,))
-# memory, preserve = jit(foreign, (Int64,))
-# memory = jit(mycollect, (Int64,))
-# memory = jit(myrange, (Int64,))
-# memory, preserve = jit(myfn1, (Int64,))
-# memory = jit(myfn2, (Int64,))
-# memory = jit(f, (Int32,Int32))
-memory, preserve, rettype = jit(myprint, (Int64,))
-CopyAndPatch.code_native(memory)
-fnptr = Base.unsafe_convert(Ptr{Cvoid},pointer(memory))
-res = GC.@preserve memory preserve begin
-    @ccall $fnptr(1::Cint)::Ptr{Cvoid}
+function myalloc(n::UInt64)
+    # @ccall jl_alloc_genericmemory(Memory{Int64}::Any, n::UInt64)::Ref{Memory{Int64}}
+    println(CopyAndPatch.value_pointer(Memory{Int64}))
+    @ccall jl_alloc_genericmemory(Memory{Int64}::Any, n::UInt64)::Ref{Memory{Int64}}
+    return 1
 end
+
+# function mytestalloc1(n::UInt64)
+#     @ccall CopyAndPatch.libmwes_path[].mwe_jl_alloc_genericmemory_carg(n::UInt64)::Ref{Memory{Int64}}
+# end
+
+function mytestalloc2(n::UInt64)
+    memory = CopyAndPatch.value_pointer(Memory{Int64})
+    println("SERS ", memory)
+    @ccall CopyAndPatch.libmwes_path[].mwe_jl_alloc_genericmemory_jlarg(memory::Ptr{Memory{Int64}})::Ref{Memory{Int64}}
+    # @ccall CopyAndPatch.libmwes_path[].mwe_jl_alloc_genericmemory_jlarg(Memory{Int64}::Any)::Ref{Memory{Int64}}
+end
+
+# function foreign_carg(n::Int64)
+#     @ccall CopyAndPatch.libmwes_path[].mwe_foreign_carg(n::Int64)::Cint
+# end
+
+# function foreign_jlarg(n::Int64)
+#     @ccall CopyAndPatch.libmwes_path[].mwe_foreign_jlarg(n::Any)::Cint
+# end
+
+function mycconvert(x)
+    Ref{Int64}(x)
+    # Base.cconvert(Ref{Int64}, x)
+end
+
+function mybitcast(x)
+    Core.bitcast(UInt, x)
+end
+
+function my_value_pointer(x::Int64)
+    return CopyAndPatch.value_pointer(x)
+    # y = Ref(x)
+    # return CopyAndPatch.value_pointer(y)
+    # y = Ref(x)
+    # z = @ccall jl_value_ptr(y::Any)::Ptr{Nothing}
+    # return z
+    # z = @ccall jl_value_ptr(x::Any)::Any
+    # return z
+end
+
+# mc = jit(mycollect, (Int64,))
+# mc = jit(myarray, (Int64,))
+# mc = jit(myalloc, (UInt64,))
+# mc = jit(mytestalloc1, (UInt64,))
+# mc = jit(mytestalloc2, (UInt64,))
+# mc = jit(mycconvert, (UInt64,))
+# mc = jit(mytuple, (Int64,))
+# mc = jit(myrange, (Int64,))
+
+# @show mycconvert(C_NULL)
+# mc = jit(mycconvert, (Ptr{Nothing},))
+
+# mybitcast(C_NULL)
+# mc = jit(mybitcast, (Ptr{Nothing},))
+
+# display(my_value_pointer(123))
+# mc = jit(my_value_pointer, (Int64,))
+
+# display(my_data_pointer(1))
+# mc = jit(my_data_pointer, (Int64,))
+
+# display(foreign_1(3))
+# mc = jit(foreign_1, (Int64,))
+# display(foreign_2(3))
+# mc = jit(foreign_2, (Int64,))
+# display(foreign_3(3))
+# mc = jit(foreign_3, (Int64,))
+display(foreign_w_jl_1(3))
+mc = jit(foreign_w_jl_1, (JIT_MutDummy,))
