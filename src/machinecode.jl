@@ -50,8 +50,7 @@ function call(code::MachineCode{RetType,ArgTypes}, @nospecialize(args...)) where
         elseif a isa AbstractArray
             slots[i] = value_pointer(a)
         else
-            slots[N+ii] = value_pointer(a)
-            slots[i] = pointer(slots, N+ii)
+            slots[i] = value_pointer(a)
         end
     end
     GC.@preserve code begin
@@ -60,7 +59,11 @@ function call(code::MachineCode{RetType,ArgTypes}, @nospecialize(args...)) where
     p = code.static_prms[end]
     @assert p !== C_NULL
     return if RetType <: Boxable
-        unsafe_load(Base.unsafe_convert(Ptr{RetType}, p))
+        if RetType <: Ptr
+            Base.unsafe_convert(Ptr{eltype(RetType)}, p)
+        else
+            unsafe_load(Base.unsafe_convert(Ptr{RetType}, p))
+        end
     elseif RetType === Nothing
         nothing
     else

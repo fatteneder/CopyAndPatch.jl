@@ -364,9 +364,14 @@ function emitcode!(mc, ip, used_rets, ex::Expr)
         boxes = box_args(args, mc)
         append!(mc.gc_roots, boxes)
         nargs = length(boxes)
+        cboxes = Ptr{UInt64}[C_NULL for _ in 1:nargs]
+        append!(mc.gc_roots, cboxes)
+        @assert ip in used_rets
         push!(mc.static_prms, C_NULL)
         mc.ssas[ip] = pointer(mc.static_prms, length(mc.static_prms))
         retbox = pointer(mc.ssas, ip)
+        iptrs = [ Int64(to_c_type(at) <: Ptr) for at in argtypes ]
+        append!(mc.gc_roots, iptrs)
         cif = Ffi_cif(rettype, tuple(argtypes...))
         isptr_ret = Int64(to_c_type(rettype) <: Ptr)
         st, bvec, bvec2 = stencils["ast_foreigncall"]
@@ -379,13 +384,15 @@ function emitcode!(mc, ip, used_rets, ex::Expr)
             end
             p
         else
-            dlsym(dlopen(libname[]), fname)
+            dlsym(dlopen(libname isa Ref ? libname[] : libname), fname)
         end
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ARGS",      pointer(boxes))
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CARGS",     pointer(cboxes))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CIF",       pointer(cif))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_F",         fptr)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",        ip)
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IPTRS",     pointer(iptrs))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ISPTR_RET", isptr_ret)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_NARGS",     nargs)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RET",       retbox)
