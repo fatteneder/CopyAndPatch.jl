@@ -43,6 +43,9 @@ end
 #   unsafe_string(@ccall jl_typeof_str(p2::Ptr{Cvoid})::Cstring) # segfaults in global scope, but gives "ImmutDummy" inside function
 #end
 # ```
+# jl_value_ptr actually returns jl_value_t *, so we should be using a ::Any return type
+# however, doing so would convert the returned value into a julia type
+# using instead ::Ptr{Cvoid} we obtain an address that seems to be working with the rest
 value_pointer(@nospecialize(x)) = @ccall jl_value_ptr(x::Any)::Ptr{Cvoid}
 
 
