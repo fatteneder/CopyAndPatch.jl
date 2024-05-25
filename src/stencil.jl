@@ -257,7 +257,7 @@ function patch!(bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, 
     holes = st.relocations
     anyfound = false
     for h in holes
-        if startswith(h.symbol, symbol)
+        if h.symbol == symbol
             patch!(bvec, offset, h, val)
             anyfound = true
         end

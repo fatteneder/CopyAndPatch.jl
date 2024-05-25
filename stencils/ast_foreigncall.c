@@ -13,9 +13,6 @@ _JIT_ENTRY(int prev_ip)
    PATCH_VALUE(int64_t,   isptr_ret, _JIT_ISPTR_RET);
    PATCH_VALUE(uint32_t,  nargs,     _JIT_NARGS);
    PATCH_VALUE(void **,   ret,       _JIT_RET);
-   // TODO Found that when I don't properly type cast isptr_ret below,
-   // then it is optimized away. Might this be the same reason as to why
-   // the pointers where optimized away in other stencils?
    jl_value_t **roots;
    JL_GC_PUSHARGS(roots, nargs);
    for (size_t i = 0; i < nargs; i++) {
