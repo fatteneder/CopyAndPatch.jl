@@ -1,16 +1,5 @@
 const hexfmt = Format("%02x")
 
-function stencil_files()
-    dir = normpath(joinpath(@__DIR__,"..","stencils"))
-    files = readdir(dir, join=true)
-    filter!(files) do ff
-        f = basename(ff)
-        (startswith(f, "jl_") || startswith(f, "jit_")) && endswith(f, ".json")
-    end
-    return files
-end
-
-
 baremodule HoleValues
 import Base: @enum
 @enum HoleValue CODE CONTINUE DATA EXECUTOR GOT OPARG OPERAND TARGET TOP ZERO
@@ -143,7 +132,7 @@ function process_relocations(stencil::Stencil, group::StencilGroup)
             addend = hole.addend + group.data.symbols[hole.symbol]
             hole = Hole(hole.offset, hole.kind, value, symbol, addend)
         elseif hole.symbol in keys(group.code.symbols)
-            value, symbol = HoleValue.CODE, None
+            value, symbol = HoleValues.CODE, nothing
             addend = hole.addend + group.code.symbols[hole.symbol]
             hole = Hole(hole.offset, hole.kind, value, symbol, addend)
         end

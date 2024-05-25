@@ -13,18 +13,18 @@ function init_stencils()
         try
             s = StencilGroup(f)
             bvec = ByteVector(UInt8.(only(s.code.body)))
-            bvec_data = if !isempty(s.data.body)
-                ByteVector(UInt8.(only(s.data.body)))
+            bvecs_data = if !isempty(s.data.body)
+                [ ByteVector(UInt8.(b)) for b in s.data.body ]
             else
-                ByteVector(0)
+                [ ByteVector(0) ]
             end
-            patch_default_deps!(bvec, bvec_data, s)
+            patch_default_deps!(bvec, bvecs_data, s)
             for h in s.code.relocations
                 @assert h.kind == "R_X86_64_64"
                 bvec[h.offset+1] = MAGICNR
             end
             name = first(splitext(basename(f)))
-            stencils[name] = (s,bvec,bvec_data)
+            stencils[name] = (s,bvec,bvecs_data)
         catch e
             println("Failure when processing $f")
             rethrow(e)
@@ -34,7 +34,7 @@ function init_stencils()
 end
 
 
-function patch_default_deps!(bvec::ByteVector, bvec_data::ByteVector, s::StencilGroup)
+function patch_default_deps!(bvec::ByteVector, bvecs_data::Vector{ByteVector}, s::StencilGroup)
     holes = s.code.relocations
     patched = Hole[]
     for h in holes
@@ -52,6 +52,10 @@ function patch_default_deps!(bvec::ByteVector, bvec_data::ByteVector, s::Stencil
             end
             p
         elseif startswith(h.symbol, ".rodata")
+            idx = get(s.data.symbols, h.symbol) do
+                error("can't locate symbol $(h.symbol) in data section")
+            end
+            bvec_data = bvecs_data[idx+1]
             @assert h.addend+1 < length(bvec_data)
             pointer(bvec_data.d, h.addend+1)
         elseif startswith(h.symbol, "ffi_")
@@ -95,7 +99,7 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
         stencil_starts[i] = 1+code_size
         code_size += length(only(st.code.body))
         if !isempty(st.data.body)
-            data_size += length(only(st.data.body))
+            data_size += sum(length(b) for b in st.code.body)
         end
     end
 
