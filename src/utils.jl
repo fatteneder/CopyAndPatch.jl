@@ -14,11 +14,15 @@ function pointer_from_function(fn::Function)
     return pf
 end
 
+
+# from stencils/libjuliahelpers.c
 is_method_instance(mi) = @ccall libjuliahelpers_path[].is_method_instance(mi::Any)::Cint
 function is_bool(b)
     p = box(b)
     GC.@preserve b @ccall libjuliahelpers_path[].is_bool(p::Ptr{Cvoid})::Cint
 end
+is_concrete_immutable(@nospecialize(x)) = @ccall libjuliahelpers_path[].jl_is_concrete_immutable(x::Any)::Bool
+is_pointerfree(@nospecialize(x)) = @ccall libjuliahelpers_path[].jl_is_pointerfree(x::Any)::Bool
 
 
 # @nospecialize is needed here to return the desired pointer also for immutables.
