@@ -1,5 +1,5 @@
 const stencils = Dict{String,Any}()
-const MAGICNR = 0x8070605040302010
+const MAGICNR = 0x0070605040302010
 
 
 function init_stencils()
