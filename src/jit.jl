@@ -343,7 +343,20 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RET",     retbox)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CONT",    pointer(mc.buf, mc.stencil_starts[ip+1]))
     elseif isexpr(ex, :foreigncall)
-        fname, libname = ex.args[1].args[2].value, unwrap(ex.args[1].args[3].args[2])
+        fname, libname = if ex.args[1] isa QuoteNode
+            ex.args[1].value, nothing
+        elseif ex.args[1] isa Expr
+            @assert Base.isexpr(ex.args[1], :call)
+            eval(ex.args[1].args[2]), ex.args[1].args[3]
+        else
+            fname = ex.args[1].args[2].value
+            libname = if ex.args[1].args[3] isa GlobalRef
+                unwrap(ex.args[1].args[3])
+            else
+                unwrap(ex.args[1].args[3].args[2])
+            end
+            fname, libname
+        end
         rettype = ex.args[2]
         argtypes = ex.args[3]
         nreq = ex.args[4]
@@ -375,6 +388,12 @@ function emitcode!(mc, ip, ex::Expr)
             end
             p
         else
+            if libname isa GlobalRef
+                libname = unwrap(libname)
+            elseif libname isa Expr
+                @assert Base.isexpr(libname, :call)
+                libname = unwrap(libname.args[2])
+            end
             dlsym(dlopen(libname isa Ref ? libname[] : libname), fname)
         end
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
