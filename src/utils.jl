@@ -21,8 +21,17 @@ function is_bool(b)
     p = box(b)
     GC.@preserve b @ccall libjuliahelpers_path[].is_bool(p::Ptr{Cvoid})::Cint
 end
-is_concrete_immutable(@nospecialize(x)) = @ccall libjuliahelpers_path[].jl_is_concrete_immutable(x::Any)::Bool
-is_pointerfree(@nospecialize(x)) = @ccall libjuliahelpers_path[].jl_is_pointerfree(x::Any)::Bool
+is_concrete_immutable(@nospecialize(x::DataType)) = @ccall libjuliahelpers_path[].jl_is_concrete_immutable(x::Any)::Bool
+is_pointerfree(@nospecialize(x::DataType)) = @ccall libjuliahelpers_path[].jl_is_pointerfree(x::Any)::Bool
+
+# from julia_internal.h
+# TODO What about Base.allocatedinline?
+datatype_isinlinealloc(@nospecialize(ty::Ref{T})) where T = datatype_isinlinealloc(T)
+function datatype_isinlinealloc(@nospecialize(ty::DataType))
+    ptrfree = is_pointerfree(ty)
+    r = @ccall jl_datatype_isinlinealloc(ty::Any, ptrfree::Cint)::Cint
+    return r != 0
+end
 
 
 # @nospecialize is needed here to return the desired pointer also for immutables.
@@ -50,6 +59,7 @@ is_pointerfree(@nospecialize(x)) = @ccall libjuliahelpers_path[].jl_is_pointerfr
 # jl_value_ptr actually returns jl_value_t *, so we should be using a ::Any return type
 # however, doing so would convert the returned value into a julia type
 # using instead ::Ptr{Cvoid} we obtain an address that seems to be working with the rest
+# FWIW this is also how its being used in code_typed outputs.
 value_pointer(@nospecialize(x)) = @ccall jl_value_ptr(x::Any)::Ptr{Cvoid}
 
 
@@ -118,6 +128,7 @@ unbox(T::Type, ptr::Integer) = unbox(T, Ptr{Cvoid}(UInt64(ptr)))
 #   because of that we define ffi_type below only for the 'unique' ones to avoid overwrite warnings
 # - there are at least four system dependent types, Cchar, Clong, Culong, Cwchar_t, which
 #   we will need special care later on
+# TODO Should use cglobal instead of dlsym, the latter is for function pointers.
 for (jl_t, ffi_t) in [
                        (Cvoid,      :ffi_type_void),
                        (Cuchar,     :ffi_type_uint8),
@@ -135,6 +146,7 @@ for (jl_t, ffi_t) in [
     @eval ffi_type(::Type{$jl_t}) = dlsym(libffi_handle,$(QuoteNode(ffi_t)))
 end
 ffi_type(p::Type{Cstring}) = dlsym(libffi_handle,:ffi_type_pointer)
+# TODO Why is there a nospecialize version?
 ffi_type(p::Type{Ptr}) = dlsym(libffi_handle,:ffi_type_pointer)
 ffi_type(@nospecialize(p::Type{Ptr{T}})) where T = dlsym(libffi_handle,:ffi_type_pointer)
 
