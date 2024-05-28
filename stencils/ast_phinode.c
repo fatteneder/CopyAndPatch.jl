@@ -8,13 +8,10 @@ _JIT_ENTRY(int prev_ip)
    PATCH_VALUE(int,            ip,      _JIT_IP);
    PATCH_VALUE(int,            nedges,  _JIT_NEDGES);
    PATCH_VALUE(jl_value_t **,  ret,     _JIT_RET);
-   PATCH_VALUE(int,            retused, _JIT_RETUSED);
    PATCH_VALUE(jl_value_t ***, vals,    _JIT_VALS);
    for (int ie = 0; ie < nedges; ie++) {
       if (edges[ie] == prev_ip) {
-         jl_value_t *_ret = *(vals[ie]);
-         if (retused)
-            *ret = _ret;
+         *ret = *(vals[ie]);
          PATCH_JUMP(_JIT_CONT, ip);
       }
    }
