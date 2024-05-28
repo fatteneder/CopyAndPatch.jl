@@ -2,6 +2,7 @@
 // License is MIT: https://julialang.org/license
 
 #include "ccalltest_common.h"
+#include "julia.h"
 
 int verbose = 1;
 int c_int = 0;
@@ -755,6 +756,9 @@ DLLEXPORT void set_verbose(int level) {
 // Other tests
 
 DLLEXPORT void *test_echo_p(void *p) {
+    printf("sers p = %p\n", p);
+    printf("jl_typeof_str(p) = %s\n", jl_typeof_str((jl_value_t *)p));
+    fflush(stdout);
     return p;
 }
 

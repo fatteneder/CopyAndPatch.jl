@@ -374,10 +374,10 @@ function emitcode!(mc, ip, ex::Expr)
         push!(mc.static_prms, C_NULL)
         mc.ssas[ip] = pointer(mc.static_prms, length(mc.static_prms))
         retbox = pointer(mc.ssas, ip)
-        iptrs = [ Int64(to_c_type(at) <: Ptr) for at in argtypes ]
-        append!(mc.gc_roots, iptrs)
+        ffi_argtypes = [ Cint(ffi_ctype_id(at)) for at in argtypes ]
+        ffi_rettype = Cint(ffi_ctype_id(rettype))
+        rettype_ptr = rettype <: Ptr ? pointer_from_objref(rettype) : C_NULL
         cif = Ffi_cif(rettype, tuple(argtypes...))
-        isptr_ret = Int64(to_c_type(rettype) <: Ptr)
         st, bvec, _ = stencils["ast_foreigncall"]
         fptr = if isnothing(libname)
             h = dlopen(dlpath("libjulia.so"))
@@ -397,18 +397,53 @@ function emitcode!(mc, ip, ex::Expr)
             dlsym(dlopen(libname isa Ref ? libname[] : libname), fname)
         end
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
-        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ARGS",      pointer(boxes))
-        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CARGS",     pointer(cboxes))
-        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CIF",       pointer(cif))
-        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_F",         fptr)
-        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",        ip)
-        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IPTRS",     pointer(iptrs))
-        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ISPTR_RET", isptr_ret)
-        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_NARGS",     nargs)
-        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RET",       retbox)
-        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CONT",      pointer(mc.buf, mc.stencil_starts[ip+1]))
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ARGS",        pointer(boxes))
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CARGS",       pointer(cboxes))
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CIF",         pointer(cif))
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_F",           fptr)
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",          ip)
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ARGTYPES",    pointer(ffi_argtypes))
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RETTYPE",     ffi_rettype)
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RETTYPE_PTR", rettype_ptr)
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_NARGS",       nargs)
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RET",         retbox)
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CONT",        pointer(mc.buf, mc.stencil_starts[ip+1]))
     else
         TODO(ex.head)
+    end
+end
+function ffi_ctype_id(t)
+    # need to keep this in sync with switch statements in ast_foreign.c
+    return if t === Bool # Int8
+        0
+    elseif t === Cchar # Int8
+        1
+    elseif t === Cuchar # UInt8
+        2
+    elseif t === Cshort # Int16
+        3
+    elseif t === Cushort # UInt16
+        4
+    elseif t === Cint # Int32
+        5
+    elseif t === Cuint # UInt32
+        6
+    elseif t === Clonglong # Int64
+        7
+    elseif t === Culonglong # UInt64
+        8
+    elseif t === Cfloat # Float32
+        9
+    elseif t === Cdouble # Float64
+        10
+    # elseif t === Ptr{Cvoid}
+    #     11
+    elseif t === Ptr{UInt8}
+        12
+    elseif t <: Ptr
+        11
+    else # Any
+        -1
     end
 end
 

@@ -55,18 +55,7 @@ function call(code::MachineCode{RetType,ArgTypes}, @nospecialize(args...)) where
         ccall(pointer(code), Cvoid, (Cint,), 0 #= ip =#)
     end
     p = code.static_prms[end]
-    @assert p !== C_NULL
-    return if RetType <: Boxable
-        if RetType <: Ptr
-            Base.unsafe_convert(Ptr{eltype(RetType)}, p)
-        else
-            unsafe_load(Base.unsafe_convert(Ptr{RetType}, p))
-        end
-    elseif RetType === Nothing
-        nothing
-    else
-        Base.unsafe_pointer_to_objref(p)
-    end
+    return Base.unsafe_pointer_to_objref(p)
 end
 
 
