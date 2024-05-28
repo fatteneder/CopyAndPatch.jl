@@ -197,7 +197,7 @@ function box_arg(a, mc)
         return pointer(static_prms, length(static_prms))
     end
 end
-function box_args(ex_args::AbstractVector, mc)
+function box_args(ex_args::AbstractVector, mc::MC)
     # TODO Need to cast to Ptr{UInt64} here?
     # return Ptr{Ptr{Cvoid}}[ box_arg(a, slots, ssas) for a in ex_args ]
     return Ptr{Cvoid}[ box_arg(a, mc) for a in ex_args ]
@@ -285,7 +285,7 @@ function emitcode!(mc, ip, ex::Expr)
             retbox = pointer(mc.ssas, ip)
             @assert retbox !== C_NULL
             name = string("jl_", Symbol(fn))
-            st, bvec, bvec2 = get(stencils, name) do
+            st, bvec, _ = get(stencils, name) do
                 error("don't know how to handle intrinsic $name")
             end
             copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
@@ -321,7 +321,7 @@ function emitcode!(mc, ip, ex::Expr)
         nargs = length(boxes)
         # TODO Should write into ssas[end]
         retbox = pointer(mc.ssas, ip)
-        st, bvec, bvec2 = stencils["ast_invoke"]
+        st, bvec, _ = stencils["ast_invoke"]
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",      Cint(ip))
@@ -335,7 +335,7 @@ function emitcode!(mc, ip, ex::Expr)
         nargs = length(boxes)
         # TODO Should write into ssas[end]
         retbox = pointer(mc.ssas, ip)
-        st, bvec, bvec2 = stencils["ast_new"]
+        st, bvec, _ = stencils["ast_new"]
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",      ip)
@@ -365,7 +365,7 @@ function emitcode!(mc, ip, ex::Expr)
         append!(mc.gc_roots, iptrs)
         cif = Ffi_cif(rettype, tuple(argtypes...))
         isptr_ret = Int64(to_c_type(rettype) <: Ptr)
-        st, bvec, bvec2 = stencils["ast_foreigncall"]
+        st, bvec, _ = stencils["ast_foreigncall"]
         fptr = if isnothing(libname)
             h = dlopen(dlpath("libjulia.so"))
             p = dlsym(h, fname, throw_error=false)
