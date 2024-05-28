@@ -131,10 +131,8 @@ function get_stencil(ex)
             return get(stencils, name) do
                 error("don't know how to handle intrinsic $name")
             end
-        elseif fn isa Function
-            return stencils["ast_call"]
         else
-            TODO(fn)
+            return stencils["ast_call"]
         end
     elseif isexpr(ex, :invoke)
         return stencils["ast_invoke"]
