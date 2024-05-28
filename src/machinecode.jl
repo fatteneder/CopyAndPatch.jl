@@ -47,8 +47,6 @@ function call(code::MachineCode{RetType,ArgTypes}, @nospecialize(args...)) where
         i = ii+1
         if a isa Boxable
             slots[i] = box(a)
-        elseif a isa AbstractArray
-            slots[i] = value_pointer(a)
         else
             slots[i] = value_pointer(a)
         end

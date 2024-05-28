@@ -110,7 +110,7 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     nslots = length(codeinfo.slottypes)
     nssas = length(codeinfo.ssavaluetypes)
     @assert nssas == length(codeinfo.code)
-    resize!(mc.slots, 2*nslots)
+    resize!(mc.slots, nslots)
     resize!(mc.ssas, nssas)
 
     for (ip,ex) in enumerate(codeinfo.code)
