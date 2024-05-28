@@ -103,24 +103,12 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
         end
     end
 
-    # TODO If we store stencil_starts and codeinfo.code here then
-    # we can later relocate the stencils with statements in code_native
     mc = MachineCode(code_size, rettype, argtypes)
     mc.stencil_starts = stencil_starts
     mc.codeinfo = codeinfo
-    # bvec_code = view(mc.buf, 1:code_size)
-    # bvec_data = view(mc.buf, code_size+1:code_size+data_size)
 
     nslots = length(codeinfo.slottypes)
     nssas = length(codeinfo.ssavaluetypes)
-    # We use twice the number of slots here so that we can add another indirection layer
-    # for faster setup of slots when calling later. This is similar to how its done for ffi_call.
-    # slots = Ptr{UInt64}[ C_NULL for _ in 1:2*nslots]
-    # # TODO we use this assumption to save return values into ssa array
-    # @assert nssas == length(codeinfo.code)
-    # ssas = Ptr{UInt64}[ C_NULL for _ in 1:nssas ]
-    # static_prms = Ptr{UInt64}[]
-
     @assert nssas == length(codeinfo.code)
     resize!(mc.slots, 2*nslots)
     resize!(mc.ssas, nssas)
@@ -237,6 +225,7 @@ end
 # - _2 ... slot variable; either a function argument or a local variable
 #          _1 refers to function, _2 to first arg, etc.
 #          see CodeInfo.slottypes, CodeInfo.slotnames
+# TODO: Use get_stencil here too!
 emitcode!(mc, ip, used_rets, ex) = TODO(typeof(ex))
 function emitcode!(mc, ip, used_rets, ex::Nothing)
     st, bvec, _ = stencils["ast_goto"]
@@ -247,6 +236,7 @@ end
 function emitcode!(mc, ip, used_rets, ex::Core.ReturnNode)
     st, bvec, _ = stencils["ast_returnnode"]
     val = isdefined(ex,:val) ? box_arg(ex.val, mc) : C_NULL
+    # TODO Should write into ssas[end]
     push!(mc.static_prms, C_NULL)
     ret = pointer(mc.static_prms, length(mc.static_prms))
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
@@ -275,6 +265,7 @@ function emitcode!(mc, ip, used_rets, ex::Core.PhiNode)
     append!(mc.gc_roots, ex.edges)
     vals_boxes = box_args(ex.values, mc)
     append!(mc.gc_roots, vals_boxes)
+    # TODO Should write into ssas[end]
     retbox = ip in used_rets ? pointer(mc.ssas, ip) : C_NULL
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_EDGES",   pointer(ex.edges))
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",      ip)
@@ -294,6 +285,7 @@ function emitcode!(mc, ip, used_rets, ex::Expr)
             nargs = length(ex_args)
             boxes = box_args(ex_args, mc)
             append!(mc.gc_roots, boxes)
+            # TODO Should write into ssas[end]
             retbox = ip in used_rets ? pointer(mc.ssas, ip) : C_NULL
             @assert retbox !== C_NULL
             name = string("jl_", Symbol(fn))
@@ -311,6 +303,7 @@ function emitcode!(mc, ip, used_rets, ex::Expr)
             nargs = length(ex.args)
             boxes = box_args(ex.args, mc)
             append!(mc.gc_roots, boxes)
+            # TODO Should write into ssas[end]
             retbox = ip in used_rets ? pointer(mc.ssas, ip) : C_NULL
             st, bvec, _ = stencils["ast_call"]
             copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
@@ -331,6 +324,7 @@ function emitcode!(mc, ip, used_rets, ex::Expr)
         boxes = box_args(ex_args, mc)
         append!(mc.gc_roots, boxes)
         nargs = length(boxes)
+        # TODO Should write into ssas[end]
         retbox = ip in used_rets ? pointer(mc.ssas, ip) : C_NULL
         st, bvec, bvec2 = stencils["ast_invoke"]
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
@@ -345,6 +339,7 @@ function emitcode!(mc, ip, used_rets, ex::Expr)
         boxes = box_args(ex_args, mc)
         append!(mc.gc_roots, boxes)
         nargs = length(boxes)
+        # TODO Should write into ssas[end]
         retbox = ip in used_rets ? pointer(mc.ssas, ip) : C_NULL
         st, bvec, bvec2 = stencils["ast_new"]
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
