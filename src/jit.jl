@@ -450,12 +450,10 @@ function ffi_ctype_id(t)
         9
     elseif t === Cdouble # Float64
         10
-    # elseif t === Ptr{Cvoid}
-    #     11
-    elseif t === Ptr{UInt8}
-        12
-    elseif t <: Ptr
+    elseif t === Ptr{UInt8} || t === Ref{UInt8}
         11
+    elseif t <: Ref
+        12
     else # Any
         -1
     end

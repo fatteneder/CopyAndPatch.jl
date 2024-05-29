@@ -35,8 +35,8 @@ _JIT_ENTRY(int prev_ip)
          case 8:  cargs[i] = (void *)(uint64_t)jl_unbox_uint64((jl_value_t *)args[i]); break;
          case 9:  cargs[i] = (void *)(uint64_t)jl_unbox_float32((jl_value_t *)args[i]); break;
          case 10: cargs[i] = (void *)(uint64_t)jl_unbox_float64((jl_value_t *)args[i]); break;
-         case 11: cargs[i] = (void *)(uint64_t)jl_unbox_voidpointer((jl_value_t *)args[i]); break;
-         case 12: cargs[i] = (void *)(uint64_t)jl_unbox_uint8pointer((jl_value_t *)args[i]); break;
+         case 11: cargs[i] = (void *)(uint64_t)jl_unbox_uint8pointer((jl_value_t *)args[i]); break;
+         case 12: cargs[i] = (void *)(uint64_t)jl_unbox_voidpointer((jl_value_t *)args[i]); break;
          default: jl_error("ast_foreigncall: This should not have happened!");
       }
    }
@@ -55,12 +55,12 @@ _JIT_ENTRY(int prev_ip)
       case 8:  *ret = (void *)jl_box_uint64((uint64_t)rc); break;
       case 9:  *ret = (void *)jl_box_float32((float)rc); break;
       case 10: *ret = (void *)jl_box_float64((double)rc); break;
-      case 11: { *ret = (void *)jl_box_voidpointer((void *)rc);
+      case 11: *ret = (void *)jl_box_uint8pointer((uint8_t *)rc); break;
+      case 12: { *ret = (void *)jl_box_voidpointer((void *)rc);
                  if (rettype_ptr) {
                      *ret = (void **)jl_bitcast(rettype_ptr, (jl_value_t *)*ret);
                  }
                } break;
-      case 12: *ret = (void *)jl_box_uint8pointer((uint8_t *)rc); break;
       default: jl_error("ast_foreigncall: This should not have happened!");
    }
    PATCH_JUMP(_JIT_CONT, ip);

@@ -99,6 +99,7 @@ try
     GC.enable(false)
     include("jit.jl")
     include("ffi.jl")
+    include("ccall.jl")
 finally
     GC.enable(true)
 end

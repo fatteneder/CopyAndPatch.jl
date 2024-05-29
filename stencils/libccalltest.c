@@ -756,8 +756,9 @@ DLLEXPORT void set_verbose(int level) {
 // Other tests
 
 DLLEXPORT void *test_echo_p(void *p) {
-    printf("sers p = %p\n", p);
+    printf("HALLLLLOOOOO p = %p\n", p);
     printf("jl_typeof_str(p) = %s\n", jl_typeof_str((jl_value_t *)p));
+    printf("jl_typename_str(jl_array_eltype(p)) = %s\n", jl_typename_str(jl_array_eltype((jl_value_t *)p)));
     fflush(stdout);
     return p;
 }
