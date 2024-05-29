@@ -12,6 +12,16 @@ jl_value_t * my_jl_alloc_genericmemory(jl_value_t *mtype, size_t nel) {
    return memory;
 }
 
+typedef struct _my_type {
+   int x;
+} my_type;
+
+my_type return_my_type(int x) {
+   my_type mt;
+   mt.x = x;
+   return mt;
+}
+
 int main() {
    printf("START\n");
    jl_init();
@@ -75,8 +85,36 @@ int main() {
          printf("ffi_prep_cif failed!!!\n");
          return -1;
       }
-
    }
+
+   {
+      ffi_cif cif;
+      ffi_type *args[1];
+      void *values[1];
+      ffi_type ret;
+      void *rc = malloc(sizeof(my_type));
+
+      ffi_type *elements[2];
+      elements[0] = &ffi_type_sint;
+      elements[1] = NULL;
+      ret.size = ret.alignment = 0;
+      ret.type = FFI_TYPE_STRUCT;
+      ret.elements = elements;
+
+      int x = 123;
+      args[0] = &ffi_type_sint;
+      values[0] = &x;
+      if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, 1,
+                       &ret, args) == FFI_OK) {
+         ffi_call(&cif, (void *)jl_value_ptr, (ffi_arg*)rc, values);
+         my_type *mt = (my_type*)rc;
+         printf("mt->x = %d\n", mt->x);
+      } else {
+         printf("ffi_prep_cif failed!!!\n");
+         return -1;
+      }
+   }
+
    jl_atexit_hook(0);
    printf("DONE\n");
    return 0;
