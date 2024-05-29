@@ -41,7 +41,7 @@ function gen_ccall_echo(x, T, U, ret=nothing)
     @gensym func_name
     @eval @noinline $func_name(x) = $func_ex
     esc(quote
-            mc = jit($func_name, ($(typeof(x)),))
+            mc = jit($func_name, (typeof($x),))
             CopyAndPatch.call(mc, $x)
     end)
     # :($func_name($(esc(x))))
