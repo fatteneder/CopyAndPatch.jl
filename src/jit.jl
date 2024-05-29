@@ -144,6 +144,7 @@ function get_stencil(ex)
         TODO("Stencil not implemented yet:", ex)
     end
 end
+get_stencil(ex::GlobalRef)       = stencils["ast_assign"]
 get_stencil(ex::Core.ReturnNode) = stencils["ast_returnnode"]
 get_stencil(ex::Core.GotoIfNot)  = stencils["ast_gotoifnot"]
 get_stencil(ex::Core.GotoNode)   = stencils["ast_goto"]
@@ -189,6 +190,9 @@ function box_arg(a, mc)
             push!(static_prms, pointer_from_objref(a))
         elseif a isa Nothing
             push!(static_prms, dlsym(libjulia[], :jl_nothing))
+        elseif a isa QuoteNode
+            @assert hasfield(typeof(a), :value)
+            push!(static_prms, value_pointer(a.value))
         elseif a isa Tuple
             push!(static_prms, value_pointer(a))
         else
@@ -228,6 +232,16 @@ function emitcode!(mc, ip, ex::Nothing)
     st, bvec, _ = stencils["ast_goto"]
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",   ip)
+    patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
+end
+function emitcode!(mc, ip, ex::GlobalRef)
+    st, bvec, _ = stencils["ast_assign"]
+    val = box_arg(ex, mc)
+    ret = pointer(mc.ssas, ip)
+    copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
+    patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",   ip)
+    patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RET",  ret)
+    patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_VAL",  val)
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
 end
 function emitcode!(mc, ip, ex::Core.ReturnNode)
