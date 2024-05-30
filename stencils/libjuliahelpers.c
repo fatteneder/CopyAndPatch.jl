@@ -1,8 +1,10 @@
-#include "common.h"
-#include <stdbool.h> // bool
-#include <string.h> // memcpy
+#include "juliahelpers.h"
 #include <julia_internal.h> // jl_gc_alloc
 #include <julia_threads.h> // for julia_internal.h
+#include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h> // bool
+#include <string.h> // memcpy
 
 int is_method_instance(jl_method_instance_t *mi) {
    return jl_is_method_instance(mi);
@@ -28,7 +30,7 @@ bool jl_is_pointerfree(jl_value_t* t)
     return layout && layout->npointers == 0;
 }
 
-jl_value_t *make_type_from_data(jl_value_t *ty, void *data) {
+jl_value_t *jlh_convert_to_jl_value(jl_value_t *ty, void *data) {
     jl_task_t *ct = jl_get_current_task();
     unsigned sz = jl_datatype_size(ty);
     jl_value_t *v = jl_gc_alloc(ct->ptls, sz, ty);

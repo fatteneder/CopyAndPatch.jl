@@ -260,7 +260,7 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
                                     ret::Ptr{Cvoid}, slots::Ptr{Ptr{Cvoid}})::Cvoid
     end
     return if isconcretetype(cif.rettype) && !(cif.rettype <: Ref)
-        @ccall CopyAndPatch.libjuliahelpers_path[].make_type_from_data(cif.rettype::Any,ret::Ptr{Cvoid})::Any
+        @ccall CopyAndPatch.libjuliahelpers_path[].jlh_convert_to_jl_value(cif.rettype::Any,ret::Ptr{Cvoid})::Any
     elseif cif.rettype <: Ref
         Base.unsafe_convert(cif.rettype, ret[])
     elseif cif.rettype <: Ctypes

@@ -51,6 +51,8 @@ function patch_default_deps!(bvec::ByteVector, bvecs_data::Vector{ByteVector}, s
                 end
             end
             p
+        elseif startswith(h.symbol, "jlh_")
+            dlsym(libjuliahelpers[], h.symbol, throw_error=false)
         elseif startswith(h.symbol, ".rodata")
             idx = get(s.data.symbols, h.symbol) do
                 error("can't locate symbol $(h.symbol) in data section")
