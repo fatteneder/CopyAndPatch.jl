@@ -63,12 +63,5 @@ bin/mwe_libffi: mwe_libffi.c
 			-std=gnu11 -fPIC -ljulia -ljulia-internal -lffi \
 			-o bin/mwe_libffi mwe_libffi.c
 
-bin/mwe_libffi_simple: mwe_libffi_simple.c
-	gcc -I'${JULIA_INCLUDE}' -I'${LIBFFI_INCLUDE}' \
-			-L'${JULIA_LIB}' \
-			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
-			-std=gnu11 -fPIC -ljulia -ljulia-internal -lffi \
-			-o bin/mwe_libffi_simple mwe_libffi_simple.c
-
 clean:
 	@rm -rf bin/
