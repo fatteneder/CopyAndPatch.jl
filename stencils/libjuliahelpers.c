@@ -1,5 +1,8 @@
 #include "common.h"
-#include <stdbool.h>
+#include <stdbool.h> // bool
+#include <string.h> // memcpy
+#include <julia_internal.h> // jl_gc_alloc
+#include <julia_threads.h> // for julia_internal.h
 
 int is_method_instance(jl_method_instance_t *mi) {
    return jl_is_method_instance(mi);
@@ -23,4 +26,12 @@ bool jl_is_pointerfree(jl_value_t* t)
         return 0;
     const jl_datatype_layout_t *layout = ((jl_datatype_t*)t)->layout;
     return layout && layout->npointers == 0;
+}
+
+jl_value_t *make_type_from_data(jl_value_t *ty, void *data) {
+    jl_task_t *ct = jl_get_current_task();
+    unsigned sz = jl_datatype_size(ty);
+    jl_value_t *v = jl_gc_alloc(ct->ptls, sz, ty);
+    memcpy(jl_data_ptr(v), data, jl_datatype_size(ty));
+    return v;
 }

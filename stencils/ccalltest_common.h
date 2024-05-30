@@ -6,8 +6,8 @@
 #include <stdint.h>
 #include <inttypes.h>
 
-#include "../src/support/platform.h"
-#include "../src/support/dtypes.h"
+// #include "../src/support/platform.h"
+// #include "../src/support/dtypes.h"
 
 // Borrow definition from `support/dtypes.h`
 #ifdef _OS_WINDOWS_

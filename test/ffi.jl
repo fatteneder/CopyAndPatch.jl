@@ -58,6 +58,9 @@ struct FFI_ImmutDummy
     x::String
     y::Int64
 end
+mutable struct my_type
+    x::Cint
+end
 @testset "ffi_call with Julia types" begin
     handle = dlopen(CopyAndPatch.libmwes_path[])
 
@@ -102,6 +105,13 @@ end
     result = CopyAndPatch.ffi_call(cif, fn, [Memory{Int64}])
     @test typeof(result) === Memory{Int64}
     @test length(result) == 3
+
+    # julia struct return type
+    fn = dlsym(handle, :mwe_my_type)
+    cif = CopyAndPatch.Ffi_cif(my_type, (Cint,))
+    result = CopyAndPatch.ffi_call(cif, fn, [Cint(123)])
+    @test typeof(result) == my_type
+    @test result.x == Cint(123)
 
     # call libjulia-internal:jl_alloc_genericmemory directly
     handle = dlopen(dlpath("libjulia-internal.so"))

@@ -148,7 +148,9 @@ end
 ffi_type(p::Type{Cstring}) = dlsym(libffi_handle,:ffi_type_pointer)
 # TODO Why is there a nospecialize version?
 ffi_type(p::Type{Ptr}) = dlsym(libffi_handle,:ffi_type_pointer)
+# TODO What about Refs?
 ffi_type(@nospecialize(p::Type{Ptr{T}})) where T = dlsym(libffi_handle,:ffi_type_pointer)
+ffi_type(@nospecialize(t)) = isconcretetype(t) ? ffi_type_struct(t) : ffi_type(Ptr{Cvoid})
 
 const Ctypes = Union{Cchar,Cuchar,Cshort,Cstring,Cushort,Cint,Cuint,Clong,Culong,
                      Clonglong,Culonglong,Cintmax_t,Cuintmax_t,Csize_t,Cssize_t,
@@ -161,6 +163,23 @@ function to_c_type(t)
     end
 end
 
+const FFI_TYPE_CACHE = Dict{Any,Vector{UInt8}}()
+function ffi_type_struct(@nospecialize(t::Type{T})) where T
+    # ty = get(FFI_TYPE_CACHE, T, nothing)
+    # !isnothing(ty) && return pointer(ty)
+    n = fieldcount(T)
+    elements = Vector{Ptr{Cvoid}}(undef, n+1) # +1 for null terminator
+    for i in 1:n
+        elements[i] = CopyAndPatch.ffi_type(fieldtype(T,i))
+    end
+    elements[end] = C_NULL
+    sz = @ccall CopyAndPatch.libffihelpers_path[].get_sizeof_ffi_type()::Csize_t
+    mem_ffi_type = Vector{UInt8}(undef, sizeof(UInt8)*sz)
+    @ccall CopyAndPatch.libffihelpers_path[].init_ffi_type_struct(
+                            mem_ffi_type::Ptr{Cvoid},elements::Ptr{Cvoid})::Cvoid
+    FFI_TYPE_CACHE[T] = mem_ffi_type
+    return pointer(mem_ffi_type)
+end
 
 mutable struct Ffi_cif
     mem_cif::Vector{UInt8}
@@ -171,7 +190,7 @@ mutable struct Ffi_cif
 
     function Ffi_cif(@nospecialize(rettype::Type{T}), @nospecialize(argtypes::NTuple{N,Type})) where {T,N}
         # TODO Do we need to hold onto ffi_rettype, ffi_argtypes for the lifetime of Ffi_cfi?
-        ffi_rettype = ffi_type(to_c_type(T))
+        ffi_rettype = ffi_type(T)
         if any(a -> a === Cvoid, argtypes)
             throw(ArgumentError("Encountered bad argument type Cvoid"))
         end
@@ -211,9 +230,13 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
     @assert fn !== C_NULL
     N = length(cif.argtypes)
     @assert N == length(args)
-    # TODO Would like to always use Ref{cif.rettype}(), but for non-is-bits types this
-    # initializes to #undef and errors inside ffi_call.
-    ret = cif.rettype <: Ctypes ?  Ref{cif.rettype}() : Ref{Ptr{Cvoid}}(C_NULL)
+    ret = if cif.rettype <: Ctypes
+        Ref{cif.rettype}()
+    elseif isconcretetype(cif.rettype) && !(cif.rettype <: Ref)
+        Vector{UInt8}(undef, sizeof(cif.rettype))
+    else# cif.rettype <: Ref
+        Ref{Ptr{Cvoid}}(C_NULL)
+    end
     slots = cif.slots
     for (i,a) in enumerate(args)
         if a isa Boxable
@@ -236,7 +259,9 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
         @ccall libffi_path.ffi_call(cif.p::Ptr{Cvoid}, fn::Ptr{Cvoid},
                                     ret::Ptr{Cvoid}, slots::Ptr{Ptr{Cvoid}})::Cvoid
     end
-    return if cif.rettype <: Ref
+    return if isconcretetype(cif.rettype) && !(cif.rettype <: Ref)
+        @ccall CopyAndPatch.libjuliahelpers_path[].make_type_from_data(cif.rettype::Any,ret::Ptr{Cvoid})::Any
+    elseif cif.rettype <: Ref
         Base.unsafe_convert(cif.rettype, ret[])
     elseif cif.rettype <: Ctypes
         ret[]

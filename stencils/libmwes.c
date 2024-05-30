@@ -96,3 +96,13 @@ jl_value_t * mwe_foreign_jlarg_jlret(jl_value_t *n) {
    jl_value_t *v = jl_eval_string("1");
    return v;
 }
+
+typedef struct _my_type {
+   int x;
+} my_type;
+
+my_type mwe_my_type(int x) {
+   my_type mt;
+   mt.x = x;
+   return mt;
+}

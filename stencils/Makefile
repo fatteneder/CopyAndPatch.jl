@@ -31,10 +31,10 @@ bin/%.json: bin/%.o readobj
 	./readobj $< > bin/$*.json
 
 bin/libjuliahelpers.so: libjuliahelpers.c
-	gcc -I'${JULIA_INCLUDE}' \
+	gcc -I'${JULIA_INCLUDE}' -I'${JULIA_INTERNAL_INCLUDE}' -I"${JULIA_INCLUDE2}" \
 			-L'${JULIA_LIB}' \
 			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
-			-std=gnu11 -fPIC -ljulia -shared \
+			-std=gnu11 -fPIC -ljulia -ljulia-internal -shared \
 			-o bin/libjuliahelpers.so libjuliahelpers.c
 
 bin/libffihelpers.so: libffihelpers.c
