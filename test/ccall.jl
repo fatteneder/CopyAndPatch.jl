@@ -74,8 +74,7 @@ end
 @test @ccall_echo_objref(553, Ptr{Any}, Any) === 553
 @test @ccall_echo_func(124, Ref{Int}, Any) === 124
 @test @ccall_echo_load(422, Ptr{Any}, Ref{Any}) === 422
-# works when skipping gc_roots
-  # @test @ccall_echo_load([383], Ptr{Int}, Ref{Int}) === 383
+@test @ccall_echo_load([383], Ptr{Int}, Ref{Int}) === 383
 @test @ccall_echo_load(Ref([144,172],2), Ptr{Int}, Ref{Int}) === 172
 # that test is also ignored in julia
 # # @test @ccall_echo_load(Ref([8],1,1), Ptr{Int}, Ref{Int}) === 8

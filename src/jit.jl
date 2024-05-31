@@ -381,8 +381,8 @@ function emitcode!(mc, ip, ex::Expr)
         @assert conv === QuoteNode(:ccall)
         args = ex.args[6:5+length(ex.args[3])]
         gc_roots = ex.args[6+length(ex.args[3])+1:end]
-        @assert length(gc_roots) == 0
         boxes = box_args(args, mc)
+        boxed_gc_roots = box_args(gc_roots, mc)
         append!(mc.gc_roots, boxes)
         nargs = length(boxes)
         cboxes = Ptr{UInt64}[C_NULL for _ in 1:nargs]
@@ -418,10 +418,12 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CARGS",       pointer(cboxes))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CIF",         pointer(cif))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_F",           fptr)
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_GCROOTS",     pointer(boxed_gc_roots))
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_NGCROOTS",    Cint(length(boxed_gc_roots)))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",          ip)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ARGTYPES",    pointer(ffi_argtypes))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RETTYPE",     ffi_rettype)
-        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RETTYPE_PTR", rettype_ptr)
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RETTYPEPTR",  rettype_ptr)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_FFIRETVAL",   pointer(ffi_retval))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_NARGS",       nargs)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RET",         retbox)
@@ -431,7 +433,7 @@ function emitcode!(mc, ip, ex::Expr)
     end
 end
 function ffi_ctype_id(t; return_type=false)
-    # need to keep this in sync with switch statements in ast_foreign.c
+    # need to keep this in sync with switch statements in ast_foreigncall.c
     return if t === Bool # Int8
         0
     elseif t === Cchar # Int8

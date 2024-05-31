@@ -8,16 +8,22 @@ _JIT_ENTRY(int prev_ip)
 {
    DEBUGSTMT("ast_foreigncall", prev_ip);
    PATCH_VALUE(void ***,     args,        _JIT_ARGS);
+   PATCH_VALUE(int *,        argtypes,    _JIT_ARGTYPES);
    PATCH_VALUE(void ***,     cargs,       _JIT_CARGS);
    PATCH_VALUE(void *,       cif,         _JIT_CIF);
    PATCH_VALUE(void *,       f,           _JIT_F);
+   PATCH_VALUE(void ***,     gc_roots,    _JIT_GCROOTS);
+   PATCH_VALUE(int,          n_gc_roots,  _JIT_NGCROOTS);
    PATCH_VALUE(int,          ip,          _JIT_IP);
-   PATCH_VALUE(int *,        argtypes,    _JIT_ARGTYPES);
    PATCH_VALUE(int,          rettype,     _JIT_RETTYPE);
-   PATCH_VALUE(jl_value_t *, rettype_ptr, _JIT_RETTYPE_PTR);
+   PATCH_VALUE(jl_value_t *, rettype_ptr, _JIT_RETTYPEPTR);
    PATCH_VALUE(void *,       ffi_retval,  _JIT_FFIRETVAL);
    PATCH_VALUE(uint32_t,     nargs,       _JIT_NARGS);
    PATCH_VALUE(void **,      ret,         _JIT_RET);
+   jl_value_t **roots;
+   JL_GC_PUSHARGS(roots, n_gc_roots);
+   for (int i = 0; i < n_gc_roots; i++)
+      roots[i] = (jl_value_t*)*gc_roots[i];
    for (int i = 0; i < nargs; i++) {
       // Atm we store both isbits and non-isbits types in boxed forms,
       // i.e. args is actually a jl_value_t **.
@@ -68,5 +74,6 @@ _JIT_ENTRY(int prev_ip)
                } break;
       default: jl_error("ast_foreigncall: This should not have happened!");
    }
+   JL_GC_POP();
    PATCH_JUMP(_JIT_CONT, ip);
 }
