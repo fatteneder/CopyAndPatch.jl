@@ -21,8 +21,10 @@ function is_bool(b)
     p = box(b)
     GC.@preserve b @ccall libjuliahelpers_path[].is_bool(p::Ptr{Cvoid})::Cint
 end
-is_concrete_immutable(@nospecialize(x::DataType)) = @ccall libjuliahelpers_path[].jl_is_concrete_immutable(x::Any)::Bool
-is_pointerfree(@nospecialize(x::DataType)) = @ccall libjuliahelpers_path[].jl_is_pointerfree(x::Any)::Bool
+is_concrete_immutable(@nospecialize(x::DataType)) =
+    @ccall libjuliahelpers_path[].jl_is_concrete_immutable(x::Any)::Bool
+is_pointerfree(@nospecialize(x::DataType)) =
+    @ccall libjuliahelpers_path[].jl_is_pointerfree(x::Any)::Bool
 
 # from julia_internal.h
 # TODO What about Base.allocatedinline?
@@ -53,7 +55,9 @@ end
 # GC.@preserve x begin
 #   unsafe_string(@ccall jl_typeof_str(p::Ptr{Cvoid})::Cstring)  # "ImmutDummy"
 #   unsafe_string(@ccall jl_typeof_str(p1::Ptr{Cvoid})::Cstring) # "ImmutDummy"
-#   unsafe_string(@ccall jl_typeof_str(p2::Ptr{Cvoid})::Cstring) # segfaults in global scope, but gives "ImmutDummy" inside function
+#   unsafe_string(@ccall jl_typeof_str(p2::Ptr{Cvoid})::Cstring) # segfaults in global scope,
+#                                                                # but gives "ImmutDummy" inside
+#                                                                # function
 #end
 # ```
 # jl_value_ptr actually returns jl_value_t *, so we should be using a ::Any return type
@@ -71,7 +75,8 @@ value_pointer(@nospecialize(x)) = @ccall jl_value_ptr(x::Any)::Ptr{Cvoid}
 # - void *jl_unbox_voidpointer(jl_value_t *v) JL_NOTSAFEPOINT;
 # - uint8_t *jl_unbox_uint8pointer(jl_value_t *v) JL_NOTSAFEPOINT;
 #
-# Here is a list of default primitives: https://docs.julialang.org/en/v1/manual/types/#Primitive-Types
+# Here is a list of default primitives:
+# https://docs.julialang.org/en/v1/manual/types/#Primitive-Types
 # It also contains Float16, UInt128, Int128, but we don't have box methods for them.
 # Why? Because they are emulated in software?
 #
@@ -176,13 +181,13 @@ function ffi_type_struct(@nospecialize(t::Type{T})) where T
     n = fieldcount(T)
     elements = Vector{Ptr{Cvoid}}(undef, n+1) # +1 for null terminator
     for i in 1:n
-        elements[i] = CopyAndPatch.ffi_type(fieldtype(T,i))
+        elements[i] = ffi_type(fieldtype(T,i))
     end
     elements[end] = C_NULL
     sz = sizeof_ffi_type()
     mem_ffi_type = Vector{UInt8}(undef, sizeof(UInt8)*sz)
-    @ccall CopyAndPatch.libffihelpers_path[].setup_ffi_type_struct(
-                            mem_ffi_type::Ptr{Cvoid},elements::Ptr{Cvoid})::Cvoid
+    @ccall libffihelpers_path[].setup_ffi_type_struct(mem_ffi_type::Ptr{Cvoid},
+                                                      elements::Ptr{Cvoid})::Cvoid
     FFI_TYPE_CACHE[T] = mem_ffi_type
     return pointer(mem_ffi_type)
 end
@@ -206,7 +211,6 @@ mutable struct Ffi_cif
         mem_cif = Vector{UInt8}(undef, sizeof(UInt8)*sz_cif)
         p_cif = pointer(mem_cif)
         default_abi = ffi_default_abi()
-        # https://www.chiark.greenend.org.uk/doc/libffi-dev/html/The-Basics.html
         status = @ccall libffi_path.ffi_prep_cif(
                                 p_cif::Ptr{Cvoid}, default_abi::Cint, N::Cint,
                                 ffi_rettype::Ptr{Cvoid}, ffi_argtypes::Ptr{Ptr{Cvoid}}
@@ -228,7 +232,8 @@ mutable struct Ffi_cif
         end
     end
 end
-Ffi_cif(@nospecialize(rettype::Type), @nospecialize(s::Core.SimpleVector)) = Ffi_cif(rettype, tuple(s...))
+Ffi_cif(@nospecialize(rettype::Type), @nospecialize(s::Core.SimpleVector)) =
+    Ffi_cif(rettype, tuple(s...))
 
 Base.pointer(cif::Ffi_cif) = cif.p
 
@@ -266,7 +271,7 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
                                     ret::Ptr{Cvoid}, slots::Ptr{Ptr{Cvoid}})::Cvoid
     end
     return if isconcretetype(cif.rettype) && !(cif.rettype <: Ref)
-        @ccall CopyAndPatch.libjuliahelpers_path[].jlh_convert_to_jl_value(cif.rettype::Any,ret::Ptr{Cvoid})::Any
+        @ccall libjuliahelpers_path[].jlh_convert_to_jl_value(cif.rettype::Any,ret::Ptr{Cvoid})::Any
     elseif cif.rettype <: Ref
         Base.unsafe_convert(cif.rettype, ret[])
     elseif cif.rettype <: Ctypes
