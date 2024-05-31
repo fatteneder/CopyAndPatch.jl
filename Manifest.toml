@@ -2,7 +2,21 @@
 
 julia_version = "1.12.0-DEV"
 manifest_format = "2.0"
-project_hash = "63d2cef6b0252ad20b5c4949238c12ce419e4bb2"
+project_hash = "d65d2c59f270827bc1b8933336a276874f87086d"
+
+[[deps.About]]
+deps = ["InteractiveUtils", "JuliaSyntaxHighlighting", "StyledStrings"]
+git-tree-sha1 = "62ad7e8482dd05f1b8f46fdc464c451b53deab28"
+repo-rev = "main"
+repo-url = "https://github.com/tecosaur/About.jl.git"
+uuid = "69d22d85-9f48-4c46-bbbe-7ad8341ff72a"
+version = "0.1.0"
+
+    [deps.About.extensions]
+    PkgExt = "Pkg"
+
+    [deps.About.weakdeps]
+    Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
@@ -45,6 +59,11 @@ deps = ["CodeTracking", "InteractiveUtils", "Random", "UUIDs"]
 git-tree-sha1 = "7b762d81887160169ddfc93a47e5fd7a6a3e78ef"
 uuid = "aa1ae85d-cabe-5617-a682-6adf51b2e16a"
 version = "0.9.29"
+
+[[deps.JuliaSyntaxHighlighting]]
+deps = ["StyledStrings"]
+uuid = "dc6e5ff7-fb65-4e79-a425-ec3bc9c03011"
+version = "1.11.0"
 
 [[deps.Libdl]]
 uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
