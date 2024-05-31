@@ -104,8 +104,7 @@ end
     result = CopyAndPatch.ffi_call(cif, fptr, [20,51])
     @test result == c
 
-    # TODO Rettype should be Any, and loading should be done by user!
-    cif = CopyAndPatch.Ffi_cif(GenericMemory, (Csize_t,))
+    cif = CopyAndPatch.Ffi_cif(Any, (Csize_t,))
     fn = dlsym(handle, :mwe_jl_alloc_genericmemory_carg)
     result = CopyAndPatch.ffi_call(cif, fn, [Csize_t(15)])
     @test typeof(result) <: GenericMemory
