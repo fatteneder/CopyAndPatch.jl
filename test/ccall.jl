@@ -6,7 +6,7 @@ function mimic_test(x)
     a1 = Ref(x)
     a2 = @ccall jl_value_ptr(a1::Any)::Ptr{Cvoid}
     a11 = Base.bitcast(Ptr{Int64}, a2)
-    a14 = @ccall "stencils/bin/libccalltest.so".test_echo_p(a11::Ptr{Int64})::Ptr{Int64}
+    a14 = @ccall libccalltest.test_echo_p(a11::Ptr{Int64})::Ptr{Int64}
     a15 = Base.pointerref(a14, 1, 1)
     return a15
 end
@@ -78,3 +78,68 @@ end
 @test @ccall_echo_load(Ref([144,172],2), Ptr{Int}, Ref{Int}) === 172
 # that test is also ignored in julia
 # # @test @ccall_echo_load(Ref([8],1,1), Ptr{Int}, Ref{Int}) === 8
+
+
+# Tests for passing and returning structs
+
+let a, ci_ary, x
+    a = 20 + 51im
+
+    ctest(a) = ccall((:ctest, libccalltest), Complex{Int}, (Complex{Int},), a)
+    mc = jit(ctest, (typeof(a),))
+    x = mc(a)
+
+    @test x == a + 1 - 2im
+
+    ci_ary = [a] # Make sure the array is alive during unsafe_load
+    cptest(ci_ary) = unsafe_load(ccall((:cptest, libccalltest), Ptr{Complex{Int}},
+                                 (Ptr{Complex{Int}},), ci_ary))
+    mc = jit(cptest, (typeof(ci_ary),))
+    x = mc(ci_ary)
+
+    @test x == a + 1 - 2im
+    @test a == 20 + 51im
+
+    cptest_static(a) = ccall((:cptest_static, libccalltest), Ptr{Complex{Int}}, (Ref{Complex{Int}},), a)
+    mc = jit(cptest_static, (typeof(a),))
+    x = mc(a)
+    @test unsafe_load(x) == a
+    @assert x !== C_NULL
+    Libc.free(convert(Ptr{Cvoid}, x))
+end
+
+let a, b, x
+    a = 2.84 + 5.2im
+
+    cgtest(a) = ccall((:cgtest, libccalltest), ComplexF64, (ComplexF64,), a)
+    mc = jit(cgtest, (typeof(a),))
+    x = mc(a)
+
+    @test x == a + 1 - 2im
+
+    b = [a] # Make sure the array is alive during unsafe_load
+    cgptest(b) = unsafe_load(ccall((:cgptest, libccalltest), Ptr{ComplexF64}, (Ptr{ComplexF64},), b))
+    mc = jit(cgptest, (typeof(b),))
+    x = mc(b)
+
+    @test x == a + 1 - 2im
+    @test a == 2.84 + 5.2im
+end
+
+let a, b, x
+    a = 3.34f0 + 53.2f0im
+
+    cftest(a) = ccall((:cftest, libccalltest), ComplexF32, (ComplexF32,), a)
+    mc = jit(cftest, (typeof(a),))
+    x = mc(a)
+
+    @test x == a + 1 - 2im
+
+    b = [a] # Make sure the array is alive during unsafe_load
+    cfptest(b) = unsafe_load(ccall((:cfptest, libccalltest), Ptr{ComplexF32}, (Ptr{ComplexF32},), b))
+    mc = jit(cfptest, (typeof(b),))
+    x = mc(b)
+
+    @test x == a + 1 - 2im
+    @test a == 3.34f0 + 53.2f0im
+end

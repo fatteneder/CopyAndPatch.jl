@@ -31,7 +31,7 @@ _JIT_ENTRY(int prev_ip)
       // The proper way to it would be to not store isbits types in boxed form, but instead
       // inline them or put the bits values into static_prms or so.
       switch (argtypes[i]) {
-         case -2: cargs[i] = (void **)jl_data_ptr((jl_value_t *)*args[i]); break;
+         case -2: cargs[i] = (void **)jl_value_ptr((jl_value_t *)*args[i]); break;
          case -1: cargs[i] = (void **)args[i]; /* jl_value_t ** */ break;
          case 0:  cargs[i] = (void *)(uint64_t)jl_unbox_bool((jl_value_t *)args[i]); break;
          case 1:  cargs[i] = (void *)(uint64_t)jl_unbox_int8((jl_value_t *)args[i]); break;

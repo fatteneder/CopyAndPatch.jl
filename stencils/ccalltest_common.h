@@ -22,6 +22,26 @@
 # endif
 #endif
 
+// Copied this from src/support/platform.h, needed for standalone compilation
+#if defined(_CPU_X86_64_)
+#  define _P64
+#elif defined(_CPU_X86_)
+#  define _P32
+#elif defined(_OS_WINDOWS_)
+/* Not sure how to determine pointer size on Windows running ARM. */
+#  if _WIN64
+#    define _P64
+#  else
+#    define _P32
+#  endif
+#elif __SIZEOF_POINTER__ == 8
+#    define _P64
+#elif __SIZEOF_POINTER__ == 4
+#    define _P32
+#else
+#  error pointer size not known for your platform / compiler
+#endif
+
 #ifdef _P64
 #define jint int64_t
 #define PRIjint PRId64

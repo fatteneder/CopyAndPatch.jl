@@ -44,9 +44,9 @@ function (mc::MachineCode)(@nospecialize(args...))
     end
     gc_roots = mc.gc_roots
     slots = mc.slots
-    N = nargs+1 # because slots[1] is the function itself
+    slots[1] = value_pointer(mc.fn)
     for (ii,a) in enumerate(args)
-        i = ii+1
+        i = ii+1 # slots[1] is the function itself
         if a isa Boxable
             slots[i] = box(a)
         else
