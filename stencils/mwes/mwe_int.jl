@@ -19,7 +19,7 @@ bvec[3] = buf
 
 mc = CopyAndPatch.MachineCode(4096)
 write(mc, bvec.d)
-fn = CopyAndPatch.CompiledMachineCode(mc, Cint, ())
+fn = CopyAndPatch.CompiledMachineCode(mc, Nothing, Cint, ())
 @show CopyAndPatch.call(fn)
 
 Libc.free(buf)

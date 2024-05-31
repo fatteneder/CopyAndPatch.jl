@@ -21,5 +21,5 @@ bvec[12+1] = p_put
 
 mc = CopyAndPatch.MachineCode(4096)
 write(mc, bvec.d)
-fn = CopyAndPatch.CompiledMachineCode(mc, Cint, ())
+fn = CopyAndPatch.CompiledMachineCode(mc, Nothing, Cint, ())
 @show CopyAndPatch.call(fn)

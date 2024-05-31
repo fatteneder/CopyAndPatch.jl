@@ -36,5 +36,5 @@ for h in holes
     bvec[h.offset+1] = p
 end
 
-fn = CopyAndPatch.MachineCode(bvec, Cdouble, ())
+fn = CopyAndPatch.MachineCode(bvec, Nothing, Cdouble, ())
 @show fn()

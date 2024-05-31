@@ -30,7 +30,7 @@ for h in holes
     bvec[h.offset+1] = p
 end
 
-jit_returnnode = CopyAndPatch.MachineCode(bvec, Cvoid, (Ptr{Cvoid},))
+jit_returnnode = CopyAndPatch.MachineCode(bvec, Nothing, Cvoid, (Ptr{Cvoid},))
 jit_returnnode(C_NULL)
 
 
@@ -61,7 +61,7 @@ for h in holes
     bvec[h.offset+1] = p
 end
 
-jl_continuation = CopyAndPatch.MachineCode(bvec, Cvoid, (Ptr{Cvoid},))
+jl_continuation = CopyAndPatch.MachineCode(bvec, Nothing, Cvoid, (Ptr{Cvoid},))
 
 fn = CopyAndPatch.pointer_from_function(versioninfo)
 args = Ptr{UInt64}[]
