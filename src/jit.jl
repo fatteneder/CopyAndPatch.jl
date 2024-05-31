@@ -389,7 +389,7 @@ function emitcode!(mc, ip, ex::Expr)
         append!(mc.gc_roots, cboxes)
         retbox = pointer(mc.ssas, ip)
         ffi_argtypes = [ Cint(ffi_ctype_id(at)) for at in argtypes ]
-        ffi_rettype = Cint(ffi_ctype_id(rettype))
+        ffi_rettype = Cint(ffi_ctype_id(rettype, return_type=true))
         sz_ffi_arg = Csize_t(ffi_rettype == -2 ? sizeof(rettype) : sizeof_ffi_arg())
         ffi_retval = Vector{UInt8}(undef, sz_ffi_arg)
         push!(mc.gc_roots, ffi_retval)
@@ -430,7 +430,7 @@ function emitcode!(mc, ip, ex::Expr)
         TODO(ex.head)
     end
 end
-function ffi_ctype_id(t)
+function ffi_ctype_id(t; return_type=false)
     # need to keep this in sync with switch statements in ast_foreign.c
     return if t === Bool # Int8
         0
@@ -454,13 +454,21 @@ function ffi_ctype_id(t)
         9
     elseif t === Cdouble # Float64
         10
-    elseif t === Ptr{UInt8} || t === Ref{UInt8}
+    elseif t === Ptr{UInt8} # TODO For what is this even needed?
         11
+    elseif t <: Ptr
+        12
     elseif t <: Ref
+        if return_type
+            # cf. https://discourse.julialang.org/t/returning-arbitrary-julia-value-from-c-function/11429/2
+            @assert isprimitivetype(eltype(t))
+            @goto any
+        end
         12
     elseif isconcretetype(t)
         -2
     else # Any
+        @label any
         -1
     end
 end
