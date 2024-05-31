@@ -70,7 +70,7 @@ if Sys.WORD_SIZE == 64
     # this test is valid only for x86_64 and win64
     @test @ccall_echo_func(164, IntLike, Int).x === 164
 end
-# @test @ccall_echo_func(IntLike(828), Int, IntLike) === 828
+@test @ccall_echo_func(IntLike(828), Int, IntLike) === 828
 # @test @ccall_echo_func(913, Any, Any) === 913
 # @test @ccall_echo_objref(553, Ptr{Any}, Any) === 553
 # @test @ccall_echo_func(124, Ref{Int}, Any) === 124 # segfault
