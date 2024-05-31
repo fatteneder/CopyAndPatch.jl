@@ -48,7 +48,7 @@ _JIT_ENTRY(int prev_ip)
    ffi_call((ffi_cif *)cif, f, rc, (void **)cargs);
    switch (rettype) {
       case -2: *ret = jlh_convert_to_jl_value(rettype_ptr, (void *)rc); break;
-      case -1: *ret = (void *)*rc; // jl_value_t *
+      case -1: *ret = (void *)*rc; break; // jl_value_t *
       case 0:  *ret = (void *)jl_box_bool((int8_t)*rc); break;
       case 1:  *ret = (void *)jl_box_int8((int8_t)*rc); break;
       case 2:  *ret = (void *)jl_box_uint8((uint8_t)*rc); break;
