@@ -152,6 +152,12 @@ ffi_type(p::Type{Ptr}) = dlsym(libffi_handle,:ffi_type_pointer)
 ffi_type(@nospecialize(p::Type{Ptr{T}})) where T = dlsym(libffi_handle,:ffi_type_pointer)
 ffi_type(@nospecialize(t)) = isconcretetype(t) ? ffi_type_struct(t) : ffi_type(Ptr{Cvoid})
 
+# wrappers for libffihelper.so
+ffi_default_abi() = @ccall libffihelpers_path[].ffi_default_abi()::Cint
+sizeof_ffi_cif() = @ccall libffihelpers_path[].sizeof_ffi_cif()::Csize_t
+sizeof_ffi_arg() = @ccall libffihelpers_path[].sizeof_ffi_arg()::Csize_t
+sizeof_ffi_type() = @ccall libffihelpers_path[].sizeof_ffi_type()::Csize_t
+
 const Ctypes = Union{Cchar,Cuchar,Cshort,Cstring,Cushort,Cint,Cuint,Clong,Culong,
                      Clonglong,Culonglong,Cintmax_t,Cuintmax_t,Csize_t,Cssize_t,
                      Cptrdiff_t,Cwchar_t,Cwstring,Cfloat,Cdouble,Cvoid}
@@ -163,8 +169,6 @@ function to_c_type(t)
     end
 end
 
-sizeof_ffi_arg() = @ccall libffihelpers_path[].get_sizeof_ffi_arg()::Csize_t
-
 const FFI_TYPE_CACHE = Dict{Any,Vector{UInt8}}()
 function ffi_type_struct(@nospecialize(t::Type{T})) where T
     # ty = get(FFI_TYPE_CACHE, T, nothing)
@@ -175,9 +179,9 @@ function ffi_type_struct(@nospecialize(t::Type{T})) where T
         elements[i] = CopyAndPatch.ffi_type(fieldtype(T,i))
     end
     elements[end] = C_NULL
-    sz = @ccall CopyAndPatch.libffihelpers_path[].get_sizeof_ffi_type()::Csize_t
+    sz = sizeof_ffi_type()
     mem_ffi_type = Vector{UInt8}(undef, sizeof(UInt8)*sz)
-    @ccall CopyAndPatch.libffihelpers_path[].init_ffi_type_struct(
+    @ccall CopyAndPatch.libffihelpers_path[].setup_ffi_type_struct(
                             mem_ffi_type::Ptr{Cvoid},elements::Ptr{Cvoid})::Cvoid
     FFI_TYPE_CACHE[T] = mem_ffi_type
     return pointer(mem_ffi_type)
@@ -197,11 +201,11 @@ mutable struct Ffi_cif
             throw(ArgumentError("Encountered bad argument type Cvoid"))
         end
         ffi_argtypes = N == 0 ? C_NULL : [ ffi_type(to_c_type(at)) for at in argtypes ]
-        sz_cif = @ccall libffihelpers_path[].get_sizeof_ffi_cif()::Csize_t
+        sz_cif = sizeof_ffi_cif()
         @assert sz_cif > 0
         mem_cif = Vector{UInt8}(undef, sizeof(UInt8)*sz_cif)
         p_cif = pointer(mem_cif)
-        default_abi = @ccall libffihelpers_path[].get_ffi_default_abi()::Cint
+        default_abi = ffi_default_abi()
         # https://www.chiark.greenend.org.uk/doc/libffi-dev/html/The-Basics.html
         status = @ccall libffi_path.ffi_prep_cif(
                                 p_cif::Ptr{Cvoid}, default_abi::Cint, N::Cint,
