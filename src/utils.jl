@@ -205,7 +205,7 @@ mutable struct Ffi_cif
         if any(a -> a === Cvoid, argtypes)
             throw(ArgumentError("Encountered bad argument type Cvoid"))
         end
-        ffi_argtypes = N == 0 ? C_NULL : [ ffi_type(to_c_type(at)) for at in argtypes ]
+        ffi_argtypes = N == 0 ? C_NULL : Ptr{Cvoid}[ ffi_type(at) for at in argtypes ]
         sz_cif = sizeof_ffi_cif()
         @assert sz_cif > 0
         mem_cif = Vector{UInt8}(undef, sizeof(UInt8)*sz_cif)
@@ -249,18 +249,18 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
         Ref{Ptr{Cvoid}}(C_NULL)
     end
     slots = cif.slots
+    # TODO I think this and call(::MachineCode, ...) should be the same,
+    # but they aren't atm. There might be something wrong somewhere.
     for (i,a) in enumerate(args)
         if a isa Boxable
-            # TODO I think this and call(::MachineCode, ...) should be the same,
-            # but they aren't atm. There might be something wrong somewhere.
-            if (a isa Ptr && !(cif.argtypes[i] <: Ptr)) || cif.argtypes[i] <: Ptr
+            if cif.argtypes[i] === Any
                 slots[N+i] = box(a)
                 slots[i] = pointer(slots, N+i)
             else
                 slots[i] = box(a)
             end
         elseif a isa AbstractArray
-            slots[i] = value_pointer(a)
+            slots[i] = cif.argtypes[i] <: Ptr ? value_pointer(a) : pointer(a)
         else
             slots[N+i] = value_pointer(a)
             slots[i] = pointer(slots, N+i)

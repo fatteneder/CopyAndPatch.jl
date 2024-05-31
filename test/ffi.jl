@@ -64,14 +64,14 @@ end
 @testset "ffi_call with Julia types" begin
     handle = dlopen(CopyAndPatch.libmwes_path[])
 
-    cif = CopyAndPatch.Ffi_cif(Clonglong, (Ptr{Cvoid},))
+    cif = CopyAndPatch.Ffi_cif(Clonglong, (Any,))
     fn = dlsym(handle, :mwe_my_square_jl)
     result = CopyAndPatch.ffi_call(cif, fn, [123])
     expected = 123^2
     @test result == expected
 
     # mutable type
-    cif = CopyAndPatch.Ffi_cif(Clonglong, (Ptr{Cvoid},))
+    cif = CopyAndPatch.Ffi_cif(Clonglong, (Any,))
     fn = dlsym(handle, :mwe_accept_jl_type)
     x = FFI_MutDummy("sers",12321)
     result = CopyAndPatch.ffi_call(cif, fn, [x])
@@ -79,7 +79,7 @@ end
     @test result == expected
 
     # immutable type
-    cif = CopyAndPatch.Ffi_cif(Clonglong, (Ptr{Cvoid},))
+    cif = CopyAndPatch.Ffi_cif(Clonglong, (Any,))
     fn = dlsym(handle, :mwe_accept_jl_type)
     x = FFI_ImmutDummy("sers",12321)
     result = CopyAndPatch.ffi_call(cif, fn, [x])
@@ -125,14 +125,14 @@ end
     # test Cstring return types
     handle = dlopen(dlpath("libjulia.so"))
 
-    cif = CopyAndPatch.Ffi_cif(Cstring, (Ptr{Cvoid},))
+    cif = CopyAndPatch.Ffi_cif(Cstring, (Any,))
     fn = dlsym(handle, :jl_typeof_str)
     x = FFI_MutDummy("sers",12321)
     result = CopyAndPatch.ffi_call(cif, fn, [x])
     expected = "FFI_MutDummy"
     @test unsafe_string(result) == expected
 
-    cif = CopyAndPatch.Ffi_cif(Cstring, (Ptr{Cvoid},))
+    cif = CopyAndPatch.Ffi_cif(Cstring, (Any,))
     fn = dlsym(handle, :jl_typeof_str)
     x = FFI_ImmutDummy("sers",12321)
     result = CopyAndPatch.ffi_call(cif, fn, [x])
