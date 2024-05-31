@@ -163,6 +163,8 @@ function to_c_type(t)
     end
 end
 
+sizeof_ffi_arg() = @ccall libffihelpers_path[].get_sizeof_ffi_arg()::Csize_t
+
 const FFI_TYPE_CACHE = Dict{Any,Vector{UInt8}}()
 function ffi_type_struct(@nospecialize(t::Type{T})) where T
     # ty = get(FFI_TYPE_CACHE, T, nothing)

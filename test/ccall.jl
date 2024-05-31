@@ -66,16 +66,14 @@ end
 @test @ccall_echo_load(IntLike(881), Ptr{IntLike}, Ref{IntLike}).x === 881
 @test @ccall_echo_func(532, Int, Int) === 532
 # no segfault, but wrong result
-# if Sys.WORD_SIZE == 64
+if Sys.WORD_SIZE == 64
     # this test is valid only for x86_64 and win64
-    # @ccall_echo_func(164, IntLike, Int)
-    # @test @ccall_echo_func(164, IntLike, Int).x === 164
-# end
+    @test @ccall_echo_func(164, IntLike, Int).x === 164
+end
 # @test @ccall_echo_func(IntLike(828), Int, IntLike) === 828
 # @test @ccall_echo_func(913, Any, Any) === 913
 # @test @ccall_echo_objref(553, Ptr{Any}, Any) === 553
-# segfault again
-# @test @ccall_echo_func(124, Ref{Int}, Any) === 124
+# @test @ccall_echo_func(124, Ref{Int}, Any) === 124 # segfault
 @test @ccall_echo_load(422, Ptr{Any}, Ref{Any}) === 422
 # works when skipping gc_roots
   # @test @ccall_echo_load([383], Ptr{Int}, Ref{Int}) === 383

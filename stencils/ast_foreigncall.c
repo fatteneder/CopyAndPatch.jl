@@ -1,6 +1,7 @@
 #include "common.h"
 #include <julia_internal.h> // for jl_bitcast
 #include <julia_threads.h>  // for julia_internal.h
+#include <juliahelpers.h>
 
 void
 _JIT_ENTRY(int prev_ip)
@@ -14,6 +15,7 @@ _JIT_ENTRY(int prev_ip)
    PATCH_VALUE(int *,        argtypes,    _JIT_ARGTYPES);
    PATCH_VALUE(int,          rettype,     _JIT_RETTYPE);
    PATCH_VALUE(jl_value_t *, rettype_ptr, _JIT_RETTYPE_PTR);
+   PATCH_VALUE(void *,       ffi_retval,  _JIT_FFIRETVAL);
    PATCH_VALUE(uint32_t,     nargs,       _JIT_NARGS);
    PATCH_VALUE(void **,      ret,         _JIT_RET);
    for (int i = 0; i < nargs; i++) {
@@ -40,23 +42,25 @@ _JIT_ENTRY(int prev_ip)
          default: jl_error("ast_foreigncall: This should not have happened!");
       }
    }
-   ffi_arg rc;
-   ffi_call((ffi_cif *)cif, f, &rc, (void **)cargs);
+   ffi_arg *rc = (ffi_arg*)ffi_retval;
+   assert(rc);
+   ffi_call((ffi_cif *)cif, f, rc, (void **)cargs);
    switch (rettype) {
-      case -1: *ret  = (void *)rc; // jl_value_t *
-      case 0:  *ret = (void *)jl_box_bool((int8_t)rc); break;
-      case 1:  *ret = (void *)jl_box_int8((int8_t)rc); break;
-      case 2:  *ret = (void *)jl_box_uint8((uint8_t)rc); break;
-      case 3:  *ret = (void *)jl_box_int16((int16_t)rc); break;
-      case 4:  *ret = (void *)jl_box_uint16((uint16_t)rc); break;
-      case 5:  *ret = (void *)jl_box_int32((int32_t)rc); break;
-      case 6:  *ret = (void *)jl_box_uint32((uint32_t)rc); break;
-      case 7:  *ret = (void *)jl_box_int64((int64_t)rc); break;
-      case 8:  *ret = (void *)jl_box_uint64((uint64_t)rc); break;
-      case 9:  *ret = (void *)jl_box_float32((float)rc); break;
-      case 10: *ret = (void *)jl_box_float64((double)rc); break;
-      case 11: *ret = (void *)jl_box_uint8pointer((uint8_t *)rc); break;
-      case 12: { *ret = (void *)jl_box_voidpointer((void *)rc);
+      case -2: *ret = jlh_convert_to_jl_value(rettype_ptr, (void *)rc); break;
+      case -1: *ret = (void *)*rc; // jl_value_t *
+      case 0:  *ret = (void *)jl_box_bool((int8_t)*rc); break;
+      case 1:  *ret = (void *)jl_box_int8((int8_t)*rc); break;
+      case 2:  *ret = (void *)jl_box_uint8((uint8_t)*rc); break;
+      case 3:  *ret = (void *)jl_box_int16((int16_t)*rc); break;
+      case 4:  *ret = (void *)jl_box_uint16((uint16_t)*rc); break;
+      case 5:  *ret = (void *)jl_box_int32((int32_t)*rc); break;
+      case 6:  *ret = (void *)jl_box_uint32((uint32_t)*rc); break;
+      case 7:  *ret = (void *)jl_box_int64((int64_t)*rc); break;
+      case 8:  *ret = (void *)jl_box_uint64((uint64_t)*rc); break;
+      case 9:  *ret = (void *)jl_box_float32((float)*rc); break;
+      case 10: *ret = (void *)jl_box_float64((double)*rc); break;
+      case 11: *ret = (void *)jl_box_uint8pointer((uint8_t *)*rc); break;
+      case 12: { *ret = (void *)jl_box_voidpointer((void *)*rc);
                  if (rettype_ptr) {
                      *ret = (void **)jl_bitcast(rettype_ptr, (jl_value_t *)*ret);
                  }

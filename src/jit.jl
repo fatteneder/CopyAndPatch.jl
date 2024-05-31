@@ -387,12 +387,13 @@ function emitcode!(mc, ip, ex::Expr)
         nargs = length(boxes)
         cboxes = Ptr{UInt64}[C_NULL for _ in 1:nargs]
         append!(mc.gc_roots, cboxes)
-        push!(mc.static_prms, C_NULL)
-        mc.ssas[ip] = pointer(mc.static_prms, length(mc.static_prms))
         retbox = pointer(mc.ssas, ip)
         ffi_argtypes = [ Cint(ffi_ctype_id(at)) for at in argtypes ]
         ffi_rettype = Cint(ffi_ctype_id(rettype))
-        rettype_ptr = rettype <: Ptr ? pointer_from_objref(rettype) : C_NULL
+        sz_ffi_arg = Csize_t(ffi_rettype == -2 ? sizeof(rettype) : sizeof_ffi_arg())
+        ffi_retval = Vector{UInt8}(undef, sz_ffi_arg)
+        push!(mc.gc_roots, ffi_retval)
+        rettype_ptr = pointer_from_objref(rettype)
         cif = Ffi_cif(rettype, tuple(argtypes...))
         st, bvec, _ = stencils["ast_foreigncall"]
         fptr = if isnothing(libname)
@@ -421,6 +422,7 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ARGTYPES",    pointer(ffi_argtypes))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RETTYPE",     ffi_rettype)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RETTYPE_PTR", rettype_ptr)
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_FFIRETVAL",   pointer(ffi_retval))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_NARGS",       nargs)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RET",         retbox)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CONT",        pointer(mc.buf, mc.stencil_starts[ip+1]))
@@ -456,6 +458,8 @@ function ffi_ctype_id(t)
         11
     elseif t <: Ref
         12
+    elseif isconcretetype(t)
+        -2
     else # Any
         -1
     end
