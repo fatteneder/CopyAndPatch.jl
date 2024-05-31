@@ -1,4 +1,7 @@
-mutable struct MachineCode{RetType,ArgTypes}
+mutable struct MachineCode
+    fn::Any # TODO Should this be Function? What about callable structs?
+    rettype::DataType
+    argtypes::Vector{DataType}
     buf::Vector{UInt8}
     slots::Vector{Ptr{UInt64}}
     ssas::Vector{Ptr{UInt64}}
@@ -8,40 +11,39 @@ mutable struct MachineCode{RetType,ArgTypes}
     codeinfo::Union{Nothing,CodeInfo}
     stencil_starts::Vector{Int64}
 
-    function MachineCode(bvec::ByteVector, @nospecialize(rettype::Type{T}), argtypes::NTuple{N,DataType},
-                         gc_roots::Vector{Any}=Any[]) where {T,N}
+    function MachineCode(bvec::ByteVector, fn,
+            @nospecialize(rettype::Type), @nospecialize(argtypes::NTuple{N,DataType}),
+            gc_roots::Vector{Any}=Any[]) where N
         rt = rettype <: Union{} ? Nothing : rettype
+        ats = [ at for at in argtypes ]
         buf = mmap(Vector{UInt8}, length(bvec), shared=false, exec=true)
         copy!(buf, bvec)
-        new{rt,Tuple{argtypes...}}(buf, UInt64[], UInt64[], UInt64[], gc_roots, nothing, Int64[])
+        new(fn, rt, ats, buf, UInt64[], UInt64[], UInt64[], gc_roots, nothing, Int64[])
     end
-    function MachineCode(sz::Integer, @nospecialize(rettype::Type{T}), argtypes::NTuple{N,DataType},
-                         gc_roots::Vector{Any}=Any[]) where {T,N}
+    function MachineCode(sz::Integer, fn,
+            @nospecialize(rettype::Type), @nospecialize(argtypes::NTuple{N,DataType}),
+            gc_roots::Vector{Any}=Any[]) where N
         rt = rettype <: Union{} ? Nothing : rettype
+        ats = [ at for at in argtypes ]
         buf = mmap(Vector{UInt8}, sz, shared=false, exec=true)
-        new{rt,Tuple{argtypes...}}(buf, UInt64[], UInt64[], UInt64[], gc_roots, nothing, Int64[])
+        new(fn, rt, ats, buf, UInt64[], UInt64[], UInt64[], gc_roots, nothing, Int64[])
     end
 end
-MachineCode(bvec, rettype, argtypes, gc_roots::Vector{Any}=Any[]) =
-    MachineCode(ByteVector(bvec), rettype, argtypes, gc_roots)
-
-const MC = MachineCode
-
-rettype(mc::MachineCode{RetType,ArgTypes}) where {RetType,ArgTypes} = RetType
-argtypes(mc::MachineCode{RetType,ArgTypes}) where {RetType,ArgTypes} = ArgTypes
+MachineCode(fn, @nospecialize(rettype), @nospecialize(argtypes), bvec, gc_roots::Vector{Any}=Any[]) =
+    MachineCode(fn, rettype, argtypes, ByteVector(bvec), gc_roots)
 
 
 Base.pointer(code::MachineCode) = Base.unsafe_convert(Ptr{Cvoid}, pointer(code.buf))
 
 
-function call(code::MachineCode{RetType,ArgTypes}, @nospecialize(args...)) where {RetType,ArgTypes}
-    argtypes = [ a for a in ArgTypes.parameters ]
-    nargs = length(argtypes)
+call(mc::MachineCode, @nospecialize(args...)) = mc(args...)
+function (mc::MachineCode)(@nospecialize(args...))
+    nargs = length(mc.argtypes)
     if length(args) != nargs
-        throw(MethodError(code, args))
+        throw(MethodError(mc, args))
     end
-    gc_roots = code.gc_roots
-    slots = code.slots
+    gc_roots = mc.gc_roots
+    slots = mc.slots
     N = nargs+1 # because slots[1] is the function itself
     for (ii,a) in enumerate(args)
         i = ii+1
@@ -51,17 +53,16 @@ function call(code::MachineCode{RetType,ArgTypes}, @nospecialize(args...)) where
             slots[i] = value_pointer(a)
         end
     end
-    GC.@preserve code begin
-        ccall(pointer(code), Cvoid, (Cint,), 0 #= ip =#)
+    GC.@preserve mc begin
+        ccall(pointer(mc), Cvoid, (Cint,), 0 #= ip =#)
     end
-    p = code.static_prms[end]
+    p = mc.static_prms[end]
     return Base.unsafe_pointer_to_objref(p)
 end
 
 
-function Base.show(io::IO, ::MIME"text/plain", code::MachineCode{RetType,ArgTypes}) where {RetType,ArgTypes}
+function Base.show(io::IO, ::MIME"text/plain", mc::MachineCode)
     print(io, "MachineCode(")
-    args = ArgTypes.types
-    length(args) > 0 && print(io, "::", join(args,",::"))
-    print(io, ")::", RetType)
+    length(mc.argtypes) > 0 && print(io, "::", join(mc.argtypes,",::"))
+    print(io, ")::", mc.rettype)
 end

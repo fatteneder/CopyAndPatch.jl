@@ -105,7 +105,7 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
         end
     end
 
-    mc = MachineCode(code_size, rettype, argtypes)
+    mc = MachineCode(code_size, fn, rettype, argtypes)
     mc.stencil_starts = stencil_starts
     mc.codeinfo = codeinfo
 
@@ -203,7 +203,7 @@ function box_arg(a, mc)
         return pointer(static_prms, length(static_prms))
     end
 end
-function box_args(ex_args::AbstractVector, mc::MC)
+function box_args(ex_args::AbstractVector, mc::MachineCode)
     # TODO Need to cast to Ptr{UInt64} here?
     # return Ptr{Ptr{Cvoid}}[ box_arg(a, slots, ssas) for a in ex_args ]
     return Ptr{Cvoid}[ box_arg(a, mc) for a in ex_args ]
