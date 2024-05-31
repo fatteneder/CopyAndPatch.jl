@@ -93,6 +93,17 @@ end
     @test typeof(result) <: GenericMemory
     @test length(result) == 15
 
+    cif = CopyAndPatch.Ffi_cif(Int64, (Complex{Int64},))
+    fptr = dlsym(handle, :mwe_ctest_jl_arg_c_ret)
+    c = Complex{Int64}(20,51)
+    result = CopyAndPatch.ffi_call(cif, fptr, [c])
+    @test result == 20+51
+
+    cif = CopyAndPatch.Ffi_cif(Complex{Int64}, (Int64,Int64))
+    fptr = dlsym(handle, :mwe_ctest_c_arg_jl_ret)
+    result = CopyAndPatch.ffi_call(cif, fptr, [20,51])
+    @test result == c
+
     # TODO Rettype should be Any, and loading should be done by user!
     cif = CopyAndPatch.Ffi_cif(GenericMemory, (Csize_t,))
     fn = dlsym(handle, :mwe_jl_alloc_genericmemory_carg)

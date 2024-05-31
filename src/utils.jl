@@ -184,8 +184,7 @@ function ffi_type_struct(@nospecialize(t::Type{T})) where T
         elements[i] = ffi_type(fieldtype(T,i))
     end
     elements[end] = C_NULL
-    sz = sizeof_ffi_type()
-    mem_ffi_type = Vector{UInt8}(undef, sizeof(UInt8)*sz)
+    mem_ffi_type = Vector{UInt8}(undef, sizeof_ffi_type())
     @ccall libffihelpers_path[].setup_ffi_type_struct(mem_ffi_type::Ptr{Cvoid},
                                                       elements::Ptr{Cvoid})::Cvoid
     FFI_TYPE_CACHE[T] = mem_ffi_type
@@ -248,6 +247,7 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
     else# cif.rettype <: Ref
         Ref{Ptr{Cvoid}}(C_NULL)
     end
+    static_prms = Any[]
     slots = cif.slots
     # TODO I think this and call(::MachineCode, ...) should be the same,
     # but they aren't atm. There might be something wrong somewhere.
@@ -261,12 +261,18 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
             end
         elseif a isa AbstractArray
             slots[i] = cif.argtypes[i] <: Ptr ? value_pointer(a) : pointer(a)
+        elseif isconcretetype(cif.argtypes[i])
+            @assert isconcretetype(cif.argtypes[i])
+            mem = Vector{UInt8}(undef, sizeof(cif.argtypes[i]))
+            push!(static_prms, mem)
+            unsafe_copyto!(pointer(mem), Base.unsafe_convert(Ptr{UInt8}, value_pointer(a)), sizeof(a))
+            slots[i] = pointer(mem)
         else
             slots[N+i] = value_pointer(a)
             slots[i] = pointer(slots, N+i)
         end
     end
-    GC.@preserve cif args begin
+    GC.@preserve cif args static_prms begin
         @ccall libffi_path.ffi_call(cif.p::Ptr{Cvoid}, fn::Ptr{Cvoid},
                                     ret::Ptr{Cvoid}, slots::Ptr{Ptr{Cvoid}})::Cvoid
     end

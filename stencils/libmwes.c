@@ -106,3 +106,29 @@ my_type mwe_my_type(int x) {
    mt.x = x;
    return mt;
 }
+
+void mwe_jl_is_module(jl_value_t *m) {
+   printf("jl_is_module(m) = %d\n", jl_is_module(m));
+   jl_value_t *mt = jl_typeof(m);
+   printf("mt == (jl_value_t *)jl_module_type = %d\n", mt == (jl_value_t *)jl_module_type);
+   return;
+}
+
+// from libccalltest.c
+typedef struct {
+    int64_t real;
+    int64_t imag;
+} complex_t;
+
+int64_t mwe_ctest_jl_arg_c_ret(complex_t a) {
+   printf("a.real = %d\n", a.real);
+   printf("a.imag = %d\n", a.imag);
+   return a.real + a.imag;
+}
+
+complex_t mwe_ctest_c_arg_jl_ret(int64_t real, int64_t imag) {
+   complex_t a;
+   a.real = real;
+   a.imag = imag;
+   return a;
+}
