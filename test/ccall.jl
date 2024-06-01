@@ -143,3 +143,82 @@ let a, b, x
     @test x == a + 1 - 2im
     @test a == 3.34f0 + 53.2f0im
 end
+
+
+## Tests for native Julia data types
+
+let a
+    a = 2.84 + 5.2im
+
+    cptest(a) = ccall((:cptest, libccalltest), Ptr{Complex{Int}}, (Ptr{Complex{Int}},), a)
+    mc = jit(cptest, (typeof(a),))
+    @test_throws MethodError mc(a)
+end
+
+
+## Tests for various sized data types (ByVal)
+
+mutable struct Struct1
+    x::Float32
+    y::Float64
+end
+struct Struct1I
+    x::Float32
+    y::Float64
+end
+copy(a::Struct1) = Struct1(a.x, a.y)
+copy(a::Struct1I) = a
+
+test_Struct1(a2,b) = ccall((:test_1, libccalltest), Struct1, (Struct1, Float32), a2, b)
+test_Struct1I(a2,b) = ccall((:test_1, libccalltest), Struct1I, (Struct1I, Float32), a2, b)
+let
+for Struct in (Struct1,Struct1I)
+    a = Struct(352.39422f23, 19.287577)
+    b = Float32(123.456)
+
+    a2 = copy(a)
+    if Struct === Struct1
+        mc = jit(test_Struct1, (typeof(a2),typeof(b)))
+        x = mc(a2, b)
+    else
+        mc = jit(test_Struct1I, (typeof(a2),typeof(b)))
+        x = mc(a2, b)
+    end
+
+    @test a2.x == a.x && a2.y == a.y
+    @test !(a2 === x)
+
+    @test x.x ≈ a.x + 1*b
+    @test x.y ≈ a.y - 2*b
+end
+end
+
+let a, b, x
+    a = Struct1(352.39422f23, 19.287577)
+    b = Float32(123.456)
+    a2 = copy(a)
+
+    test_1long_a(a2,b) = ccall((:test_1long_a, libccalltest), Struct1, (Int, Int, Int, Struct1, Float32), 2, 3, 4, a2, b)
+    mc = jit(test_1long_a, (typeof(a2),typeof(b)))
+    x = mc(a2, b)
+    @test a2.x == a.x && a2.y == a.y
+    @test !(a2 === x)
+    @test x.x ≈ a.x + b + 9
+    @test x.y ≈ a.y - 2*b
+
+    test_1long_b(a2,b) = ccall((:test_1long_b, libccalltest), Struct1, (Int, Float64, Int, Struct1, Float32), 2, 3, 4, a2, b)
+    mc = jit(test_1long_b, (typeof(a2),typeof(b)))
+    x = mc(a2, b)
+    @test a2.x == a.x && a2.y == a.y
+    @test !(a2 === x)
+    @test x.x ≈ a.x + b + 9
+    @test x.y ≈ a.y - 2*b
+
+    test_1long_c(a2,b) = ccall((:test_1long_c, libccalltest), Struct1, (Int, Float64, Int, Struct1, Float32), 2, 3, 4, a2, b)
+    mc = jit(test_1long_c, (typeof(a2),typeof(b)))
+    x = mc(a2, b)
+    @test a2.x == a.x && a2.y == a.y
+    @test !(a2 === x)
+    @test x.x ≈ a.x + b + 14
+    @test x.y ≈ a.y - 2*b
+end

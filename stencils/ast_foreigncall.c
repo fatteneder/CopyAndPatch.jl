@@ -1,7 +1,14 @@
 #include "common.h"
+#include <stdbool.h>
 #include <julia_internal.h> // for jl_bitcast
 #include <julia_threads.h>  // for julia_internal.h
 #include <juliahelpers.h>
+
+#define UNBOX_AND_STORE(dest, src, ctype, jl_unbox)       \
+   typedef union { void *p; ctype v; } converter_##ctype; \
+   converter_##ctype val;                                 \
+   val.v = (jl_unbox)((jl_value_t *)(src));               \
+   (dest) = val.p
 
 void
 _JIT_ENTRY(int prev_ip)
@@ -33,24 +40,23 @@ _JIT_ENTRY(int prev_ip)
       switch (argtypes[i]) {
          case -2: cargs[i] = (void **)jl_value_ptr((jl_value_t *)*args[i]); break;
          case -1: cargs[i] = (void **)args[i]; /* jl_value_t ** */ break;
-         case 0:  cargs[i] = (void *)(uint64_t)jl_unbox_bool((jl_value_t *)args[i]); break;
-         case 1:  cargs[i] = (void *)(uint64_t)jl_unbox_int8((jl_value_t *)args[i]); break;
-         case 2:  cargs[i] = (void *)(uint64_t)jl_unbox_uint8((jl_value_t *)args[i]); break;
-         case 3:  cargs[i] = (void *)(uint64_t)jl_unbox_int16((jl_value_t *)args[i]); break;
-         case 4:  cargs[i] = (void *)(uint64_t)jl_unbox_uint16((jl_value_t *)args[i]); break;
-         case 5:  cargs[i] = (void *)(uint64_t)jl_unbox_int32((jl_value_t *)args[i]); break;
-         case 6:  cargs[i] = (void *)(uint64_t)jl_unbox_uint32((jl_value_t *)args[i]); break;
-         case 7:  cargs[i] = (void *)(uint64_t)jl_unbox_int64((jl_value_t *)args[i]); break;
-         case 8:  cargs[i] = (void *)(uint64_t)jl_unbox_uint64((jl_value_t *)args[i]); break;
-         case 9:  cargs[i] = (void *)(uint64_t)jl_unbox_float32((jl_value_t *)args[i]); break;
-         case 10: cargs[i] = (void *)(uint64_t)jl_unbox_float64((jl_value_t *)args[i]); break;
+         case 0:  { UNBOX_AND_STORE(cargs[i], args[i], bool,     jl_unbox_bool   ); } break;
+         case 1:  { UNBOX_AND_STORE(cargs[i], args[i], int8_t,   jl_unbox_int8   ); } break;
+         case 2:  { UNBOX_AND_STORE(cargs[i], args[i], uint8_t,  jl_unbox_uint8  ); } break;
+         case 3:  { UNBOX_AND_STORE(cargs[i], args[i], int16_t,  jl_unbox_int16  ); } break;
+         case 4:  { UNBOX_AND_STORE(cargs[i], args[i], uint16_t, jl_unbox_uint16 ); } break;
+         case 5:  { UNBOX_AND_STORE(cargs[i], args[i], int32_t,  jl_unbox_int32  ); } break;
+         case 6:  { UNBOX_AND_STORE(cargs[i], args[i], uint32_t, jl_unbox_uint32 ); } break;
+         case 7:  { UNBOX_AND_STORE(cargs[i], args[i], int64_t,  jl_unbox_int64  ); } break;
+         case 8:  { UNBOX_AND_STORE(cargs[i], args[i], uint64_t, jl_unbox_uint64 ); } break;
+         case 9:  { UNBOX_AND_STORE(cargs[i], args[i], float,    jl_unbox_float32); } break;
+         case 10: { UNBOX_AND_STORE(cargs[i], args[i], double,   jl_unbox_float64); } break;
          case 11: cargs[i] = (void *)(uint64_t)jl_unbox_uint8pointer((jl_value_t *)args[i]); break;
          case 12: cargs[i] = (void *)(uint64_t)jl_unbox_voidpointer((jl_value_t *)args[i]); break;
          default: jl_error("ast_foreigncall: This should not have happened!");
       }
    }
    ffi_arg *rc = (ffi_arg*)ffi_retval;
-   assert(rc);
    ffi_call((ffi_cif *)cif, f, rc, (void **)cargs);
    switch (rettype) {
       case -2: *ret = jlh_convert_to_jl_value(rettype_ptr, (void *)rc); break;
