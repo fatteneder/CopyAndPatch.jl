@@ -214,7 +214,7 @@ let a, b, x
     @test x.x ≈ a.x + b + 9
     @test x.y ≈ a.y - 2*b
 
-    test_1long_c(a2,b) = ccall((:test_1long_c, libccalltest), Struct1, (Int, Float64, Int, Struct1, Float32), 2, 3, 4, a2, b)
+    test_1long_c(a2,b) = ccall((:test_1long_c, libccalltest), Struct1, (Int, Float64, Int, Int, Struct1, Float32), 2, 3, 4, 5, a2, b)
     mc = jit(test_1long_c, (typeof(a2),typeof(b)))
     x = mc(a2, b)
     @test a2.x == a.x && a2.y == a.y
