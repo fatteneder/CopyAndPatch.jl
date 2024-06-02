@@ -238,9 +238,7 @@ function emitcode!(mc, ip, ex::Core.ReturnNode)
     # TODO :unreachable nodes are also of type Core.ReturnNode. Anything to do here?
     st, bvec, _ = stencils["ast_returnnode"]
     val = isdefined(ex,:val) ? box_arg(ex.val, mc) : C_NULL
-    # TODO Should write into ssas[end]
-    push!(mc.static_prms, C_NULL)
-    ret = pointer(mc.static_prms, length(mc.static_prms))
+    ret = pointer(mc.ssas, ip)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",  Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RET", ret)
@@ -268,7 +266,6 @@ function emitcode!(mc, ip, ex::Core.PhiNode)
     append!(mc.gc_roots, ex.edges)
     vals_boxes = box_args(ex.values, mc)
     append!(mc.gc_roots, vals_boxes)
-    # TODO Should write into ssas[end]
     retbox = pointer(mc.ssas, ip)
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_EDGES",   pointer(ex.edges))
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",      Cint(ip))
@@ -287,9 +284,7 @@ function emitcode!(mc, ip, ex::Expr)
             nargs = length(ex_args)
             boxes = box_args(ex_args, mc)
             append!(mc.gc_roots, boxes)
-            # TODO Should write into ssas[end]
             retbox = pointer(mc.ssas, ip)
-            @assert retbox !== C_NULL
             name = string("jl_", Symbol(fn))
             st, bvec, _ = get(stencils, name) do
                 error("don't know how to handle intrinsic $name")
@@ -305,7 +300,6 @@ function emitcode!(mc, ip, ex::Expr)
             nargs = length(ex.args)
             boxes = box_args(ex.args, mc)
             append!(mc.gc_roots, boxes)
-            # TODO Should write into ssas[end]
             retbox = pointer(mc.ssas, ip)
             st, bvec, _ = stencils["ast_call"]
             copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
@@ -325,7 +319,6 @@ function emitcode!(mc, ip, ex::Expr)
         boxes = box_args(ex_args, mc)
         append!(mc.gc_roots, boxes)
         nargs = length(boxes)
-        # TODO Should write into ssas[end]
         retbox = pointer(mc.ssas, ip)
         st, bvec, _ = stencils["ast_invoke"]
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
@@ -339,7 +332,6 @@ function emitcode!(mc, ip, ex::Expr)
         boxes = box_args(ex_args, mc)
         append!(mc.gc_roots, boxes)
         nargs = length(boxes)
-        # TODO Should write into ssas[end]
         retbox = pointer(mc.ssas, ip)
         st, bvec, _ = stencils["ast_new"]
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))

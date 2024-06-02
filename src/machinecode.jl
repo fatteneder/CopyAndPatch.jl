@@ -53,10 +53,10 @@ function (mc::MachineCode)(@nospecialize(args...))
             slots[i] = value_pointer(a)
         end
     end
-    GC.@preserve mc begin
+    ret_ip = GC.@preserve mc begin
         ccall(pointer(mc), Cint, (Cint,), 0 #= ip =#)
     end
-    p = mc.static_prms[end]
+    p = mc.ssas[ret_ip]
     return Base.unsafe_pointer_to_objref(p)
 end
 
