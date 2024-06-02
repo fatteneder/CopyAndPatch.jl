@@ -733,3 +733,15 @@ for Struct in (Struct18,Struct18I)
     @test x.c == a.c + b * 3
 end
 end
+
+let a, b, x
+    a = Int128(0x7f00123456789abc)<<64 + typemax(UInt64)
+    b = Int64(1)
+
+    test_128(a,b) = ccall((:test_128, libccalltest), Int128, (Int128, Int64), a, b)
+    mc = jit(test_128, (typeof(a),typeof(b)))
+    x = mc(a,b)
+
+    @test x == a + b*1
+    @test a == Int128(0x7f00123456789abc)<<64 + typemax(UInt64)
+end

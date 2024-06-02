@@ -142,7 +142,16 @@ ffi_type(p::Type{ComplexF32}) = cglobal((:ffi_type_complex_float,libffi),p)
 ffi_type(p::Type{ComplexF64}) = cglobal((:ffi_type_complex_double,libffi),p)
 ffi_type(p::Type{Cstring})    = cglobal((:ffi_type_pointer,libffi),p)
 ffi_type(@nospecialize(p::Type{Ptr{T}})) where T = cglobal((:ffi_type_pointer,libffi),p)
-ffi_type(@nospecialize(t)) = isconcretetype(t) ? ffi_type_struct(t) : ffi_type(Ptr{Cvoid})
+ffi_type(@nospecialize(t))    = (isconcretetype(t)) ? ffi_type_struct(t) : ffi_type(Ptr{Cvoid})
+# Note for AArch64 (from julia/src/ccalltests.c)
+# `i128` is a native type on aarch64 so the type here is wrong.
+# However, it happens to have the same calling convention with `[2 x i64]`
+# when used as first argument or return value.
+struct MimicInt128
+    x::Int64
+    y::Int64
+end
+ffi_type(p::Type{Int128})     = ffi_type_struct(MimicInt128)
 
 # wrappers for libffihelper.so
 ffi_default_abi() = @ccall libffihelpers_path[].ffi_default_abi()::Cint
