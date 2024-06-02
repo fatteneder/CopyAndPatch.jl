@@ -54,7 +54,7 @@ function (mc::MachineCode)(@nospecialize(args...))
         end
     end
     GC.@preserve mc begin
-        ccall(pointer(mc), Cvoid, (Cint,), 0 #= ip =#)
+        ccall(pointer(mc), Cint, (Cint,), 0 #= ip =#)
     end
     p = mc.static_prms[end]
     return Base.unsafe_pointer_to_objref(p)
