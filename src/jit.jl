@@ -247,6 +247,7 @@ function emitcode!(mc, ip, ex::GlobalRef)
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
 end
 function emitcode!(mc, ip, ex::Core.ReturnNode)
+    # TODO :unreachable nodes are also of type Core.ReturnNode. Anything to do here?
     st, bvec, _ = stencils["ast_returnnode"]
     val = isdefined(ex,:val) ? box_arg(ex.val, mc) : C_NULL
     # TODO Should write into ssas[end]
@@ -365,6 +366,8 @@ function emitcode!(mc, ip, ex::Expr)
         elseif ex.args[1] isa Expr
             @assert Base.isexpr(ex.args[1], :call)
             eval(ex.args[1].args[2]), ex.args[1].args[3]
+        elseif ex.args[1] isa Core.SSAValue || ex.args[1] isa Core.Argument
+            ex.args[1], nothing
         else
             fname = ex.args[1].args[2].value
             libname = if ex.args[1].args[3] isa GlobalRef
@@ -418,14 +421,20 @@ function emitcode!(mc, ip, ex::Expr)
         sz_argtypes = Cint[ ffi_argtypes[i] == -2 ? sizeof(argtypes[i]) : 0 for i in 1:nargs ]
         append!(mc.gc_roots, sz_argtypes)
         st, bvec, _ = stencils["ast_foreigncall"]
+        static_f = true
         fptr = if isnothing(libname)
-            h = dlopen(dlpath("libjulia.so"))
-            p = dlsym(h, fname, throw_error=false)
-            if isnothing(p)
-                h = dlopen(dlpath("libjulia-internal.so"))
-                p = dlsym(h, fname)
+            if fname isa Symbol
+                h = dlopen(dlpath("libjulia.so"))
+                p = dlsym(h, fname, throw_error=false)
+                if isnothing(p)
+                    h = dlopen(dlpath("libjulia-internal.so"))
+                    p = dlsym(h, fname)
+                end
+                p
+            else
+                static_f = false
+                box_arg(fname, mc)
             end
-            p
         else
             if libname isa GlobalRef
                 libname = unwrap(libname)
@@ -440,6 +449,7 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CARGS",       pointer(cboxes))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CIF",         pointer(cif))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_F",           fptr)
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_STATICF",     Cint(static_f))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_GCROOTS",     pointer(boxed_gc_roots))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_NGCROOTS",    Cint(length(boxed_gc_roots)))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",          Cint(ip))

@@ -876,3 +876,20 @@ end
 @test_huge 4 'b' (1.0 + 2.0im, 3.0 + 4.0im, 5.0f0 + 6.0f0im, 7.0 + 8.0im, 9.0 + 10.0im)
 @test_huge 5 'a' ((1 + 2im, 3 + 4im, 5 + 6im, 7 + 8im, 9 + 10im, 11 + 12im, 13 + 14im, 15 + 16im),)
 @test_huge 5 'b' ((1 + 2im, 3 + 4im, 5 + 6im, 7 + 8im, 9 + 10im, 11 + 12im, 13 + 14im, 15 + 16im, 17 + 17im),)
+
+## cfunction roundtrip
+
+verbose && Libc.flush_cstdio()
+
+# TODO Skipping cfunction_closure tests for now, because I don't understand them
+
+# issue 13031
+# a simplified version to develop loading the foreign function from the SSA array,
+# e.g. avoids the Ref{Tuple{}} argtype appearing below
+foo13031(x) = Cint(1)
+simple_foo13031p = @cfunction(foo13031, Cint, (Cint,))
+simple_test_foo13031p(x) = ccall(simple_foo13031p, Cint, (Cint,), x)
+let
+    mc = jit(simple_test_foo13031p, (Cint,))
+    @test mc(Cint(1)) == Cint(1)
+end

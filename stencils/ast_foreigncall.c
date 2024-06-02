@@ -19,6 +19,7 @@ _JIT_ENTRY(int prev_ip)
    PATCH_VALUE(void ***,     cargs,       _JIT_CARGS);
    PATCH_VALUE(void *,       cif,         _JIT_CIF);
    PATCH_VALUE(void *,       f,           _JIT_F);
+   PATCH_VALUE(int,          static_f,    _JIT_STATICF);
    PATCH_VALUE(void ***,     gc_roots,    _JIT_GCROOTS);
    PATCH_VALUE(int,          n_gc_roots,  _JIT_NGCROOTS);
    PATCH_VALUE(int,          rettype,     _JIT_RETTYPE);
@@ -57,7 +58,10 @@ _JIT_ENTRY(int prev_ip)
       }
    }
    ffi_arg *rc = (ffi_arg*)ffi_retval;
-   ffi_call((ffi_cif *)cif, f, rc, (void **)cargs);
+   if (static_f)
+      ffi_call((ffi_cif *)cif, f, rc, (void **)cargs);
+   else
+      ffi_call((ffi_cif *)cif, **(void ***)f, rc, (void **)cargs);
    switch (rettype) {
       case -2: *ret = jlh_convert_to_jl_value(rettype_ptr, (void *)rc); break;
       case -1: *ret = (void *)*rc; break; // jl_value_t *
