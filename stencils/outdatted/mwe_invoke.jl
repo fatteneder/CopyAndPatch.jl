@@ -1,5 +1,5 @@
 using CopyAndPatch
-
+include("common.jl")
 
 g = versioninfo
 precompile(g, ())

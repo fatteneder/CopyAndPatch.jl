@@ -5,16 +5,6 @@ unwrap(g::GlobalRef) = getproperty(g.mod, g.name)
 iscallable(@nospecialize(f)) = !isempty(methods(f))
 
 
-# TODO Remove this, because we cannot reliably query jl_function_t * (clarified on Slack)
-function pointer_from_function(fn::Function)
-    pm = pointer_from_objref(typeof(fn).name.module)
-    ps = pointer_from_objref(nameof(fn))
-    pf = @ccall jl_get_global(pm::Ptr{Cvoid}, ps::Ptr{Cvoid})::Ptr{Cvoid}
-    @assert pf !== C_NULL
-    return pf
-end
-
-
 # from stencils/libjuliahelpers.c
 is_method_instance(mi) = @ccall libjuliahelpers_path[].is_method_instance(mi::Any)::Cint
 function is_bool(b)

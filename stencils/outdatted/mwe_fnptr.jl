@@ -1,6 +1,7 @@
 using CopyAndPatch
 using JSON
 using Base.Libc.Libdl
+include("common.jl")
 
 lib = dlopen(dlpath("libjulia"))
 libc = dlopen(dlpath("libc.so.6"))

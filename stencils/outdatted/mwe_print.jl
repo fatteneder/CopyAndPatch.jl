@@ -1,6 +1,7 @@
 using CopyAndPatch
 import Base.Libc.Libdl: dlsym
 CopyAndPatch.init_stencils()
+include("common.jl")
 
 jl_nothing = dlsym(CopyAndPatch.libjulia[], :jl_nothing)
 

@@ -1,5 +1,6 @@
 using CopyAndPatch
 CopyAndPatch.init_stencils()
+include("common.jl")
 
 
 # can call the runtime intrinsics from libjulia-internal
