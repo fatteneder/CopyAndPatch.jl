@@ -166,7 +166,7 @@ get_stencil(ex::Nothing)         = stencils["ast_goto"]
 # - Anything to which we apply pointer_from_objref or pointer needs to be preserved when used.
 # - Also slots and ssas need to be kept alive till the function is finished.
 # - What about boxed stuff?
-function box_arg(a, mc)
+function box_arg(@nospecialize(a), mc)
     slots, ssas, static_prms = mc.slots, mc.ssas, mc.static_prms
     if a isa Core.Argument
         return pointer(slots, a.n)
@@ -195,17 +195,6 @@ end
 function box_args(ex_args::AbstractVector, mc::MachineCode)
     # TODO Need to cast to Ptr{UInt64} here?
     return Ptr{Cvoid}[ box_arg(a, mc) for a in ex_args ]
-end
-
-
-# Based on base/compiler/ssair/ir.jl
-# JuliaInterpreter.jl implements its own version of scan_ssa_use!, not sure why though.
-function find_used(ci::CodeInfo)
-    used = BitSet()
-    for stmt in ci.code
-        Core.Compiler.scan_ssa_use!(push!, used, stmt)
-    end
-    return used
 end
 
 
