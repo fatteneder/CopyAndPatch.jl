@@ -745,3 +745,134 @@ let a, b, x
     @test x == a + b*1
     @test a == Int128(0x7f00123456789abc)<<64 + typemax(UInt64)
 end
+
+mutable struct Struct_Big
+    x::Int
+    y::Int
+    z::Int8
+end
+struct Struct_BigI
+    x::Int
+    y::Int
+    z::Int8
+end
+copy(a::Struct_Big) = Struct_Big(a.x, a.y, a.z)
+copy(a::Struct_BigI) = a
+
+test_big_Struct_Big(a2) = ccall((:test_big, libccalltest), Struct_Big, (Struct_Big,), a2)
+test_big_Struct_BigI(a2) = ccall((:test_big, libccalltest), Struct_BigI, (Struct_BigI,), a2)
+let
+for Struct in (Struct_Big,Struct_BigI)
+    a = Struct(424,-5,Int8('Z'))
+    a2 = copy(a)
+
+    if Struct == Struct_Big
+        mc = jit(test_big_Struct_Big, (typeof(a2),))
+        x = mc(a2)
+    else
+        mc = jit(test_big_Struct_BigI, (typeof(a2),))
+        x = mc(a2)
+    end
+
+    @test a2.x == a.x && a2.y == a.y && a2.z == a.z
+    @test x.x == a.x + 1
+    @test x.y == a.y - 2
+    @test x.z == a.z - Int('A')
+end
+end
+
+let a, a2, x
+    a = Struct_Big(424,-5,Int8('Z'))
+    a2 = copy(a)
+    test_big_long(a2) = ccall((:test_big_long, libccalltest), Struct_Big, (Int, Int, Int, Struct_Big,), 2, 3, 4, a2)
+    mc = jit(test_big_long, (typeof(a2),))
+    x = mc(a2)
+    @test a2.x == a.x && a2.y == a.y && a2.z == a.z
+    @test x.x == a.x + 10
+    @test x.y == a.y - 2
+    @test x.z == a.z - Int('A')
+end
+
+const Struct_huge1a = NTuple{8, Int64}
+const Struct_huge1b = NTuple{9, Int64}
+const Struct_huge2a = NTuple{8, Cdouble}
+const Struct_huge2b = NTuple{9, Cdouble}
+mutable struct Struct_huge3a
+    cf::NTuple{3, Complex{Cfloat}}
+    f7::Cfloat
+    f8::Cfloat
+end
+mutable struct Struct_huge3b
+    cf::NTuple{7, Complex{Cfloat}}
+    r8a::Cfloat
+    r8b::Cfloat
+end
+mutable struct Struct_huge3c
+    cf::NTuple{7, Complex{Cfloat}}
+    r8a::Cfloat
+    r8b::Cfloat
+    r9::Cfloat
+end
+mutable struct Struct_huge4a
+    r12::Complex{Cdouble}
+    r34::Complex{Cdouble}
+    r5::Complex{Cfloat}
+    r67::Complex{Cdouble}
+    r8::Cdouble
+end
+mutable struct Struct_huge4b
+    r12::Complex{Cdouble}
+    r34::Complex{Cdouble}
+    r5::Complex{Cfloat}
+    r67::Complex{Cdouble}
+    r89::Complex{Cdouble}
+end
+const Struct_huge5a = NTuple{8, Complex{Cint}}
+const Struct_huge5b = NTuple{9, Complex{Cint}}
+
+function verify_huge(init, a, b)
+    @test typeof(init) === typeof(a) === typeof(b)
+    verbose && @show (a, b)
+    # make sure a was unmodified
+    for i = 1:nfields(a)
+        @test getfield(init, i) === getfield(a, i)
+    end
+    # make sure b was modified as expected
+    a1, b1 = getfield(a, 1), getfield(b, 1)
+    while isa(a1, Tuple)
+        @test a1[2:end] === b1[2:end]
+        a1 = a1[1]
+        b1 = b1[1]
+    end
+    if isa(a1, VecElement)
+        a1 = a1.value
+        b1 = b1.value
+    end
+    @test oftype(a1, a1 * 39) === b1
+    for i = 2:nfields(a)
+        @test getfield(a, i) === getfield(b, i)
+    end
+end
+macro test_huge(i, b, init)
+    f = QuoteNode(Symbol("test_huge", i, b))
+    ty = Symbol("Struct_huge", i, b)
+    return quote
+        let a = $ty($(esc(init))...), f
+            f(b) = ccall(($f, libccalltest), $ty, (Cchar, $ty, Cchar), '0' + $i, a, $b[1])
+            #code_llvm(f, typeof((a,)))
+            mc = jit(f, (typeof(a),))
+            verify_huge($ty($(esc(init))...), a, mc(a))
+        end
+    end
+end
+@test_huge 1 'a' ((1, 2, 3, 4, 5, 6, 7, 8),)
+@test_huge 1 'b' ((1, 2, 3, 4, 5, 6, 7, 8, 9),)
+@test_huge 2 'a' ((1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0),)
+@test_huge 2 'b' ((1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0),)
+@test_huge 3 'a' ((1.0 + 2.0im, 3.0 + 4.0im, 5.0 + 6.0im), 7.0, 8.0)
+@test_huge 3 'b' ((1.0 + 2.0im, 3.0 + 4.0im, 5.0 + 6.0im, 7.0 + 8.0im, 9.0 + 10.0im, 11.0 + 12.0im, 13.0 + 14.0im), 7.0, 8.0)
+@test_huge 3 'c' ((1.0 + 2.0im, 3.0 + 4.0im, 5.0 + 6.0im, 7.0 + 8.0im, 9.0 + 10.0im, 11.0 + 12.0im, 13.0 + 14.0im), 7.0, 8.0, 9.0)
+@test_huge 4 'a' (1.0 + 2.0im, 3.0 + 4.0im, 5.0f0 + 6.0f0im, 7.0 + 8.0im, 9.0)
+@test_huge 4 'b' (1.0 + 2.0im, 3.0 + 4.0im, 5.0f0 + 6.0f0im, 7.0 + 8.0im, 9.0 + 10.0im)
+@test_huge 5 'a' ((1 + 2im, 3 + 4im, 5 + 6im, 7 + 8im, 9 + 10im, 11 + 12im, 13 + 14im, 15 + 16im),)
+@test_huge 5 'b' ((1 + 2im, 3 + 4im, 5 + 6im, 7 + 8im, 9 + 10im, 11 + 12im, 13 + 14im, 15 + 16im, 17 + 17im),)
