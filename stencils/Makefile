@@ -24,7 +24,7 @@ all: $(BINJSON) $(BINSO) $(BINMWES)
 debug: CFLAGS+=-DJITDEBUG
 debug: all
 
-bin/%.o: %.c compile
+bin/%.o: %.c compile common.h
 	./compile $(CFLAGS) $< bin/$*.o
 
 bin/%.json: bin/%.o readobj

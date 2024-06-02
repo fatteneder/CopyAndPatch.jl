@@ -12,7 +12,7 @@
 void
 _JIT_ENTRY(int prev_ip)
 {
-   DEBUGSTMT("ast_foreigncall", prev_ip);
+   PATCH_VALUE(int,          ip,          _JIT_IP);
    PATCH_VALUE(void ***,     args,        _JIT_ARGS);
    PATCH_VALUE(int *,        argtypes,    _JIT_ARGTYPES);
    PATCH_VALUE(int *,        sz_argtypes, _JIT_SZARGTYPES);
@@ -21,12 +21,12 @@ _JIT_ENTRY(int prev_ip)
    PATCH_VALUE(void *,       f,           _JIT_F);
    PATCH_VALUE(void ***,     gc_roots,    _JIT_GCROOTS);
    PATCH_VALUE(int,          n_gc_roots,  _JIT_NGCROOTS);
-   PATCH_VALUE(int,          ip,          _JIT_IP);
    PATCH_VALUE(int,          rettype,     _JIT_RETTYPE);
    PATCH_VALUE(jl_value_t *, rettype_ptr, _JIT_RETTYPEPTR);
    PATCH_VALUE(void *,       ffi_retval,  _JIT_FFIRETVAL);
    PATCH_VALUE(uint32_t,     nargs,       _JIT_NARGS);
    PATCH_VALUE(void **,      ret,         _JIT_RET);
+   DEBUGSTMT("ast_foreigncall", prev_ip, ip);
    jl_value_t **roots;
    JL_GC_PUSHARGS(roots, n_gc_roots);
    for (int i = 0; i < n_gc_roots; i++)

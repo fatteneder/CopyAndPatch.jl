@@ -3,11 +3,11 @@
 void
 _JIT_ENTRY(int prev_ip)
 {
-   DEBUGSTMT("ast_invoke", prev_ip);
    PATCH_VALUE(jl_value_t ***, args,    _JIT_ARGS);
    PATCH_VALUE(int,            ip,      _JIT_IP);
    PATCH_VALUE(uint32_t,       nargs,   _JIT_NARGS);
    PATCH_VALUE(jl_value_t **,  ret,     _JIT_RET);
+   DEBUGSTMT("ast_invoke", prev_ip, ip);
    jl_method_instance_t *meth = (jl_method_instance_t*)(*args[0]);
    assert(jl_is_method_instance(meth));
    jl_value_t **argv;

@@ -22,10 +22,10 @@ do {                               \
 #define BOLD          "\033[1m"
 
 #ifdef JITDEBUG
-    #define DEBUGSTMT(NAME, IP) \
+    #define DEBUGSTMT(NAME, PREV_IP, IP) \
         printf(BOLD FG_YELLOW "[" FG_GREEN "JITDEBUG" FG_YELLOW "]" RESET_COLOR RESET_FORMAT \
-               " ip %-4d reached " NAME "\n", (IP)); \
+               " ip %d -> %d: " NAME "\n", (PREV_IP), (IP)); \
         fflush(stdout)
 #else
-    #define DEBUGSTMT(NAME, IP)
+    #define DEBUGSTMT(NAME, PREV_IP, IP)
 #endif

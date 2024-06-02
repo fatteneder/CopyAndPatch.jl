@@ -3,7 +3,7 @@
 void
 _JIT_ENTRY(int prev_ip)
 {
-   DEBUGSTMT("ast_goto", prev_ip);
    PATCH_VALUE(int, ip, _JIT_IP);
+   DEBUGSTMT("ast_goto", prev_ip, ip);
    PATCH_JUMP(_JIT_CONT, ip);
 }
