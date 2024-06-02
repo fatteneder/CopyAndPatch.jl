@@ -244,9 +244,15 @@ let a, b, x, y, z
     a = Complex{Int64}(Int64(20),Int64(51))
     b = Int64(42)
 
-    x = ccall((:test_3a, libccalltest), Complex{Int64}, (Complex{Int64}, Int64), a, b)
-    y = ccall((:test_3b, libccalltest), Complex{Int64}, (Complex{Int64}, Int64), a, b)
-    z = ccall((:test_128, libccalltest), Complex{Int64}, (Complex{Int64}, Int64), a, b)
+    test_3a(a,b) = ccall((:test_3a, libccalltest), Complex{Int64}, (Complex{Int64}, Int64), a, b)
+    test_3b(a,b) = ccall((:test_3b, libccalltest), Complex{Int64}, (Complex{Int64}, Int64), a, b)
+    test_128(a,b) = ccall((:test_128, libccalltest), Complex{Int64}, (Complex{Int64}, Int64), a, b)
+    mc = jit(test_3a, (typeof(a),typeof(b)))
+    x = mc(a,b)
+    mc = jit(test_3b, (typeof(a),typeof(b)))
+    y = mc(a,b)
+    mc = jit(test_128, (typeof(a),typeof(b)))
+    z = mc(a,b)
 
     @test a == Complex{Int64}(Int64(20),Int64(51))
 
@@ -381,5 +387,349 @@ for Struct in (Struct7,Struct7I)
 
     @test x.x == a.x+Int(b)*1
     @test x.y == a.y-Int(b)*2
+end
+end
+
+mutable struct Struct8
+    x::Int32
+    y::Cchar
+end
+struct Struct8I
+    x::Int32
+    y::Cchar
+end
+
+test_8_Struct8(a,b) = ccall((:test_8, libccalltest), Struct8, (Struct8, Int8), a, b)
+test_8_Struct8I(a,b) = ccall((:test_8, libccalltest), Struct8I, (Struct8I, Int8), a, b)
+let
+for Struct in (Struct8,Struct8I)
+    a = Struct(-384082896, 'h')
+    b = Int8(42)
+
+    if Struct === Struct8
+        mc = jit(test_8_Struct8, (typeof(a),typeof(b)))
+        r8 = mc(a,b)
+    else
+        mc = jit(test_8_Struct8I, (typeof(a),typeof(b)))
+        r8 = mc(a,b)
+    end
+
+    @test r8.x == a.x+b*1
+    @test r8.y == a.y-b*2
+end
+end
+
+mutable struct Struct9
+    x::Int32
+    y::Int16
+end
+struct Struct9I
+    x::Int32
+    y::Int16
+end
+
+test_9_Struct9(a,b) = ccall((:test_9, libccalltest), Struct9, (Struct9, Int16), a, b)
+test_9_Struct9I(a,b) = ccall((:test_9, libccalltest), Struct9I, (Struct9I, Int16), a, b)
+let
+for Struct in (Struct9,Struct9I)
+    a = Struct(-394092996, -3840)
+    b = Int16(42)
+
+    if Struct === Struct9
+        mc = jit(test_9_Struct9, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    else
+        mc = jit(test_9_Struct9I, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    end
+
+    @test x.x == a.x+b*1
+    @test x.y == a.y-b*2
+end
+end
+
+mutable struct Struct10
+    x::Cchar
+    y::Cchar
+    z::Cchar
+    a::Cchar
+end
+struct Struct10I
+    x::Cchar
+    y::Cchar
+    z::Cchar
+    a::Cchar
+end
+
+test_10_Struct10(a,b) = ccall((:test_10, libccalltest), Struct10, (Struct10, Int8), a, b)
+test_10_Struct10I(a,b) = ccall((:test_10, libccalltest), Struct10I, (Struct10I, Int8), a, b)
+let
+for Struct in (Struct10,Struct10I)
+    a = Struct('0', '1', '2', '3')
+    b = Int8(2)
+
+    if Struct === Struct10
+        mc = jit(test_10_Struct10, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    else
+        mc = jit(test_10_Struct10I, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    end
+
+    @test x.x == a.x+b*1
+    @test x.y == a.y-b*2
+    @test x.z == a.z+b*3
+    @test x.a == a.a-b*4
+end
+end
+
+mutable struct Struct11
+    x::ComplexF32
+end
+struct Struct11I
+    x::ComplexF32
+end
+
+test_11_Struct11(a,b) = ccall((:test_11, libccalltest), Struct11, (Struct11, Float32), a, b)
+test_11_Struct11I(a,b) = ccall((:test_11, libccalltest), Struct11I, (Struct11I, Float32), a, b)
+let
+for Struct in (Struct11,Struct11I)
+    a = Struct(0.8877077f0 + 0.4591081f0im)
+    b = Float32(42)
+
+    if Struct === Struct11
+        mc = jit(test_11_Struct11, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    else
+        mc = jit(test_11_Struct11I, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    end
+
+    @test x.x ≈ a.x + b*1 - b*2im
+end
+end
+
+mutable struct Struct12
+    x::ComplexF32
+    y::ComplexF32
+end
+struct Struct12I
+    x::ComplexF32
+    y::ComplexF32
+end
+
+test_12_Struct12(a,b) = ccall((:test_12, libccalltest), Struct12, (Struct12, Float32), a, b)
+test_12_Struct12I(a,b) = ccall((:test_12, libccalltest), Struct12I, (Struct12I, Float32), a, b)
+let
+for Struct in (Struct12,Struct12I)
+    a = Struct(0.8877077f5 + 0.4591081f2im, 0.0004842868f0 - 6982.3265f3im)
+    b = Float32(42)
+
+    if Struct === Struct12
+        mc = jit(test_12_Struct12, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    else
+        mc = jit(test_12_Struct12I, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    end
+
+    @test x.x ≈ a.x + b*1 - b*2im
+    @test x.y ≈ a.y + b*3 - b*4im
+end
+end
+
+mutable struct Struct13
+    x::ComplexF64
+end
+struct Struct13I
+    x::ComplexF64
+end
+
+test_13_Struct13(a,b) = ccall((:test_13, libccalltest), Struct13, (Struct13, Float64), a, b)
+test_13_Struct13I(a,b) = ccall((:test_13, libccalltest), Struct13I, (Struct13I, Float64), a, b)
+let
+for Struct in (Struct13,Struct13I)
+    a = Struct(42968.97560380495 - 803.0576845153616im)
+    b = Float64(42)
+
+    if Struct === Struct13
+        mc = jit(test_13_Struct13, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    else
+        mc = jit(test_13_Struct13I, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    end
+
+    @test x.x ≈ a.x + b*1 - b*2im
+end
+end
+
+mutable struct Struct14
+    x::Float32
+    y::Float32
+end
+struct Struct14I
+    x::Float32
+    y::Float32
+end
+
+test_14_Struct14(a,b) = ccall((:test_14, libccalltest), Struct14, (Struct14, Float32), a, b)
+test_14_Struct14I(a,b) = ccall((:test_14, libccalltest), Struct14I, (Struct14I, Float32), a, b)
+let
+for Struct in (Struct14,Struct14I)
+    a = Struct(0.024138331f0, 0.89759064f32)
+    b = Float32(42)
+
+    if Struct === Struct14
+        mc = jit(test_14_Struct14, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    else
+        mc = jit(test_14_Struct14I, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    end
+
+    @test x.x ≈ a.x + b*1
+    @test x.y ≈ a.y - b*2
+end
+end
+
+mutable struct Struct15
+    x::Float64
+    y::Float64
+end
+struct Struct15I
+    x::Float64
+    y::Float64
+end
+
+test_15_Struct15(a,b) = ccall((:test_15, libccalltest), Struct15, (Struct15, Float64), a, b)
+test_15_Struct15I(a,b) = ccall((:test_15, libccalltest), Struct15I, (Struct15I, Float64), a, b)
+let
+for Struct in (Struct15,Struct15I)
+    a = Struct(4.180997967273657, -0.404218594294923)
+    b = Float64(42)
+
+    if Struct === Struct15
+        mc = jit(test_15_Struct15, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    else
+        mc = jit(test_15_Struct15I, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    end
+
+    @test x.x ≈ a.x + b*1
+    @test x.y ≈ a.y - b*2
+end
+end
+
+mutable struct Struct16
+    x::Float32
+    y::Float32
+    z::Float32
+    a::Float64
+    b::Float64
+    c::Float64
+end
+struct Struct16I
+    x::Float32
+    y::Float32
+    z::Float32
+    a::Float64
+    b::Float64
+    c::Float64
+end
+
+test_16_Struct16(a,b) = ccall((:test_16, libccalltest), Struct16, (Struct16, Float32), a, b)
+test_16_Struct16I_quoteplz(a) = eval(:(ccall((:test_16, libccalltest), Struct16I, (Struct16I, Float32), $(QuoteNode(a)), Float32(42))))
+test_16_Struct16I(a,b) = ccall((:test_16, libccalltest), Struct16I, (Struct16I, Float32), a, b)
+let
+for (Struct,quoteplz) in [(Struct16,false),
+                          # (Struct16I,true), # requirest copyast node implementation
+                          (Struct16I,false)]
+
+    a = Struct(0.1604656f0, 0.6297606f0, 0.83588994f0,
+               0.6460273620993535, 0.9472692581106656, 0.47328535437352093)
+    b = Float32(42)
+
+    if Struct === Struct16
+        mc = jit(test_16_Struct16, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    else
+        if quoteplz
+            mc = jit(test_16_Struct16I_quoteplz, (typeof(a),))
+            x = mc(a,b)
+        else
+            mc = jit(test_16_Struct16I, (typeof(a),typeof(b)))
+            x = mc(a,b)
+        end
+    end
+
+    @test x.x ≈ a.x + b*1
+    @test x.y ≈ a.y - b*2
+    @test x.z ≈ a.z + b*3
+    @test x.a ≈ a.a - b*4
+    @test x.b ≈ a.b + b*5
+    @test x.c ≈ a.c - b*6
+end
+end
+
+mutable struct Struct17
+    a::Int8
+    b::Int16
+end
+struct Struct17I
+    a::Int8
+    b::Int16
+end
+
+test_17_Struct17(a,b) = ccall((:test_17, libccalltest), Struct17, (Struct17, Int8), a, b)
+test_17_Struct17I(a,b) = ccall((:test_17, libccalltest), Struct17I, (Struct17I, Int8), a, b)
+let
+for Struct in (Struct17,Struct17I)
+    a = Struct(2, 10)
+    b = Int8(2)
+
+    if Struct === Struct17
+        mc = jit(test_17_Struct17, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    else
+        mc = jit(test_17_Struct17I, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    end
+
+    @test x.a == a.a + b * 1
+    @test x.b == a.b - b * 2
+end
+end
+
+mutable struct Struct18
+    a::Int8
+    b::Int8
+    c::Int8
+end
+struct Struct18I
+    a::Int8
+    b::Int8
+    c::Int8
+end
+
+test_18_Struct18(a,b) = ccall((:test_18, libccalltest), Struct18, (Struct18, Int8), a, b)
+test_18_Struct18I(a,b) = ccall((:test_18, libccalltest), Struct18I, (Struct18I, Int8), a, b)
+let
+for Struct in (Struct18,Struct18I)
+    a = Struct(2, 10, -3)
+    b = Int8(2)
+
+    if Struct === Struct18
+        mc = jit(test_18_Struct18, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    else
+        mc = jit(test_18_Struct18I, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    end
+
+    @test x.a == a.a + b * 1
+    @test x.b == a.b - b * 2
+    @test x.c == a.c + b * 3
 end
 end
