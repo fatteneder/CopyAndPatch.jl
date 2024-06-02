@@ -398,16 +398,16 @@ function emitcode!(mc, ip, ex::Expr)
         # - the remaning elements are storage for pass-by-value arguments
         sz_cboxes = sizeof(Ptr{UInt64})*nargs
         for (i,ffi_at) in enumerate(ffi_argtypes)
-            if 0 ≤ ffi_at ≤ 10
+            if 0 ≤ ffi_at ≤ 10 || ffi_at == -2
                 at = argtypes[i]
-                @assert isbitstype(at)
+                @assert sizeof(at) > 0
                 sz_cboxes += sizeof(at)
             end
         end
         cboxes = ByteVector(sz_cboxes)
         offset = sizeof(Ptr{UInt64})*nargs+1
         for (i,ffi_at) in enumerate(ffi_argtypes)
-            if 0 ≤ ffi_at ≤ 10
+            if 0 ≤ ffi_at ≤ 10 || ffi_at == -2
                 at = argtypes[i]
                 cboxes[UInt64,i] = pointer(cboxes,UInt8,offset)
                 @show pointer(cboxes,UInt8,offset)
@@ -415,6 +415,8 @@ function emitcode!(mc, ip, ex::Expr)
             end
         end
         append!(mc.gc_roots, cboxes)
+        sz_argtypes = Cint[ ffi_argtypes[i] == -2 ? sizeof(argtypes[i]) : 0 for i in 1:nargs ]
+        append!(mc.gc_roots, sz_argtypes)
         st, bvec, _ = stencils["ast_foreigncall"]
         fptr = if isnothing(libname)
             h = dlopen(dlpath("libjulia.so"))
@@ -442,6 +444,7 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_NGCROOTS",    Cint(length(boxed_gc_roots)))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",          ip)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ARGTYPES",    pointer(ffi_argtypes))
+        patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_SZARGTYPES",  pointer(sz_argtypes))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RETTYPE",     ffi_rettype)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_RETTYPEPTR",  rettype_ptr)
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_FFIRETVAL",   pointer(ffi_retval))

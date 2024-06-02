@@ -15,6 +15,7 @@ _JIT_ENTRY(int prev_ip)
    DEBUGSTMT("ast_foreigncall", prev_ip);
    PATCH_VALUE(void ***,     args,        _JIT_ARGS);
    PATCH_VALUE(int *,        argtypes,    _JIT_ARGTYPES);
+   PATCH_VALUE(int *,        sz_argtypes, _JIT_SZARGTYPES);
    PATCH_VALUE(void ***,     cargs,       _JIT_CARGS);
    PATCH_VALUE(void *,       cif,         _JIT_CIF);
    PATCH_VALUE(void *,       f,           _JIT_F);
@@ -31,15 +32,13 @@ _JIT_ENTRY(int prev_ip)
    for (int i = 0; i < n_gc_roots; i++)
       roots[i] = (jl_value_t*)*gc_roots[i];
    for (int i = 0; i < nargs; i++) {
-      printf("argtypes[i] = %d\n", argtypes[i]);
       // Atm we store both isbits and non-isbits types in boxed forms,
       // i.e. args is actually a jl_value_t **.
       // But for ccalls we need to unbox those which are of non-pointer arg type.
       // The proper way to it would be to not store isbits types in boxed form, but instead
       // inline them or put the bits values into static_prms or so.
       switch (argtypes[i]) {
-         // jl_value_ptr is the identity, so its actually not needed
-         case -2: cargs[i] = (void **)jl_value_ptr((jl_value_t *)*args[i]); break;
+         case -2: memcpy(cargs[i], *args[i], sz_argtypes[i]); break;
          case -1: cargs[i] = (void **)args[i]; /* jl_value_t ** */ break;
          case 0:  { UNBOX_AND_STORE(cargs[i], *args[i], bool,     jl_unbox_bool   ); } break;
          case 1:  { UNBOX_AND_STORE(cargs[i], *args[i], int8_t,   jl_unbox_int8   ); } break;
@@ -75,9 +74,7 @@ _JIT_ENTRY(int prev_ip)
       case 10: *ret = (void *)jl_box_float64((double)*rc); break;
       case 11: *ret = (void *)jl_box_uint8pointer((uint8_t *)*rc); break;
       case 12: { *ret = (void *)jl_box_voidpointer((void *)*rc);
-                 if (rettype_ptr) {
-                     *ret = (void **)jl_bitcast(rettype_ptr, (jl_value_t *)*ret);
-                 }
+                 if (rettype_ptr) *ret = (void **)jl_bitcast(rettype_ptr, (jl_value_t *)*ret);
                } break;
       default: jl_error("ast_foreigncall: This should not have happened!");
    }
