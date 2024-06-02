@@ -354,3 +354,32 @@ for Struct in (Struct6,Struct6I)
     @test x.z == a.z+b*3
 end
 end
+
+mutable struct Struct7
+    x::Int64
+    y::Cchar
+end
+struct Struct7I
+    x::Int64
+    y::Cchar
+end
+
+test_7_Struct7(a,b) = ccall((:test_7, libccalltest), Struct7, (Struct7, Int8), a, b)
+test_7_Struct7I(a,b) = ccall((:test_7, libccalltest), Struct7I, (Struct7I, Int8), a, b)
+let
+for Struct in (Struct7,Struct7I)
+    a = Struct(-384082741977533896, 'h')
+    b = Int8(42)
+
+    if Struct === Struct7
+        mc = jit(test_7_Struct7, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    else
+        mc = jit(test_7_Struct7I, (typeof(a),typeof(b)))
+        x = mc(a,b)
+    end
+
+    @test x.x == a.x+Int(b)*1
+    @test x.y == a.y-Int(b)*2
+end
+end

@@ -125,32 +125,23 @@ unbox(T::Type, ptr::Integer) = unbox(T, Ptr{Cvoid}(UInt64(ptr)))
 # Cvoid Cuchar Cshort Cushort Cint Cuint Clonglong Culonglong Cintmax_t Cuintmax_t Cfloat Cdouble
 # ComplexF32 ComplexF64 Cptrdiff_t Cssize_t Csize_t Cchar Clong Culong Cwchar_t
 # ---
-# here we define a mapping between julia's types and ffi's types
-# a few notes:
-# - ffi uses macros to define some types, e.g. ffi_type_sshort, so we resolve them manually here
-#   this might need to be adjusted depending on the system for which libffi is configured
-# - some C types can be identical, e.g. Cintmax_t = Clonglong = Int64 on x86_64-redhat-linux
-#   because of that we define ffi_type below only for the 'unique' ones to avoid overwrite warnings
-# - there are at least four system dependent types, Cchar, Clong, Culong, Cwchar_t, which
-#   we will need special care later on
+# here we define a mapping between julia's native types and ffi's types
+# this should be enough to automatically map the C type alias
 # TODO Should use cglobal instead of dlsym, the latter is for function pointers.
-for (jl_t, ffi_t) in [
-                       (Cvoid,      :ffi_type_void),
-                       (Cuchar,     :ffi_type_uint8),
-                       (Cshort,     :ffi_type_sint16), # ffi_type_sshort
-                       (Cushort,    :ffi_type_uint16), # ffi_type_ushort
-                       (Cint,       :ffi_type_sint32), # ffi_type_sint
-                       (Cuint,      :ffi_type_uint32), # ffi_type_uint
-                       (Cfloat,     :ffi_type_float),
-                       (Cdouble,    :ffi_type_double),
-                       (Clonglong,  :ffi_type_sint64),
-                       (Culonglong, :ffi_type_uint64),
-                       (ComplexF32, :ffi_type_complex_float),
-                       (ComplexF64, :ffi_type_complex_double),
-                   ]
-    @eval ffi_type(::Type{$jl_t}) = dlsym(libffi_handle,$(QuoteNode(ffi_t)))
-end
-ffi_type(p::Type{Cstring}) = dlsym(libffi_handle,:ffi_type_pointer)
+ffi_type(p::Type{Cvoid})      = dlsym(libffi_handle,:ffi_type_void)
+ffi_type(p::Type{UInt8})      = dlsym(libffi_handle,:ffi_type_uint8)
+ffi_type(p::Type{Int8})       = dlsym(libffi_handle,:ffi_type_sint8)
+ffi_type(p::Type{UInt16})     = dlsym(libffi_handle,:ffi_type_uint16)
+ffi_type(p::Type{Int16})      = dlsym(libffi_handle,:ffi_type_sint16)
+ffi_type(p::Type{UInt32})     = dlsym(libffi_handle,:ffi_type_uint32)
+ffi_type(p::Type{Int32})      = dlsym(libffi_handle,:ffi_type_sint32)
+ffi_type(p::Type{UInt64})     = dlsym(libffi_handle,:ffi_type_uint64)
+ffi_type(p::Type{Int64})      = dlsym(libffi_handle,:ffi_type_sint64)
+ffi_type(p::Type{Float32})    = dlsym(libffi_handle,:ffi_type_float)
+ffi_type(p::Type{Float64})    = dlsym(libffi_handle,:ffi_type_double)
+ffi_type(p::Type{ComplexF32}) = dlsym(libffi_handle,:ffi_type_complex_float)
+ffi_type(p::Type{ComplexF64}) = dlsym(libffi_handle,:ffi_type_complex_double)
+ffi_type(p::Type{Cstring})    = dlsym(libffi_handle,:ffi_type_pointer)
 # TODO Why is there a nospecialize version?
 ffi_type(p::Type{Ptr}) = dlsym(libffi_handle,:ffi_type_pointer)
 # TODO What about Refs?
@@ -207,10 +198,12 @@ function ffi_type_struct(@nospecialize(t::Type{T})) where T
     end
     if any(i -> ffi_offsets[i] != Csize_t(fieldoffset(T,i)), 1:n)
         jl_offsets = [ fieldoffset(T,i) for i in 1:n ]
+        jl_types   = [ fieldtype(T,i) for i in 1:n ]
         error("""Mismatch in field offsets of type $T
-                    Julia:  $(join(jl_offsets,','))
-                    vs.
-                    libffi: $(join(Int64.(ffi_offsets),','))
+                 Field types: $(join(jl_types,", "))
+                 Offsets:
+                     Julia:  $(join(jl_offsets,", "))
+                     libffi: $(join(Int64.(ffi_offsets),", "))
               """)
     end
     FFI_TYPE_CACHE[T] = mem_ffi_type
