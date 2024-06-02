@@ -38,8 +38,6 @@ function patch_default_deps!(bvec::ByteVector, bvecs_data::Vector{ByteVector}, s
     holes = s.code.relocations
     patched = Hole[]
     for h in holes
-        # TODO Is there a list of intrinsics which I can skip here?
-        # Shall we use _JIT_ENTRY here?
         startswith(h.symbol, "_JIT_") && continue
         ptr = if startswith(h.symbol, "jl_")
             p = dlsym(libjulia[], h.symbol, throw_error=false)
@@ -175,37 +173,27 @@ function box_arg(a, mc)
     elseif a isa Core.SSAValue
         return pointer(ssas, a.id)
     else
-        if a isa String
-            push!(static_prms, pointer_from_objref(a))
-        elseif a isa Number
+        if a isa Boxable
             push!(static_prms, box(a))
-        elseif a isa Type
-            push!(static_prms, pointer_from_objref(a))
+        elseif a isa Nothing
+            push!(static_prms, cglobal(:jl_nothing))
+        elseif a isa QuoteNode
+            push!(static_prms, value_pointer(a.value))
+        elseif a isa Tuple
+            push!(static_prms, value_pointer(a))
         elseif a isa GlobalRef
             # do it similar to src/interpreter.c:jl_eval_globalref
             p = @ccall jl_get_globalref_value(a::Any)::Ptr{Cvoid}
             p === C_NULL && throw(UndefVarError(a.name,a.mod))
             push!(static_prms, p)
-        elseif typeof(a) <: Boxable
-            push!(static_prms, box(a))
-        elseif a isa MethodInstance
-            push!(static_prms, pointer_from_objref(a))
-        elseif a isa Nothing
-            push!(static_prms, dlsym(libjulia[], :jl_nothing))
-        elseif a isa QuoteNode
-            @assert hasfield(typeof(a), :value)
-            push!(static_prms, value_pointer(a.value))
-        elseif a isa Tuple
-            push!(static_prms, value_pointer(a))
         else
-            TODO(a)
+            push!(static_prms, pointer_from_objref(a))
         end
         return pointer(static_prms, length(static_prms))
     end
 end
 function box_args(ex_args::AbstractVector, mc::MachineCode)
     # TODO Need to cast to Ptr{UInt64} here?
-    # return Ptr{Ptr{Cvoid}}[ box_arg(a, slots, ssas) for a in ex_args ]
     return Ptr{Cvoid}[ box_arg(a, mc) for a in ex_args ]
 end
 
