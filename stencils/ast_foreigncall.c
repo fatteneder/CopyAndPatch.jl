@@ -1,14 +1,13 @@
 #include "common.h"
 #include <stdbool.h>
+#include <string.h> // memcpy
 #include <julia_internal.h> // for jl_bitcast
 #include <julia_threads.h>  // for julia_internal.h
 #include <juliahelpers.h>
 
 #define UNBOX_AND_STORE(dest, src, ctype, jl_unbox)       \
-   typedef union { void *p; ctype v; } converter_##ctype; \
-   converter_##ctype val;                                 \
-   val.v = (jl_unbox)((jl_value_t *)(src));               \
-   (dest) = val.p
+   ctype val = (jl_unbox)((jl_value_t *)(src));           \
+   memcpy((dest), &val, sizeof(ctype))
 
 void
 _JIT_ENTRY(int prev_ip)
@@ -32,25 +31,27 @@ _JIT_ENTRY(int prev_ip)
    for (int i = 0; i < n_gc_roots; i++)
       roots[i] = (jl_value_t*)*gc_roots[i];
    for (int i = 0; i < nargs; i++) {
+      printf("argtypes[i] = %d\n", argtypes[i]);
       // Atm we store both isbits and non-isbits types in boxed forms,
       // i.e. args is actually a jl_value_t **.
       // But for ccalls we need to unbox those which are of non-pointer arg type.
       // The proper way to it would be to not store isbits types in boxed form, but instead
       // inline them or put the bits values into static_prms or so.
       switch (argtypes[i]) {
+         // jl_value_ptr is the identity, so its actually not needed
          case -2: cargs[i] = (void **)jl_value_ptr((jl_value_t *)*args[i]); break;
          case -1: cargs[i] = (void **)args[i]; /* jl_value_t ** */ break;
-         case 0:  { UNBOX_AND_STORE(cargs[i], args[i], bool,     jl_unbox_bool   ); } break;
-         case 1:  { UNBOX_AND_STORE(cargs[i], args[i], int8_t,   jl_unbox_int8   ); } break;
-         case 2:  { UNBOX_AND_STORE(cargs[i], args[i], uint8_t,  jl_unbox_uint8  ); } break;
-         case 3:  { UNBOX_AND_STORE(cargs[i], args[i], int16_t,  jl_unbox_int16  ); } break;
-         case 4:  { UNBOX_AND_STORE(cargs[i], args[i], uint16_t, jl_unbox_uint16 ); } break;
-         case 5:  { UNBOX_AND_STORE(cargs[i], args[i], int32_t,  jl_unbox_int32  ); } break;
-         case 6:  { UNBOX_AND_STORE(cargs[i], args[i], uint32_t, jl_unbox_uint32 ); } break;
-         case 7:  { UNBOX_AND_STORE(cargs[i], args[i], int64_t,  jl_unbox_int64  ); } break;
-         case 8:  { UNBOX_AND_STORE(cargs[i], args[i], uint64_t, jl_unbox_uint64 ); } break;
-         case 9:  { UNBOX_AND_STORE(cargs[i], args[i], float,    jl_unbox_float32); } break;
-         case 10: { UNBOX_AND_STORE(cargs[i], args[i], double,   jl_unbox_float64); } break;
+         case 0:  { UNBOX_AND_STORE(cargs[i], *args[i], bool,     jl_unbox_bool   ); } break;
+         case 1:  { UNBOX_AND_STORE(cargs[i], *args[i], int8_t,   jl_unbox_int8   ); } break;
+         case 2:  { UNBOX_AND_STORE(cargs[i], *args[i], uint8_t,  jl_unbox_uint8  ); } break;
+         case 3:  { UNBOX_AND_STORE(cargs[i], *args[i], int16_t,  jl_unbox_int16  ); } break;
+         case 4:  { UNBOX_AND_STORE(cargs[i], *args[i], uint16_t, jl_unbox_uint16 ); } break;
+         case 5:  { UNBOX_AND_STORE(cargs[i], *args[i], int32_t,  jl_unbox_int32  ); } break;
+         case 6:  { UNBOX_AND_STORE(cargs[i], *args[i], uint32_t, jl_unbox_uint32 ); } break;
+         case 7:  { UNBOX_AND_STORE(cargs[i], *args[i], int64_t,  jl_unbox_int64  ); } break;
+         case 8:  { UNBOX_AND_STORE(cargs[i], *args[i], uint64_t, jl_unbox_uint64 ); } break;
+         case 9:  { UNBOX_AND_STORE(cargs[i], *args[i], float,    jl_unbox_float32); } break;
+         case 10: { UNBOX_AND_STORE(cargs[i], *args[i], double,   jl_unbox_float64); } break;
          case 11: cargs[i] = (void *)(uint64_t)jl_unbox_uint8pointer((jl_value_t *)args[i]); break;
          case 12: cargs[i] = (void *)(uint64_t)jl_unbox_voidpointer((jl_value_t *)args[i]); break;
          default: jl_error("ast_foreigncall: This should not have happened!");

@@ -385,8 +385,6 @@ function emitcode!(mc, ip, ex::Expr)
         boxed_gc_roots = box_args(gc_roots, mc)
         append!(mc.gc_roots, boxes)
         nargs = length(boxes)
-        cboxes = Ptr{UInt64}[C_NULL for _ in 1:nargs]
-        append!(mc.gc_roots, cboxes)
         retbox = pointer(mc.ssas, ip)
         ffi_argtypes = [ Cint(ffi_ctype_id(at)) for at in argtypes ]
         ffi_rettype = Cint(ffi_ctype_id(rettype, return_type=true))
@@ -395,6 +393,28 @@ function emitcode!(mc, ip, ex::Expr)
         push!(mc.gc_roots, ffi_retval)
         rettype_ptr = pointer_from_objref(rettype)
         cif = Ffi_cif(rettype, tuple(argtypes...))
+        # set up storage for cargs array
+        # - the first nargs elements hold pointers to the values
+        # - the remaning elements are storage for pass-by-value arguments
+        sz_cboxes = sizeof(Ptr{UInt64})*nargs
+        for (i,ffi_at) in enumerate(ffi_argtypes)
+            if 0 ≤ ffi_at ≤ 10
+                at = argtypes[i]
+                @assert isbitstype(at)
+                sz_cboxes += sizeof(at)
+            end
+        end
+        cboxes = ByteVector(sz_cboxes)
+        offset = sizeof(Ptr{UInt64})*nargs+1
+        for (i,ffi_at) in enumerate(ffi_argtypes)
+            if 0 ≤ ffi_at ≤ 10
+                at = argtypes[i]
+                cboxes[UInt64,i] = pointer(cboxes,UInt8,offset)
+                @show pointer(cboxes,UInt8,offset)
+                offset += sizeof(at)
+            end
+        end
+        append!(mc.gc_roots, cboxes)
         st, bvec, _ = stencils["ast_foreigncall"]
         fptr = if isnothing(libname)
             h = dlopen(dlpath("libjulia.so"))

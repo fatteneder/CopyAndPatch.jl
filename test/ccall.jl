@@ -222,3 +222,20 @@ let a, b, x
     @test x.x ≈ a.x + b + 14
     @test x.y ≈ a.y - 2*b
 end
+
+let a, b, x, y
+    a = Complex{Int32}(Int32(10),Int32(31))
+    b = Int32(42)
+
+    test_2a(a,b) = ccall((:test_2a, libccalltest), Complex{Int32}, (Complex{Int32}, Int32), a, b)
+    test_2b(a,b) = ccall((:test_2b, libccalltest), Complex{Int32}, (Complex{Int32}, Int32), a, b)
+    mc = jit(test_2a, (typeof(a),typeof(b)))
+    x = mc(a,b)
+    mc = jit(test_2b, (typeof(a),typeof(b)))
+    y = mc(a,b)
+
+    @test a == Complex{Int32}(Int32(10),Int32(31))
+
+    @test x == y
+    @test x == a + b*1 - b*2im
+end
