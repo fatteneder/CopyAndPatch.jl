@@ -127,25 +127,21 @@ unbox(T::Type, ptr::Integer) = unbox(T, Ptr{Cvoid}(UInt64(ptr)))
 # ---
 # here we define a mapping between julia's native types and ffi's types
 # this should be enough to automatically map the C type alias
-# TODO Should use cglobal instead of dlsym, the latter is for function pointers.
-ffi_type(p::Type{Cvoid})      = dlsym(libffi_handle,:ffi_type_void)
-ffi_type(p::Type{UInt8})      = dlsym(libffi_handle,:ffi_type_uint8)
-ffi_type(p::Type{Int8})       = dlsym(libffi_handle,:ffi_type_sint8)
-ffi_type(p::Type{UInt16})     = dlsym(libffi_handle,:ffi_type_uint16)
-ffi_type(p::Type{Int16})      = dlsym(libffi_handle,:ffi_type_sint16)
-ffi_type(p::Type{UInt32})     = dlsym(libffi_handle,:ffi_type_uint32)
-ffi_type(p::Type{Int32})      = dlsym(libffi_handle,:ffi_type_sint32)
-ffi_type(p::Type{UInt64})     = dlsym(libffi_handle,:ffi_type_uint64)
-ffi_type(p::Type{Int64})      = dlsym(libffi_handle,:ffi_type_sint64)
-ffi_type(p::Type{Float32})    = dlsym(libffi_handle,:ffi_type_float)
-ffi_type(p::Type{Float64})    = dlsym(libffi_handle,:ffi_type_double)
-ffi_type(p::Type{ComplexF32}) = dlsym(libffi_handle,:ffi_type_complex_float)
-ffi_type(p::Type{ComplexF64}) = dlsym(libffi_handle,:ffi_type_complex_double)
-ffi_type(p::Type{Cstring})    = dlsym(libffi_handle,:ffi_type_pointer)
-# TODO Why is there a nospecialize version?
-ffi_type(p::Type{Ptr}) = dlsym(libffi_handle,:ffi_type_pointer)
-# TODO What about Refs?
-ffi_type(@nospecialize(p::Type{Ptr{T}})) where T = dlsym(libffi_handle,:ffi_type_pointer)
+ffi_type(p::Type{Cvoid})      = cglobal((:ffi_type_void,libffi),p)
+ffi_type(p::Type{UInt8})      = cglobal((:ffi_type_uint8,libffi),p)
+ffi_type(p::Type{Int8})       = cglobal((:ffi_type_sint8,libffi),p)
+ffi_type(p::Type{UInt16})     = cglobal((:ffi_type_uint16,libffi),p)
+ffi_type(p::Type{Int16})      = cglobal((:ffi_type_sint16,libffi),p)
+ffi_type(p::Type{UInt32})     = cglobal((:ffi_type_uint32,libffi),p)
+ffi_type(p::Type{Int32})      = cglobal((:ffi_type_sint32,libffi),p)
+ffi_type(p::Type{UInt64})     = cglobal((:ffi_type_uint64,libffi),p)
+ffi_type(p::Type{Int64})      = cglobal((:ffi_type_sint64,libffi),p)
+ffi_type(p::Type{Float32})    = cglobal((:ffi_type_float,libffi),p)
+ffi_type(p::Type{Float64})    = cglobal((:ffi_type_double,libffi),p)
+ffi_type(p::Type{ComplexF32}) = cglobal((:ffi_type_complex_float,libffi),p)
+ffi_type(p::Type{ComplexF64}) = cglobal((:ffi_type_complex_double,libffi),p)
+ffi_type(p::Type{Cstring})    = cglobal((:ffi_type_pointer,libffi),p)
+ffi_type(@nospecialize(p::Type{Ptr{T}})) where T = cglobal((:ffi_type_pointer,libffi),p)
 ffi_type(@nospecialize(t)) = isconcretetype(t) ? ffi_type_struct(t) : ffi_type(Ptr{Cvoid})
 
 # wrappers for libffihelper.so

@@ -6,7 +6,7 @@ import Base.Libc.Libdl: dlpath, dlopen, dlsym
 import Core: MethodInstance, CodeInfo
 import InteractiveUtils: print_native
 import JSON: parsefile
-import Libffi_jll: libffi_handle, libffi_path
+import Libffi_jll: libffi_handle, libffi_path, libffi
 import Logging: SimpleLogger, with_logger
 import Mmap: mmap
 import Printf: Format, format
