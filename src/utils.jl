@@ -176,6 +176,7 @@ end
 
 const FFI_TYPE_CACHE = Dict{Any,Vector{UInt8}}()
 function ffi_type_struct(@nospecialize(t::Type{T})) where T
+    # TODO ffi_call segfaults when we use cached ffi_types. Why?
     # ty = get(FFI_TYPE_CACHE, T, nothing)
     # !isnothing(ty) && return pointer(ty)
     n = fieldcount(T)
@@ -185,8 +186,33 @@ function ffi_type_struct(@nospecialize(t::Type{T})) where T
     end
     elements[end] = C_NULL
     mem_ffi_type = Vector{UInt8}(undef, sizeof_ffi_type())
-    @ccall libffihelpers_path[].setup_ffi_type_struct(mem_ffi_type::Ptr{Cvoid},
-                                                      elements::Ptr{Cvoid})::Cvoid
+    @ccall libffihelpers_path[].setup_ffi_type_struct(mem_ffi_type::Ref{UInt8},
+                                                      elements::Ref{Ptr{Cvoid}})::Cvoid
+    ffi_offsets = Vector{Csize_t}(undef, n)
+    default_abi = ffi_default_abi()
+    status = @ccall libffi_path.ffi_get_struct_offsets(default_abi::Cint,
+                                                       mem_ffi_type::Ref{UInt8},
+                                                       ffi_offsets::Ref{Csize_t})::Cint
+    if status != 0
+        msg = "Failed to setup a ffi struct type for $T; ffi_get_struct_offsets returned status "
+        if status == 1
+            error(msg * "FFI_BAD_TYPEDEF")
+        elseif status == 2
+            error(msg * "FFI_BAD_ABI")
+        elseif status == 3
+            error(msg * "FFI_BAD_ARGTYPE")
+        else
+            error(msg * "unknown error code $status")
+        end
+    end
+    if any(i -> ffi_offsets[i] != Csize_t(fieldoffset(T,i)), 1:n)
+        jl_offsets = [ fieldoffset(T,i) for i in 1:n ]
+        error("""Mismatch in field offsets of type $T
+                    Julia:  $(join(jl_offsets,','))
+                    vs.
+                    libffi: $(join(Int64.(ffi_offsets),','))
+              """)
+    end
     FFI_TYPE_CACHE[T] = mem_ffi_type
     return pointer(mem_ffi_type)
 end
@@ -218,7 +244,7 @@ mutable struct Ffi_cif
             slots = Vector{Ptr{Cvoid}}(undef, 2*N)
             return new(mem_cif, p_cif, T, [ a for a in argtypes ], slots)
         else
-            msg = "Failed to prepare ffi_cif for f(::$(join(argtypes,",::")))::$T; ffi_prep_cif returned "
+            msg = "Failed to prepare ffi_cif for f(::$(join(argtypes,",::")))::$T; ffi_prep_cif returned status "
             if status == 1
                 error(msg * "FFI_BAD_TYPEDEF")
             elseif status == 2
