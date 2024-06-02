@@ -893,3 +893,30 @@ let
     mc = jit(simple_test_foo13031p, (Cint,))
     @test mc(Cint(1)) == Cint(1)
 end
+
+# issue 13031
+foo13031(x) = Cint(1)
+foo13031p = @cfunction(foo13031, Cint, (Ref{Tuple{}},))
+test_foo13031p() = ccall(foo13031p, Cint, (Ref{Tuple{}},), ())
+let
+    mc = jit(test_foo13031p, ())
+    @test mc() == Cint(1)
+end
+
+foo13031(x,y,z) = z
+foo13031p = @cfunction(foo13031, Cint, (Ref{Tuple{}}, Ref{Tuple{}}, Cint))
+test_foo13031p(x) = ccall(foo13031p, Cint, (Ref{Tuple{}},Ref{Tuple{}},Cint), (), (), x)
+let
+    mc = jit(test_foo13031p, (Cint,))
+    @test mc(Cint(8)) == Cint(8)
+end
+
+# issue 26078
+
+unstable26078(x) = x > 0 ? x : "foo"
+handle26078 = @cfunction(unstable26078, Int32, (Int32,))
+test_handle26078(x) = ccall(handle26078, Int32, (Int32,), x)
+let
+    mc = jit(test_handle26078, (Int32,))
+    @test mc(Int32(1)) == 1
+end
