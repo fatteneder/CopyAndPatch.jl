@@ -216,16 +216,15 @@ end
 # - _2 ... slot variable; either a function argument or a local variable
 #          _1 refers to function, _2 to first arg, etc.
 #          see CodeInfo.slottypes, CodeInfo.slotnames
-# TODO: Use get_stencil here too!
 emitcode!(mc, ip, ex) = TODO(typeof(ex))
 function emitcode!(mc, ip, ex::Nothing)
-    st, bvec, _ = stencils["ast_goto"]
+    st, bvec, _ = get_stencil(ex)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",   Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
 end
 function emitcode!(mc, ip, ex::GlobalRef)
-    st, bvec, _ = stencils["ast_assign"]
+    st, bvec, _ = get_stencil(ex)
     val = box_arg(ex, mc)
     ret = pointer(mc.ssas, ip)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
@@ -236,7 +235,7 @@ function emitcode!(mc, ip, ex::GlobalRef)
 end
 function emitcode!(mc, ip, ex::Core.ReturnNode)
     # TODO :unreachable nodes are also of type Core.ReturnNode. Anything to do here?
-    st, bvec, _ = stencils["ast_returnnode"]
+    st, bvec, _ = get_stencil(ex)
     val = isdefined(ex,:val) ? box_arg(ex.val, mc) : C_NULL
     ret = pointer(mc.ssas, ip)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
@@ -245,13 +244,13 @@ function emitcode!(mc, ip, ex::Core.ReturnNode)
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_VAL", val)
 end
 function emitcode!(mc, ip, ex::Core.GotoNode)
-    st, bvec, _ = stencils["ast_goto"]
+    st, bvec, _ = get_stencil(ex)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",   Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ex.label]))
 end
 function emitcode!(mc, ip, ex::Core.GotoIfNot)
-    st, bvec, _ = stencils["ast_gotoifnot"]
+    st, bvec, _ = get_stencil(ex)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     test = pointer(mc.ssas, ex.cond.id) # TODO Can this also be a slot?
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",    Cint(ip))
@@ -260,7 +259,7 @@ function emitcode!(mc, ip, ex::Core.GotoIfNot)
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CONT2", pointer(mc.buf, mc.stencil_starts[ip+1]))
 end
 function emitcode!(mc, ip, ex::Core.PhiNode)
-    st, bvec, _ = stencils["ast_phinode"]
+    st, bvec, _ = get_stencil(ex)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     nedges = length(ex.edges)
     append!(mc.gc_roots, ex.edges)
@@ -275,6 +274,7 @@ function emitcode!(mc, ip, ex::Core.PhiNode)
     patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_CONT",    pointer(mc.buf, mc.stencil_starts[ip+1]))
 end
 function emitcode!(mc, ip, ex::Expr)
+    st, bvec, _ = get_stencil(ex)
     if isexpr(ex, :call)
         g = ex.args[1]
         @assert g isa GlobalRef
@@ -301,7 +301,6 @@ function emitcode!(mc, ip, ex::Expr)
             boxes = box_args(ex.args, mc)
             append!(mc.gc_roots, boxes)
             retbox = pointer(mc.ssas, ip)
-            st, bvec, _ = stencils["ast_call"]
             copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
             patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
             patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",      Cint(ip))
@@ -320,7 +319,6 @@ function emitcode!(mc, ip, ex::Expr)
         append!(mc.gc_roots, boxes)
         nargs = length(boxes)
         retbox = pointer(mc.ssas, ip)
-        st, bvec, _ = stencils["ast_invoke"]
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",      Cint(ip))
@@ -333,7 +331,6 @@ function emitcode!(mc, ip, ex::Expr)
         append!(mc.gc_roots, boxes)
         nargs = length(boxes)
         retbox = pointer(mc.ssas, ip)
-        st, bvec, _ = stencils["ast_new"]
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_ARGS",    pointer(boxes))
         patch!(mc.buf, mc.stencil_starts[ip]-1, st.code, "_JIT_IP",      Cint(ip))
@@ -400,7 +397,6 @@ function emitcode!(mc, ip, ex::Expr)
         append!(mc.gc_roots, cboxes)
         sz_argtypes = Cint[ ffi_argtypes[i] == -2 ? sizeof(argtypes[i]) : 0 for i in 1:nargs ]
         append!(mc.gc_roots, sz_argtypes)
-        st, bvec, _ = stencils["ast_foreigncall"]
         static_f = true
         fptr = if isnothing(libname)
             if fname isa Symbol
