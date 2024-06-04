@@ -132,6 +132,8 @@ function get_stencil_name(ex)
         return "ast_new"
     elseif isexpr(ex, :foreigncall)
         return "ast_foreigncall"
+    elseif isexpr(ex, :boundscheck)
+        return "ast_boundscheck"
     else
         TODO("Stencil not implemented yet:", ex)
     end
@@ -441,6 +443,14 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NARGS",       nargs)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",         retbox)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT",        pointer(mc.buf, mc.stencil_starts[ip+1]))
+    elseif isexpr(ex, :boundscheck)
+        copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
+        val = box_arg(ex.val, mc)
+        ret = pointer(mc.ssas, ip)
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VAL",  val)
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
     else
         TODO(ex.head)
     end
