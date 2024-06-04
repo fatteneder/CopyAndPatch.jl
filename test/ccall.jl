@@ -920,3 +920,145 @@ let
     mc = jit(test_handle26078, (Int32,))
     @test mc(Int32(1)) == 1
 end
+
+# issue #39804
+let f = @cfunction(Base.last, String, (Tuple{Int,String},))
+    # String inside a struct is a pointer even though String.size == 0
+    test(tpl) = ccall(f, Ref{String}, (Tuple{Int,String},), tpl)
+    mc = jit(test, (Tuple{Int,String},))
+    @test mc((1, "a string?")) === "a string?"
+end
+
+test_isa(x::Any) = isa(x, Ptr{Cvoid})
+let
+    mc = jit(test_isa, (Any,))
+    @test mc(C_NULL) == true
+    @test mc(nothing) == false
+end
+
+# issue 17219
+function ccall_reassigned_ptr(ptr::Ptr{Cvoid})
+    ptr = Libdl.dlsym(Libdl.dlopen(libccalltest), "test_echo_p")
+    ccall(ptr, Any, (Any,), "foo")
+end
+let
+    mc = jit(ccall_reassigned_ptr, (Ptr{Cvoid},))
+    @test mc(C_NULL) == "foo"
+end
+
+# TODO Skipping @threadcall tests for now, because they contain :cfunction Expr
+# which do not appear here: https://docs.julialang.org/en/v1/devdocs/ast/#Lowered-form
+#
+# # @threadcall functionality
+# threadcall_test_func(x) =
+#     @threadcall((:testUcharX, libccalltest), Int32, (UInt8,), x % UInt8)
+#
+# let
+#     mc = jit(threadcall_test_func, (Int64,))
+#     @test mc(3) == 1
+#     mc = jit(threadcall_test_func, (Int64,))
+#     @test mc(259) == 1
+# end
+#
+# # issue 17819
+# # NOTE: can't use cfunction or reuse ccalltest Struct methods, as those call into the runtime
+# @test @threadcall((:threadcall_args, libccalltest), Cint, (Cint, Cint), 1, 2) == 3
+#
+# let n=3
+#     tids = Culong[]
+#     @sync for i in 1:10^n
+#         @async push!(tids, @threadcall(:uv_thread_self, Culong, ()))
+#     end
+#
+#     # The work should not be done on the master thread
+#     t0 = ccall(:uv_thread_self, Culong, ())
+#     @test length(tids) == 10^n
+#     for t in tids
+#         @test t != t0
+#     end
+# end
+#
+# @test ccall(:jl_getpagesize, Clong, ()) == @threadcall(:jl_getpagesize, Clong, ())
+#
+# # make sure our malloc/realloc/free adapters are thread-safe and repeatable
+# for i = 1:8
+#     ptr = @threadcall(:jl_malloc, Ptr{Cint}, (Csize_t,), sizeof(Cint))
+#     @test ptr != C_NULL
+#     unsafe_store!(ptr, 3)
+#     @test unsafe_load(ptr) == 3
+#     ptr = @threadcall(:jl_realloc, Ptr{Cint}, (Ptr{Cint}, Csize_t,), ptr, 2 * sizeof(Cint))
+#     @test ptr != C_NULL
+#     unsafe_store!(ptr, 4, 2)
+#     @test unsafe_load(ptr, 1) == 3
+#     @test unsafe_load(ptr, 2) == 4
+#     @threadcall(:jl_free, Cvoid, (Ptr{Cint},), ptr)
+# end
+
+# Pointer finalizer (issue #15408)
+let A = [1]
+    ccall((:set_c_int, libccalltest), Cvoid, (Cint,), 1)
+    test_get_c_int() = ccall((:get_c_int, libccalltest), Cint, ())
+    mc = jit(test_get_c_int, ())
+    @test mc() == 1
+    finalizer(cglobal((:finalizer_cptr, libccalltest), Cvoid), A)
+    finalize(A)
+    @test mc() == -1
+end
+
+# TODO How to test that?
+# # Pointer finalizer at exit (PR #19911)
+# let result = read(`$(Base.julia_cmd()) --startup-file=no -e "A = Ref{Cint}(42); finalizer(cglobal((:c_exit_finalizer, \"$libccalltest\"), Cvoid), A)"`, String)
+#     @test result == "c_exit_finalizer: 42, 0"
+# end
+
+# SIMD Registers
+# TODO Skipping all SIMD tests, not sure if that is currently possible with libffi.
+# Althouhg in https://github.com/libffi/libffi/issues/408 they say they can use some SIMD on x86.
+
+# TODO Depends on :cfunction
+# # Special calling convention for `Array`
+# function f17204(a)
+#     b = similar(a)
+#     for i in eachindex(a)
+#         b[i] = a[i] + 10
+#     end
+#     return b
+# end
+# test_f17204() = ccall(@cfunction(f17204, Vector{Any}, (Vector{Any},)), Vector{Any}, (Vector{Any},), Any[1:10;])
+# let
+#     mc = jit(test_f17204, ())
+#     @test mc() == Any[11:20;]
+# end
+
+# This used to trigger incorrect ccall callee inlining.
+# Not sure if there's a more reliable way to test this.
+# Do not put these in a function.
+@noinline g17413() = rand()
+@inline f17413() = (g17413(); g17413())
+test_f17413() = ccall((:test_echo_p, libccalltest), Ptr{Cvoid}, (Any,), f17413())
+let
+    mc = jit(test_f17413, ())
+    mc()
+    for i in 1:3
+        mc()
+    end
+end
+
+let r = Ref{Any}(10)
+    @GC.preserve r begin
+        pa = Base.unsafe_convert(Ptr{Any}, r) # pointer to value
+        pv = Base.unsafe_convert(Ptr{Cvoid}, r) # pointer to data
+        f1(pa) = Ptr{Cvoid}(pa)
+        mc = jit(f1, (typeof(pa),))
+        @test mc(pa) != pv
+        f2(pa) = unsafe_load(pa)
+        mc = jit(f2, (typeof(pa),))
+        @test mc(pa) === 10
+        f3(pa) = unsafe_load(Ptr{Ptr{Cvoid}}(pa))
+        mc = jit(f3, (typeof(pa),))
+        @test mc(pa) === pv
+        f4(pv) = unsafe_load(Ptr{Int}(pv))
+        mc = jit(f4, (typeof(pv),))
+        @test mc(pv) === 10
+    end
+end
