@@ -47,11 +47,7 @@ function (mc::MachineCode)(@nospecialize(args...))
     slots[1] = value_pointer(mc.fn)
     for (ii,a) in enumerate(args)
         i = ii+1 # slots[1] is the function itself
-        if a isa Boxable
-            slots[i] = box(a)
-        else
-            slots[i] = value_pointer(a)
-        end
+        slots[i] = value_pointer(a)
     end
     ret_ip = GC.@preserve mc begin
         ccall(pointer(mc), Cint, (Cint,), 0 #= ip =#)
