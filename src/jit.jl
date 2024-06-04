@@ -75,8 +75,6 @@ end
 function jit(@nospecialize(fn::Function), @nospecialize(args))
 
     # this here does the linking of all non-copy-patched parts
-    # this includes setting up the data part too, which is important because below
-    # we separate code and data parts in memory
     init_stencils()
 
     optimize = true
@@ -121,35 +119,40 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
 end
 
 
-function get_stencil(ex)
+function get_stencil_name(ex)
     if isexpr(ex, :call)
         g = ex.args[1]
-        @assert g isa GlobalRef
-        fn = unwrap(g)
+        fn = g isa GlobalRef ? unwrap(g) : g
         if fn isa Core.IntrinsicFunction
-            name = string("jl_", Symbol(fn))
-            return get(stencils, name) do
-                error("don't know how to handle intrinsic $name")
-            end
+            return string("jl_", Symbol(fn))
         else
-            return stencils["ast_call"]
+            return "ast_call"
         end
     elseif isexpr(ex, :invoke)
-        return stencils["ast_invoke"]
+        return "ast_invoke"
     elseif isexpr(ex, :new)
-        return stencils["ast_new"]
+        return "ast_new"
     elseif isexpr(ex, :foreigncall)
-        return stencils["ast_foreigncall"]
+        return "ast_foreigncall"
     else
         TODO("Stencil not implemented yet:", ex)
     end
 end
-get_stencil(ex::GlobalRef)       = stencils["ast_assign"]
-get_stencil(ex::Core.ReturnNode) = stencils["ast_returnnode"]
-get_stencil(ex::Core.GotoIfNot)  = stencils["ast_gotoifnot"]
-get_stencil(ex::Core.GotoNode)   = stencils["ast_goto"]
-get_stencil(ex::Core.PhiNode)    = stencils["ast_phinode"]
-get_stencil(ex::Nothing)         = stencils["ast_goto"]
+get_stencil_name(ex::GlobalRef)       = "ast_assign"
+get_stencil_name(ex::Core.ReturnNode) = "ast_returnnode"
+get_stencil_name(ex::Core.GotoIfNot)  = "ast_gotoifnot"
+get_stencil_name(ex::Core.GotoNode)   = "ast_goto"
+get_stencil_name(ex::Core.PhiNode)    = "ast_phinode"
+get_stencil_name(ex::Core.PiNode)     = "ast_pinode"
+get_stencil_name(ex::Nothing)         = "ast_goto"
+
+function get_stencil(ex)
+    name = get_stencil_name(ex)
+    if !haskey(stencils, name)
+        error("no stencil '$name' found for expression $ex")
+    end
+    return stencils[name]
+end
 
 
 # TODO About box: From https://docs.julialang.org/en/v1/devdocs/object/
@@ -534,11 +537,13 @@ function _code_native!(io::IO, mc::MachineCode, i::Int64;
     rng = starts[i]:(i < nstarts ? starts[i+1]-1 : length(mc.buf))
     stencil = view(mc.buf, rng)
     ex = mc.codeinfo.code[i]
-    _code_native!(io, ex, stencil, i; syntax, color, hex_for_imm)
+    name = get_stencil_name(ex)
+    title = " | $(name) | $ex"
+    _code_native!(io, title, stencil, i; syntax, color, hex_for_imm)
 end
-@inline function _code_native!(io::IO, ex, stencil, i;
+@inline function _code_native!(io::IO, title, stencil, i;
                                syntax::Symbol=:intel, color::Bool=true, hex_for_imm::Bool=true)
-    printstyled(io, i, ' ', ex, '\n', bold=true, color=:green)
+    printstyled(io, i, ' ', title, '\n', bold=true, color=:green)
     code_native(io, stencil; syntax, color, hex_for_imm)
 end
 
@@ -554,6 +559,8 @@ mutable struct CopyAndPatchMenu{T_MC<:MachineCode} <: TerminalMenus.ConfiguredMe
     pageoffset::Int
     ip_col_width::Int
     ip_fmt::Format
+    stencil_name_col_width::Int
+    stencil_name_fmt::Format
     nheader::Int
     print_relocs::Bool
     config::TerminalMenus.Config
@@ -566,10 +573,13 @@ function CopyAndPatchMenu(mc, syntax, hex_for_imm)
     pageoffset = 0
     ip_col_width = max(ndigits(length(options)),2)
     ip_fmt = Format("%-$(ip_col_width)d")
+    stencil_name_col_width = maximum(ex -> length(get_stencil_name(ex)), mc.codeinfo.code)
+    stencil_name_fmt = Format("%-$(stencil_name_col_width)s")
     nheader = 0
     print_relocs = true
     menu = CopyAndPatchMenu(mc, syntax, hex_for_imm, options, 1, pagesize, pageoffset,
-                            ip_col_width, ip_fmt, nheader, print_relocs, config)
+                            ip_col_width, ip_fmt, stencil_name_col_width, stencil_name_fmt,
+                            nheader, print_relocs, config)
     header = TerminalMenus.header(menu)
     menu.nheader = countlines(IOBuffer(header))
     return menu
@@ -583,7 +593,6 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
     _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, hex_for_imm=menu.hex_for_imm)
     code = String(take!(io))
     menu.print_relocs || return code
-    # TODO Toggeling print_relocs shows an extra line!!!
     # this is a hacky way to relocate the _JIT_* patches in the native code output
     # we are given formatted and colored native code output of a patched stencil: code
     # we compute the native code output of an unpatched stencil (only _JIT_* args are unpatched): unpatched_code
@@ -605,8 +614,9 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
     for (i,(uc_line, line, up_line)) in enumerate(zip(eachline(IOBuffer(uncolored_code)),
                                                       eachline(IOBuffer(code)),
                                                       eachline(IOBuffer(unpatched_code))))
+        i == 1 && (println(ioc, line); continue) # this is the title
         print(ioc, line)
-        if !isempty(line) && uc_line != up_line && nreloc <= length(relocs)
+        if !isempty(line) && uc_line != up_line && nreloc < length(relocs)
             nreloc += 1
             w = length(uc_line)
             Δw = max_w - w
@@ -692,17 +702,19 @@ function TerminalMenus.header(menu::CopyAndPatchMenu)
     """
     Scroll through expressions for analysis:
     [$q_str]uit, [$s_str]yntax = $(syntax_str), [$r_str]elocations, [$h_str]ex for immediate values
-       ip$(' '^(menu.ip_col_width-2)) | SSA
+       ip$(' '^(menu.ip_col_width-2)) | stencil$(' '^(menu.stencil_name_col_width-7)) | SSA
     """
 end
 
 function TerminalMenus.writeline(buf::IOBuffer, menu::CopyAndPatchMenu, idx::Int, iscursor::Bool)
     ioc = IOContext(buf, stdout)
     sidx = format(menu.ip_fmt, idx)
+    name = get_stencil_name(menu.mc.codeinfo.code[idx])
+    sname = format(menu.stencil_name_fmt, name)
     if iscursor
-        printstyled(ioc, sidx, " | ", menu.options[idx], bold=true, color=:green)
+        printstyled(ioc, sidx, " | ", sname, " | ", menu.options[idx], bold=true, color=:green)
     else
-        print(ioc, sidx, " | ", menu.options[idx])
+        print(ioc, sidx, " | ", sname, " | ", menu.options[idx])
     end
 end
 
