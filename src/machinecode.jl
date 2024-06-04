@@ -1,6 +1,6 @@
 mutable struct MachineCode
     fn::Any # TODO Should this be Function? What about callable structs?
-    rettype::DataType
+    rettype::Union{<:Union,DataType}
     argtypes::Vector{DataType}
     buf::Vector{UInt8}
     slots::Vector{Ptr{UInt64}}

@@ -96,9 +96,7 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
         st, bvec, _ = get_stencil(ex)
         stencil_starts[i] = 1+code_size
         code_size += length(only(st.code.body))
-        if !isempty(st.data.body)
-            data_size += sum(length(b) for b in st.code.body)
-        end
+        data_size += sum(length(b) for b in st.code.body)
     end
 
     mc = MachineCode(code_size, fn, rettype, argtypes)
@@ -189,6 +187,8 @@ function box_arg(@nospecialize(a), mc)
             p = @ccall jl_get_globalref_value(a::Any)::Ptr{Cvoid}
             p === C_NULL && throw(UndefVarError(a.name,a.mod))
             push!(static_prms, p)
+        elseif a isa Core.Builtin
+            push!(static_prms, value_pointer(a))
         else
             push!(static_prms, pointer_from_objref(a))
         end
@@ -265,12 +265,24 @@ function emitcode!(mc, ip, ex::Core.PhiNode)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VALS",    pointer(vals_boxes))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT",    pointer(mc.buf, mc.stencil_starts[ip+1]))
 end
+function emitcode!(mc, ip, ex::Core.PiNode)
+    # https://docs.julialang.org/en/v1/devdocs/ssair/#Phi-nodes-and-Pi-nodes
+    # PiNodes are ignored in the interpreter, so ours also only copy values into ssas[ip]
+    st, bvec, _ = get_stencil(ex)
+    copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
+    val = box_arg(ex.val, mc)
+    ret = pointer(mc.ssas, ip)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VAL",  val)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
+end
 function emitcode!(mc, ip, ex::Expr)
     st, bvec, _ = get_stencil(ex)
     if isexpr(ex, :call)
         g = ex.args[1]
-        @assert g isa GlobalRef
-        fn = unwrap(g)
+        # @assert g isa GlobalRef
+        fn = g isa GlobalRef ? unwrap(g) : g
         if fn isa Core.IntrinsicFunction
             ex_args = @view ex.args[2:end]
             nargs = length(ex_args)
@@ -464,7 +476,6 @@ function ffi_ctype_id(t; return_type=false)
     elseif t <: Ref
         if return_type
             # cf. https://discourse.julialang.org/t/returning-arbitrary-julia-value-from-c-function/11429/2
-            @assert isprimitivetype(eltype(t))
             @goto any
         end
         12

@@ -142,6 +142,7 @@ struct MimicInt128
     y::Int64
 end
 ffi_type(p::Type{Int128})     = ffi_type_struct(MimicInt128)
+ffi_type(p::Type{String})     = ffi_type(Ptr{Cvoid})
 
 # wrappers for libffihelper.so
 ffi_default_abi() = @ccall libffihelpers_path[].ffi_default_abi()::Cint
