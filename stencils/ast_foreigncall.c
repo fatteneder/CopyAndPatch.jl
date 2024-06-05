@@ -9,6 +9,11 @@
    ctype val = (jl_unbox)((jl_value_t *)(src));           \
    memcpy((dest), &val, sizeof(ctype))
 
+#define CONVERT_AND_BOX(dest, src, ctype, jl_box)         \
+   typedef union { void *p; ctype v; } converter_##ctype; \
+   converter_##ctype c; c.p = (void *)src;                \
+   dest = (jl_box)(c.v)
+
 void
 _JIT_ENTRY(int prev_ip)
 {
@@ -65,17 +70,18 @@ _JIT_ENTRY(int prev_ip)
    switch (rettype) {
       case -2: *ret = jlh_convert_to_jl_value(rettype_ptr, (void *)rc); break;
       case -1: *ret = (void *)*rc; break; // jl_value_t *
-      case 0:  *ret = (void *)jl_box_bool((int8_t)*rc); break;
-      case 1:  *ret = (void *)jl_box_int8((int8_t)*rc); break;
-      case 2:  *ret = (void *)jl_box_uint8((uint8_t)*rc); break;
-      case 3:  *ret = (void *)jl_box_int16((int16_t)*rc); break;
-      case 4:  *ret = (void *)jl_box_uint16((uint16_t)*rc); break;
-      case 5:  *ret = (void *)jl_box_int32((int32_t)*rc); break;
-      case 6:  *ret = (void *)jl_box_uint32((uint32_t)*rc); break;
-      case 7:  *ret = (void *)jl_box_int64((int64_t)*rc); break;
-      case 8:  *ret = (void *)jl_box_uint64((uint64_t)*rc); break;
-      case 9:  *ret = (void *)jl_box_float32((float)*rc); break;
-      case 10: *ret = (void *)jl_box_float64((double)*rc); break;
+      case 0:  { CONVERT_AND_BOX(*ret, *rc, int8_t,   jl_box_bool);    } break;
+      case 1:  { CONVERT_AND_BOX(*ret, *rc, int8_t,   jl_box_int8);    } break;
+      case 2:  { CONVERT_AND_BOX(*ret, *rc, uint8_t,  jl_box_uint8);   } break;
+      case 3:  { CONVERT_AND_BOX(*ret, *rc, int16_t,  jl_box_int16);   } break;
+      case 4:  { CONVERT_AND_BOX(*ret, *rc, uint16_t, jl_box_uint16);  } break;
+      case 5:  { CONVERT_AND_BOX(*ret, *rc, int32_t,  jl_box_int32);   } break;
+      case 6:  { CONVERT_AND_BOX(*ret, *rc, uint32_t, jl_box_uint32);  } break;
+      case 7:  { CONVERT_AND_BOX(*ret, *rc, int64_t,  jl_box_int64);   } break;
+      case 8:  { CONVERT_AND_BOX(*ret, *rc, uint64_t, jl_box_uint64);  } break;
+      case 9:  { CONVERT_AND_BOX(*ret, *rc, float,    jl_box_float32); } break;
+      case 10: { CONVERT_AND_BOX(*ret, *rc, double,   jl_box_float64); } break;
+      // TODO Do we need a CONVERT_AND_BOX for the pointer cases too?
       case 11: *ret = (void *)jl_box_uint8pointer((uint8_t *)*rc); break;
       case 12: { *ret = (void *)jl_box_voidpointer((void *)*rc);
                  if (rettype_ptr) *ret = (void **)jl_bitcast(rettype_ptr, (jl_value_t *)*ret);
