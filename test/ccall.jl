@@ -1079,10 +1079,6 @@ let r = Ref{Any}("123456789")
         f4(pv) = unsafe_load(Ptr{Int}(pv))
         mc = jit(f4, (typeof(pv),))
         @test mc(pv) === length(r[])
-        # @test Ptr{Cvoid}(pa) != pv
-        # @test unsafe_load(pa) === r[]
-        # @test unsafe_load(Ptr{Ptr{Cvoid}}(pa)) === pv
-        # @test unsafe_load(Ptr{Int}(pv)) === length(r[])
     end
 end
 
@@ -1101,29 +1097,37 @@ end
 macro test_spill_n(n::Int, intargs, floatargs)
     fname_int = Symbol(:test_spill_int, n)
     fname_float = Symbol(:test_spill_float, n)
+    args = [ gensym(Symbol("a$i")) for i in 1:n+1 ]
+    unpack_args_int =   vcat([ :($a = ints[$i]) for (i,a) in enumerate(args[1:end-1]) ],
+                             [ :($(args[end]) = (ints[$n+1], ints[$n+2])) ])
+    unpack_args_float = vcat([ :($a = floats[$i]) for (i,a) in enumerate(args[1:end-1]) ],
+                             [ :($(args[end]) = (floats[$n+1], floats[$n+2])) ])
     quote
         local ints = $(esc(intargs))
         local floats = $(esc(intargs))
-        f1(a1,a2) = ccall(($(QuoteNode(fname_int)), libccalltest), Cint,
-                          ($((:(Ref{Cint}) for j in 1:n)...), SpillPint),
-                          a1, a2)
+        f1($(args...)) = ccall(($(QuoteNode(fname_int)), libccalltest), Cint,
+                               ($((:(Ref{Cint}) for j in 1:n)...), SpillPint),
+                                $(args...))
+        $(unpack_args_int...)
+        mc = jit(f1, typeof.(tuple($(unpack_args_int...))))
+        @test mc($(args...)) == sum(ints[1:($n+2)])
 
-        a1 = $((:(ints[$j]) for j in 1:n)...)
-        a2 = (ints[$n + 1], ints[$n + 2])
-        mc = jit(f1, (typeof(a1),typeof(a2)))
-        @test mc(a1,a2) == sum(ints[1:($n+2)])
-        f2(a1,a2) = ccall(($(QuoteNode(fname_float)), libccalltest), Float32,
-                          ($((:Float32 for j in 1:n)...), NTuple{2,Float32}),
-                          a1, a2)
-        a1 = $((:(ints[$j]) for j in 1:n)...)
-        a2 = (ints[$n + 1], ints[$n + 2])
-        mc = jit(f2, (typeof(a1),typeof(a2)))
-        @test mc(a1,a2) == sum(floats[1:($n + 2)])
+        f2($(args...)) = ccall(($(QuoteNode(fname_float)), libccalltest), Float32,
+                               ($((:Float32 for j in 1:n)...), NTuple{2,Float32}),
+                                $(args...))
+        $(unpack_args_float...)
+        mc = jit(f1, typeof.(tuple($(unpack_args_float...))))
+        @test mc($(args...)) == sum(floats[1:($n+2)])
     end
 end
 
+# TODO This allocates a lot, because of the number of jitted functions,
+# and so it would need to GC frequently. But atm we run with GC.enable(false)
+# because we do not yet copy inlined allocated data types into stenicls.
+# Hence, we shortened the loop length.
 let
-for i in 1:100
+# for i in 1:100
+for i in 1:10
     local intargs = rand(1:10000, 14)
     local int32args = Int32.(intargs)
     local intsum = sum(intargs)
@@ -1172,15 +1176,15 @@ for i in 1:100
     mc = jit(test_long_args_double, (typeof(floatargs),))
     @test mc(floatargs) ≈ float64sum
 
-    # @test_spill_n 1 int32args float32args
-    # @test_spill_n 2 int32args float32args
-    # @test_spill_n 3 int32args float32args
-    # @test_spill_n 4 int32args float32args
-    # @test_spill_n 5 int32args float32args
-    # @test_spill_n 6 int32args float32args
-    # @test_spill_n 7 int32args float32args
-    # @test_spill_n 8 int32args float32args
-    # @test_spill_n 9 int32args float32args
-    # @test_spill_n 10 int32args float32args
+    @test_spill_n 1 int32args float32args
+    @test_spill_n 2 int32args float32args
+    @test_spill_n 3 int32args float32args
+    @test_spill_n 4 int32args float32args
+    @test_spill_n 5 int32args float32args
+    @test_spill_n 6 int32args float32args
+    @test_spill_n 7 int32args float32args
+    @test_spill_n 8 int32args float32args
+    @test_spill_n 9 int32args float32args
+    @test_spill_n 10 int32args float32args
 end
 end
