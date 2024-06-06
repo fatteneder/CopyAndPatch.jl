@@ -191,6 +191,8 @@ function box_arg(@nospecialize(a), mc)
             push!(static_prms, p)
         elseif a isa Core.Builtin
             push!(static_prms, value_pointer(a))
+        elseif isbits(a)
+            push!(static_prms, value_pointer(a))
         else
             push!(static_prms, pointer_from_objref(a))
         end

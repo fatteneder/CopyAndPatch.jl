@@ -1015,7 +1015,7 @@ end
 # TODO Skipping all SIMD tests, not sure if that is currently possible with libffi.
 # Althouhg in https://github.com/libffi/libffi/issues/408 they say they can use some SIMD on x86.
 
-# TODO Depends on :cfunction
+# TODO Depends on :cfunction which is yet unsupported
 # # Special calling convention for `Array`
 # function f17204(a)
 #     b = similar(a)
@@ -1187,4 +1187,80 @@ for i in 1:10
     @test_spill_n 9 int32args float32args
     @test_spill_n 10 int32args float32args
 end
+end
+
+# Skipping various @test_throws tests, because they examine lowering and not codegen.
+
+# test Ref{abstract_type} calling parameter passes a heap box
+abstract type Abstract22734 end
+struct Bits22734 <: Abstract22734
+    x::Int
+    y::Float64
+end
+function cb22734(ptr::Ptr{Cvoid})
+    # GC.gc() # disabled due to current jit restrictions
+    obj = unsafe_pointer_to_objref(ptr)::Bits22734
+    obj.x + obj.y
+end
+ptr22734 = @cfunction(cb22734, Float64, (Ptr{Cvoid},))
+function caller22734(ptr)
+    obj = Bits22734(12, 20)
+    ccall(ptr, Float64, (Ref{Abstract22734},), obj)
+end
+let
+    mc = jit(caller22734, (typeof(ptr22734),))
+    @test mc(ptr22734) === 32.0
+end
+
+# # TODO These two tests seem to pass when I adjust the Ref case in ffi_ctype_id
+# # to take isbitstype into account. However, they do not reliably pass, but also segfault randomly.
+# # issue #46786 -- non-isbitstypes passed "by-value"
+# struct NonBits46786
+#     x::Union{Int16,NTuple{3,UInt8}}
+# end
+# let ptr = @cfunction(identity, NonBits46786, (NonBits46786,))
+#     obj1 = NonBits46786((0x01,0x02,0x03))
+#     test_obj2(obj1) = ccall(ptr, NonBits46786, (NonBits46786,), obj1)
+#     mc = jit(test_obj2, (typeof(obj1),))
+#     obj2 = mc(obj1)
+#     @test obj1 === obj2
+# end
+# let ptr = @cfunction(identity, Base.RefValue{NonBits46786}, (Base.RefValue{NonBits46786},))
+#     obj1 = Base.RefValue(NonBits46786((0x01,0x02,0x03)))
+#     test_obj2(obj1) = ccall(ptr, Base.RefValue{NonBits46786}, (Base.RefValue{NonBits46786},), obj1)
+#     mc = jit(test_obj2, (typeof(obj1),))
+#     obj2 = mc(obj1)
+#     # @test obj1 !== obj2
+#     # @test obj1.x === obj2.x
+# end
+
+# # TODO There seems to be a problem between what code_typed outputs and what jl_cglobal consumes.
+# # I.e. the former provides us with an Expr like :(Core.tuple(:global_var, Main.libccalltest)),
+# # but the latter expects a Symbol.
+# # Maybe this works when running with unoptimized typed output? No, it doesn't.
+# # 26297#issuecomment-371165725
+# #   test that the first argument to cglobal is recognized as a tuple literal even through
+# #   macro expansion
+# macro cglobal26297(sym)
+#     :(cglobal(($(esc(sym)), libccalltest), Cint))
+# end
+# let
+#     cglobal26297() = @cglobal26297(:global_var)
+#     mc = jit(cglobal26297, ())
+#     @test mc() != C_NULL
+# end
+
+# issue #27477
+@eval module Pkg27477
+const libccalltest = $libccalltest
+end
+
+module Test27477
+using ..Pkg27477
+test27477() = ccall((:ctest, Pkg27477.libccalltest), Complex{Int}, (Complex{Int},), 1 + 2im)
+end
+
+let
+    mc = jit(Test27477.test27477, ())
+    @test mc() == 2 + 0im
 end
