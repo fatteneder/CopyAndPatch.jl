@@ -1299,7 +1299,7 @@ end
 #     @test !occursin("call void inttoptr", llvm)
 # end
 
-# TODO Relevan for us?
+# TODO Relevant for us?
 # # issue #34061
 # let o_file = tempname(), err = Base.PipeEndpoint()
 #     run(pipeline(Cmd(`$(Base.julia_cmd()) --color=no --output-o=$o_file -e '
@@ -1334,3 +1334,207 @@ let
     mc(dest,src)
     @test dest[] == (7,8,9)
 end
+
+# Ignoring all @ccall macro parser tests
+
+# call some c functions
+@testset "run @ccall with C standard library functions" begin
+    test_at_ccall_1() = @ccall(sqrt(4.0::Cdouble)::Cdouble)
+    mc = jit(test_at_ccall_1, ())
+    @test mc() == 2.0
+
+    # TODO This depends on :throw_undef_if_not expr node.
+    # str = "hello"
+    # function test_at_ccall_2(str)
+    #     buf = Ptr{UInt8}(Libc.malloc((length(str) + 1) * sizeof(Cchar)))
+    #     @ccall strcpy(buf::Cstring, str::Cstring)::Cstring
+    #     buf
+    # end
+    # try
+    #   mc = jit(test_at_ccall_2, (typeof(str),))
+    #   buf = mc()
+    #   @test unsafe_string(buf) == str
+    # catch
+    #   buf != C_NULL && Libc.free(buf)
+    # end
+
+    # test pointer interpolation
+    str_identity = @cfunction(identity, Cstring, (Cstring,))
+    test_at_ccall_3() = @ccall $str_identity("foo"::Cstring)::Cstring
+    mc = jit(test_at_ccall_3, ())
+    foo = mc()
+    @test unsafe_string(foo) == "foo"
+    # TODO Depends on interpolation of @cfunction
+    # # test interpolation of an expression that returns a pointer.
+    # test_at_ccall_4() = @ccall $(@cfunction(identity, Cstring, (Cstring,)))("foo"::Cstring)::Cstring
+    # mc = jit(test_at_ccall_4, ())
+    # foo = mc()
+    # @test unsafe_string(foo) == "foo"
+
+    # test of a vararg foreigncall using @ccall
+    strp = Ref{Ptr{Cchar}}(0)
+    fmt = "hi+%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%.1f-%.1f-%.1f-%.1f-%.1f-%.1f-%.1f-%.1f-%.1f\n"
+
+    # TODO Depends on handling varargs for ccall, e.g. nreq > 0 in ast.
+    # function test_at_ccall_5()
+    #     @ccall asprintf(
+    #     strp::Ptr{Ptr{Cchar}},
+    #     fmt::Cstring,
+    #     ; # begin varargs
+    #     0x1::UInt8, 0x2::UInt8, 0x3::UInt8, 0x4::UInt8, 0x5::UInt8, 0x6::UInt8, 0x7::UInt8, 0x8::UInt8, 0x9::UInt8, 0xa::UInt8, 0xb::UInt8, 0xc::UInt8, 0xd::UInt8, 0xe::UInt8, 0xf::UInt8,
+    #     1.1::Cfloat, 2.2::Cfloat, 3.3::Cfloat, 4.4::Cfloat, 5.5::Cfloat, 6.6::Cfloat, 7.7::Cfloat, 8.8::Cfloat, 9.9::Cfloat,
+    #     )::Cint
+    # end
+    # mc = jit(test_at_ccall_5, ())
+    # len = mc()
+    # str = unsafe_string(strp[], len)
+    # @ccall free(strp[]::Cstring)::Cvoid
+    # @test str == "hi+1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-1.1-2.2-3.3-4.4-5.5-6.6-7.7-8.8-9.9\n"
+end
+
+# TODO Depends on handling varargs for ccall, e.g. nreq > 0 in ast.
+# @testset "Cwstring" begin
+#     buffer = Array{Cwchar_t}(undef, 100)
+#     function test_cwstring(buffer)
+#         @static if Sys.iswindows()
+#             @ccall swprintf_s(buffer::Ptr{Cwchar_t}, length(buffer)::Csize_t, "α+%ls=%hhd"::Cwstring; "β"::Cwstring, 0xf::UInt8)::Cint
+#         else
+#             @ccall swprintf(buffer::Ptr{Cwchar_t}, length(buffer)::Csize_t, "α+%ls=%hhd"::Cwstring; "β"::Cwstring, 0xf::UInt8)::Cint
+#         end
+#     end
+#     mc = jit(test_cwstring, (typeof(buffer),))
+#     len = mc(buffer)
+#     Libc.systemerror("swprintf", len < 0)
+#     str = GC.@preserve buffer unsafe_string(pointer(buffer), len)
+#     @test str == "α+β=15"
+#     str = GC.@preserve buffer unsafe_string(Cwstring(pointer(buffer)))
+#     @test str == "α+β=15"
+# end
+
+# TODO This depends on manual evaluation of compute_lib_name() in ast.
+# # issue #36458
+# compute_lib_name() = "libcc" * "alltest"
+# let
+#     ccall_lazy_lib_name(x) = ccall((:testUcharX, compute_lib_name()), Int32, (UInt8,), x % UInt8)
+#     mc = jit(ccall_lazy_lib_name, (Int64,))
+#     @test mc(0) == 0
+#     @test mc(3) == 1
+#     ccall_with_undefined_lib() = ccall((:time, xx_nOt_DeFiNeD_xx), Cint, (Ptr{Cvoid},), C_NULL)
+#     mc = jit(ccall_with_undefined_lib, ())
+#     @test_throws UndefVarError(:xx_nOt_DeFiNeD_xx, @__MODULE__) mc()
+# end
+
+@testset "transcode for UInt8 and UInt16" begin
+    a   = [UInt8(1), UInt8(2), UInt8(3)]
+    function test_transcode_1(a)
+        a16 = transcode(UInt16, a)
+        a8  = transcode(UInt8, a16)
+    end
+    mc = jit(test_transcode_1, (typeof(a),))
+    a8 = mc(a)
+    @test a8 == a
+    b   = [UInt16(1), UInt16(2), UInt16(3)]
+    function test_transcode_2(b)
+        b8  = transcode(UInt8, b)
+        b16 = transcode(UInt16, b8)
+    end
+    mc = jit(test_transcode_2, (typeof(b),))
+    b16 = mc(b)
+    @test b16 == b
+end
+
+@testset "transcode String to String" begin
+    a = "Julia strings and things"
+    test_transcode_3(a) = transcode(String, a)
+    mc = jit(test_transcode_3, (typeof(a),))
+    aa = mc(a)
+    @test aa === a
+end
+
+# issue 33413
+@testset "cglobal lowering" begin
+    # crash in cglobal33413_ptrinline[_notype]() specifically requires the library pointer be
+    # retrieved inside the function; using global pointer variable doesn't trigger the crash
+    function cglobal33413_ptrvar()
+        libh = Libdl.dlopen(libccalltest)
+        sym = Libdl.dlsym(libh, :global_var)
+        return cglobal(sym, Cint)
+    end
+    function cglobal33413_ptrvar_notype()
+        libh = Libdl.dlopen(libccalltest)
+        sym = Libdl.dlsym(libh, :global_var)
+        return cglobal(sym)
+    end
+    function cglobal33413_ptrinline()
+        libh = Libdl.dlopen(libccalltest)
+        return cglobal(Libdl.dlsym(libh, :global_var), Cint)
+    end
+    function cglobal33413_ptrinline_notype()
+        libh = Libdl.dlopen(libccalltest)
+        return cglobal(Libdl.dlsym(libh, :global_var))
+    end
+    function cglobal33413_tupleliteral()
+        return cglobal((:global_var, libccalltest), Cint)
+    end
+    function cglobal33413_tupleliteral_notype()
+        return cglobal((:global_var, libccalltest))
+    end
+    function cglobal33413_literal()
+        return cglobal(:sin, Cint)
+    end
+    function cglobal33413_literal_notype()
+        return cglobal(:sin)
+    end
+    function cglobal49142_nothing()
+        return cglobal(nothing)
+    end
+    function cglobal45187fn()
+        return cglobal((:fn, fn45187))
+    end
+    mc = jit(cglobal33413_ptrvar, ())
+    @test unsafe_load(mc()) == 1
+    mc = jit(cglobal33413_ptrinline, ())
+    @test unsafe_load(mc()) == 1
+    # TODO This depends on the resolution of Expr as Symbols for the cglobal call
+    # mc = jit(cglobal33413_tupleliteral, ())
+    # @test unsafe_load(mc()) == 1
+    # TODO Segfault
+    # mc = jit(cglobal33413_ptrvar_notype, ())
+    # @test unsafe_load(convert(Ptr{Cint}, mc())) == 1
+    # TODO Segfault
+    # mc = jit(cglobal33413_ptrinline_notype, ())
+    # @test unsafe_load(convert(Ptr{Cint}, mc())) == 1
+    # TODO Segfault
+    # mc = jit(cglobal33413_tupleliteral_notype, ())
+    # @test unsafe_load(convert(Ptr{Cint}, mc())) == 1
+    mc = jit(cglobal33413_literal, ())
+    @test mc() != C_NULL
+    # TODO Segfault
+    # mc = jit(cglobal33413_literal_notype, ())
+    # @test mc() != C_NULL
+    # TODO These require exception handling.
+    # @test_throws(TypeError, cglobal49142_nothing())
+    # @test_throws(TypeError, cglobal45187fn())
+    # @test_throws(TypeError, @eval cglobal(nothing))
+    # @test_throws(TypeError, @eval cglobal((:fn, fn45187)))
+end
+
+# TODO These require exception handling.
+# const libfrobozz = ""
+#
+# function somefunction_not_found()
+#     ccall((:somefunction, libfrobozz), Cvoid, ())
+# end
+#
+# function somefunction_not_found_libc()
+#     ccall(:test,Int,())
+# end
+#
+# @testset "library not found" begin
+#     if Sys.islinux()
+#         @test_throws "could not load symbol \"somefunction\"" somefunction_not_found()
+#     else
+#         @test_throws "could not load library \"\"" somefunction_not_found()
+#     end
+#     @test_throws "could not load symbol \"test\"" somefunction_not_found_libc()
+# end
