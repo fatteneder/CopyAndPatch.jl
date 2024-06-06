@@ -1264,3 +1264,73 @@ let
     mc = jit(Test27477.test27477, ())
     @test mc() == 2 + 0im
 end
+
+# TODO This depends on :copyast expr node.
+# # issue #31073
+# let
+#     function f31073()
+#         a = ['0']
+#         arr = Vector{Char}(undef, 2)
+#         ptr = pointer(arr)
+#         elsz = sizeof(Char)
+#         na = length(a)
+#         nba = na * elsz
+#         ptr = eval(:(ccall(:memcpy, Ptr{Cvoid}, (Ptr{Cvoid}, Ptr{Cvoid}, UInt), $(arr), $(a), $(nba))))
+#         ptr, arr
+#     end
+#     mc = jit(f31073, ())
+#     ptr, arr = mc()
+#     @test isa(ptr, Ptr{Cvoid})
+#     @test arr[1] == '0'
+# end
+
+# TODO This depends on :gc_preserve_begin expr node.
+# # issue #38751
+# let
+#     function f38751!(dest::Vector{UInt8}, src::Vector{UInt8}, n::UInt)
+#         d, s = pointer(dest), pointer(src)
+#         GC.@preserve dest src ccall(:memcpy, Cvoid, (Ptr{UInt8}, Ptr{UInt8}, Csize_t), d, s, n)
+#         return dest
+#     end
+#     dest = zeros(UInt8, 8)
+#     mc = jit(f38751!, (Vector{UInt8}, Vector{UInt8}, UInt))
+#     @test mc(dest, collect(0x1:0x8), UInt(8)) == 0x1:0x8
+#     llvm = sprint(code_llvm, f38751!, (Vector{UInt8}, Vector{UInt8}, UInt))
+#     @test !occursin("call void inttoptr", llvm)
+# end
+
+# TODO Relevan for us?
+# # issue #34061
+# let o_file = tempname(), err = Base.PipeEndpoint()
+#     run(pipeline(Cmd(`$(Base.julia_cmd()) --color=no --output-o=$o_file -e '
+#         Base.reinit_stdio();
+#         f() = ccall((:dne, :does_not_exist), Cvoid, ());
+#         f()'`; ignorestatus=true), stderr=err), wait=false)
+#     output = read(err, String)
+#     @test occursin("""ERROR: could not load library "does_not_exist"
+#     """, output)
+#     @test !isfile(o_file)
+# end
+
+# pass NTuple{N,T} as Ptr{T}/Ref{T}
+let
+    dest = Ref((0,0,0))
+
+    src  = Ref((1,2,3))
+    test_memcpy_1(dest,src) = ccall(:memcpy, Ptr{Cvoid}, (Ptr{Int}, Ptr{Int}, Csize_t), dest, src, 3*sizeof(Int))
+    mc = jit(test_memcpy_1, (typeof(dest),typeof(src)))
+    mc(dest,src)
+    @test dest[] == (1,2,3)
+
+    src  = Ref((4,5,6))
+    test_memcpy_2(dest,src) = ccall(:memcpy, Ptr{Cvoid}, (Ref{Int}, Ref{Int}, Csize_t), dest, src, 3*sizeof(Int))
+    mc = jit(test_memcpy_2, (typeof(dest),typeof(src)))
+    mc(dest,src)
+    @test dest[] == (4,5,6)
+
+    src  = (7,8,9)
+    test_memcpy_3(dest,src) = ccall(:memcpy, Ptr{Cvoid}, (Ref{Int}, Ref{Int}, Csize_t), dest, src, 3*sizeof(Int))
+    mc = jit(test_memcpy_3, (typeof(dest),typeof(src)))
+    mc(dest,src)
+    @test dest[] == (7,8,9)
+end
