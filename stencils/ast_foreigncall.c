@@ -3,7 +3,7 @@
 #include <string.h> // memcpy
 #include <julia_internal.h> // for jl_bitcast
 #include <julia_threads.h>  // for julia_internal.h
-#include <juliahelpers.h>
+#include "juliahelpers.h"
 
 #define UNBOX_AND_STORE(dest, src, ctype, jl_unbox)       \
    ctype val = (jl_unbox)((jl_value_t *)(src));           \
