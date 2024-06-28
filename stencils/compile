@@ -13,10 +13,10 @@ clang -O3 \
       -mcmodel=large \
       -std=gnu11 \
       $CFLAGS \
-      -I"$JULIA_INCLUDE" \
-      -I"$JULIA_INCLUDE2" \
-      -I"$JULIA_INTERNAL_INCLUDE" \
-      -I"$LIBFFI_INCLUDE" \
+      -I"${JULIA_INCLUDE}" \
+      -I"${JULIA_INCLUDE}/julia" \
+      -I"${JULIA_INTERNAL_INCLUDE}" \
+      -I"${LIBFFI_INCLUDE}" \
       -I"$(pwd)" \
       -o $OBJNAME \
       $SRCNAME
