@@ -249,16 +249,25 @@ end
 
 
 holes(g::StencilGroup) = g.code.relocations
+
 patch!(m::MachineCode, h::Hole, p::Ptr) = m.buf[h.offset+1] = p
+patch!(b::ByteVector, h::Hole, val)     = patch!(b, 0, h, val)
+
 patch!(b::ByteVector, start::Integer, h::Hole, val) =
     b[start #=1-based=# + h.offset #=0-based=#] = val
-patch!(b::ByteVector, h::Hole, val) = patch!(b, 0, h, val)
-patch!(bvec, st::Stencil, symbol::String, val) = patch!(bvec, 0, st, symbol, val)
+patch!(bvec::ByteVector, st::Stencil, symbol::String, val) = patch!(bvec, 0, st, symbol, val)
+
 function patch!(bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, val)
     holes = st.relocations
     anyfound = false
     for h in holes
         if h.symbol == symbol
+            if h.kind == "R_X86_64_64"
+                # zero hole
+                patch!(bvec, offset, h, 0)
+            else
+                TODO(h.kind)
+            end
             patch!(bvec, offset, h, val)
             anyfound = true
         end
@@ -269,4 +278,3 @@ end
 function patch!(vec::AbstractVector{<:UInt8}, offset::Integer, st::Stencil, symbol::String, val)
     patch!(ByteVector(vec), offset, st, symbol, val)
 end
-patch!(vec::AbstractVector{<:UInt8}, st::Stencil, symbol::String, val) = patch!(vec, 1, st, symbol, val)
