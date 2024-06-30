@@ -5,6 +5,7 @@ if [[ $(hostname) == "voidy" ]]; then
   export PATH="$HOME/wd/julia2/usr/bin:$PATH"
   export JULIA_DEPOT_PATH="$HOME/wd/julia2/usr/share/julia"
   export JULIA_INCLUDE="$HOME/wd/julia2/usr/include"
+  export JULIA_LIB="$HOME/wd/julia2/usr/lib"
   export JULIA_INTERNAL_INCLUDE="$HOME/wd/julia2/src"
   export LIBFFI_INCLUDE="/usr/lib64"
 elif [[ $(hostname) == "fwork" ]]; then
