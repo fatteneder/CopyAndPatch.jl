@@ -11,6 +11,7 @@ _JIT_ENTRY(int prev_ip)
    jl_handler_t __eh;
    jl_task_t *ct = jl_current_task;
    jl_enter_handler(&__eh);
+   *exc_thrown = 1; // needs to be reset by a :leave
    if (new_scope) {
       jl_value_t *old_scope = ct->scope;
       JL_GC_PUSH1(&old_scope);
@@ -20,7 +21,6 @@ _JIT_ENTRY(int prev_ip)
          PATCH_CALL(_JIT_CALL, ip);
          jl_unreachable();
       }
-      printf("VODA?\n");
       ct->scope = old_scope;
       JL_GC_POP();
    }
@@ -32,7 +32,6 @@ _JIT_ENTRY(int prev_ip)
       }
    }
    jl_eh_restore_state(&__eh);
-   printf("*exc_thrown = %d\n", *exc_thrown);
    if (!(*exc_thrown)) {
       PATCH_JUMP(_JIT_CONT_LEAVE, ip);
    } else {

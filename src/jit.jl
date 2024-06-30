@@ -296,18 +296,8 @@ end
 function emitcode!(mc, ip, ex::Core.PhiCNode)
     st, bvec, _ = get_stencil(ex)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
-    edges = [ v.id for v in ex.values ]
-    append!(mc.gc_roots, edges)
-    nedges = length(edges)
-    vals_boxes = box_args(ex.values, mc)
-    append!(mc.gc_roots, vals_boxes)
-    retbox = pointer(mc.ssas, ip)
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EDGES",   pointer(edges))
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",      Cint(ip))
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NEDGES",  nedges)
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",     retbox)
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VALS",    pointer(vals_boxes))
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT",    pointer(mc.buf, mc.stencil_starts[ip+1]))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
 end
 function emitcode!(mc, ip, ex::Core.PiNode)
     # https://docs.julialang.org/en/v1/devdocs/ssair/#Phi-nodes-and-Pi-nodes
@@ -325,7 +315,11 @@ function emitcode!(mc, ip, ex::Core.UpsilonNode)
     st, bvec, _ = get_stencil(ex)
     # jl_get_nth_field_checked identifiese NULLs as undefined
     val = isdefined(ex, :val) ? box_arg(ex.val, mc) : box(C_NULL)
-    ret = pointer(mc.ssas, ip)
+    ssa_ip = Core.SSAValue(ip)
+    ret_ip = something(findfirst(mc.codeinfo.code[ip+1:end]) do e
+        e isa Core.PhiCNode && ssa_ip in e.values
+    end) + ip
+    ret = pointer(mc.ssas, ret_ip)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
