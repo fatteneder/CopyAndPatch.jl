@@ -15,6 +15,10 @@ do {                               \
     return (ALIAS)(IP);            \
 } while (0);
 
+#define PATCH_CALL(ALIAS, IP)      \
+    extern void (ALIAS)(int);      \
+    (ALIAS)(IP)
+
 #define RESET_COLOR   "\033[39m"
 #define FG_GREEN      "\033[32m"
 #define FG_YELLOW     "\033[33m"

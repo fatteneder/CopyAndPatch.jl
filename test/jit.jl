@@ -203,3 +203,30 @@ end
         rethrow(e)
     end
 end
+
+@noinline opaque() = invokelatest(identity, nothing) # Something opaque
+@testset "exceptions" begin
+    # from the manual: https://docs.julialang.org/en/v1/devdocs/ssair/#PhiC-nodes-and-Upsilon-nodes
+    function foo_no_throw()
+        local y
+        x = 1
+        try
+            y = 2
+            opaque()
+            println("SERS")
+            y = 3
+            # error() ### disabling error inserts a :leave
+        catch
+        end
+        (x, y)
+    end
+    try
+        expected = foo_no_throw()
+        mc = jit(foo_no_throw, ())
+        ret = CopyAndPatch.call(mc)
+        @test ret == expected
+    catch e
+        @error "Failed foo_no_throw()"
+        rethrow(e)
+    end
+end

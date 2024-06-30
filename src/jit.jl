@@ -134,17 +134,24 @@ function get_stencil_name(ex)
         return "ast_foreigncall"
     elseif isexpr(ex, :boundscheck)
         return "ast_boundscheck"
+    elseif isexpr(ex, :leave)
+        return "ast_leave"
+    elseif isexpr(ex, :pop_exception)
+        return "ast_pop_exception"
     else
         TODO("Stencil not implemented yet:", ex)
     end
 end
-get_stencil_name(ex::GlobalRef)       = "ast_assign"
-get_stencil_name(ex::Core.ReturnNode) = "ast_returnnode"
-get_stencil_name(ex::Core.GotoIfNot)  = "ast_gotoifnot"
-get_stencil_name(ex::Core.GotoNode)   = "ast_goto"
-get_stencil_name(ex::Core.PhiNode)    = "ast_phinode"
-get_stencil_name(ex::Core.PiNode)     = "ast_pinode"
-get_stencil_name(ex::Nothing)         = "ast_goto"
+get_stencil_name(ex::Core.EnterNode)   = "ast_enternode"
+get_stencil_name(ex::Core.GlobalRef)   = "ast_assign"
+get_stencil_name(ex::Core.GotoIfNot)   = "ast_gotoifnot"
+get_stencil_name(ex::Core.GotoNode)    = "ast_goto"
+get_stencil_name(ex::Core.PhiNode)     = "ast_phinode"
+get_stencil_name(ex::Core.PhiCNode)    = "ast_phicnode"
+get_stencil_name(ex::Core.PiNode)      = "ast_pinode"
+get_stencil_name(ex::Core.ReturnNode)  = "ast_returnnode"
+get_stencil_name(ex::Core.UpsilonNode) = "ast_upsilonnode"
+get_stencil_name(ex::Nothing)          = "ast_goto"
 
 function get_stencil(ex)
     name = get_stencil_name(ex)
@@ -229,6 +236,21 @@ function emitcode!(mc, ip, ex::GlobalRef)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VAL",  val)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
 end
+function emitcode!(mc, ip, ex::Core.EnterNode)
+    st, bvec, _ = get_stencil(ex)
+    new_scope = isdefined(ex, :scope) ? box_arg(ex.scope, mc) : C_NULL
+    catch_ip = ex.catch_dest
+    leave_ip = catch_ip-1
+    copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",         Cint(ip))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NEW_SCOPE",  new_scope)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EXC_THROWN", pointer_from_objref(mc.exc_thrown))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CALL", pointer(mc.buf, mc.stencil_starts[ip+1]))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT_LEAVE",
+                                                    pointer(mc.buf, mc.stencil_starts[leave_ip]))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT_CATCH",
+                                                    pointer(mc.buf, mc.stencil_starts[catch_ip]))
+end
 function emitcode!(mc, ip, ex::Core.ReturnNode)
     # TODO :unreachable nodes are also of type Core.ReturnNode. Anything to do here?
     st, bvec, _ = get_stencil(ex)
@@ -263,9 +285,25 @@ function emitcode!(mc, ip, ex::Core.PhiNode)
     chain_phi = ip < length(mc.codeinfo.code) && mc.codeinfo.code[ip+1] isa Core.PhiNode
     append!(mc.gc_roots, vals_boxes)
     retbox = pointer(mc.ssas, ip)
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",      Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EDGES",     pointer(ex.edges))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",        Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CHAIN_PHI", Cint(chain_phi))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NEDGES",    nedges)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",       retbox)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VALS",      pointer(vals_boxes))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT",      pointer(mc.buf, mc.stencil_starts[ip+1]))
+end
+function emitcode!(mc, ip, ex::Core.PhiCNode)
+    st, bvec, _ = get_stencil(ex)
+    copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
+    edges = [ v.id for v in ex.values ]
+    append!(mc.gc_roots, edges)
+    nedges = length(edges)
+    vals_boxes = box_args(ex.values, mc)
+    append!(mc.gc_roots, vals_boxes)
+    retbox = pointer(mc.ssas, ip)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EDGES",   pointer(edges))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",      Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NEDGES",  nedges)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",     retbox)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VALS",    pointer(vals_boxes))
@@ -278,6 +316,17 @@ function emitcode!(mc, ip, ex::Core.PiNode)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     val = box_arg(ex.val, mc)
     ret = pointer(mc.ssas, ip)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VAL",  val)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
+end
+function emitcode!(mc, ip, ex::Core.UpsilonNode)
+    st, bvec, _ = get_stencil(ex)
+    # jl_get_nth_field_checked identifiese NULLs as undefined
+    val = isdefined(ex, :val) ? box_arg(ex.val, mc) : box(C_NULL)
+    ret = pointer(mc.ssas, ip)
+    copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VAL",  val)
@@ -454,6 +503,21 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VAL",  val)
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
+    elseif isexpr(ex, :leave)
+        hand_n_leave = count(ex.args) do a
+            a !== nothing && mc.codeinfo.code[a.id] !== nothing
+        end
+        copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",           Cint(ip))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_HAND_N_LEAVE", Cint(hand_n_leave))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EXC_THROWN",   pointer_from_objref(mc.exc_thrown))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
+    elseif isexpr(ex, :pop_exception)
+        prev_state = ex.args[1].id
+        copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",         Cint(ip))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_PREV_STATE", Csize_t(prev_state))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
     else
         TODO(ex.head)
