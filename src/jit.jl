@@ -138,6 +138,8 @@ function get_stencil_name(ex)
         return "ast_leave"
     elseif isexpr(ex, :pop_exception)
         return "ast_pop_exception"
+    elseif isexpr(ex, :the_exception)
+        return "ast_the_exception"
     else
         TODO("Stencil not implemented yet:", ex)
     end
@@ -512,6 +514,12 @@ function emitcode!(mc, ip, ex::Expr)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",         Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_PREV_STATE", Csize_t(prev_state))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
+    elseif isexpr(ex, :the_exception)
+        ret = pointer(mc.ssas, ip)
+        copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
     else
         TODO(ex.head)
