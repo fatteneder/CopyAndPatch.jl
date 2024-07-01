@@ -6,11 +6,13 @@ _JIT_ENTRY(int prev_ip)
 {
    PATCH_VALUE(int,   ip,         _JIT_IP);
    PATCH_VALUE(int *, exc_thrown, _JIT_EXC_THROWN);
-   PATCH_VALUE(jl_value_t *, new_scope,  _JIT_NEW_SCOPE);
+   PATCH_VALUE(jl_value_t *,  new_scope, _JIT_NEW_SCOPE);
+   PATCH_VALUE(jl_value_t **, ret,       _JIT_RET);
    DEBUGSTMT("ast_enternode", prev_ip, ip);
    jl_handler_t __eh;
    jl_task_t *ct = jl_current_task;
    jl_enter_handler(&__eh);
+   *ret = jl_box_ulong(jl_excstack_state());
    *exc_thrown = 1; // needs to be reset by a :leave
    if (new_scope) {
       jl_value_t *old_scope = ct->scope;

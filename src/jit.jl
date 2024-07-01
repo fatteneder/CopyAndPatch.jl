@@ -241,11 +241,13 @@ end
 function emitcode!(mc, ip, ex::Core.EnterNode)
     st, bvec, _ = get_stencil(ex)
     new_scope = isdefined(ex, :scope) ? box_arg(ex.scope, mc) : C_NULL
+    ret = pointer(mc.ssas, ip)
     catch_ip = ex.catch_dest
     leave_ip = catch_ip-1
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",         Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NEW_SCOPE",  new_scope)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",        ret)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EXC_THROWN", pointer_from_objref(mc.exc_thrown))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CALL", pointer(mc.buf, mc.stencil_starts[ip+1]))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT_LEAVE",
@@ -510,10 +512,10 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EXC_THROWN",   pointer_from_objref(mc.exc_thrown))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
     elseif isexpr(ex, :pop_exception)
-        prev_state = ex.args[1].id
+        prev_state = pointer(mc.ssas, ex.args[1].id)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",         Cint(ip))
-        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_PREV_STATE", Csize_t(prev_state))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_PREV_STATE", prev_state)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
     elseif isexpr(ex, :the_exception)
         ret = pointer(mc.ssas, ip)

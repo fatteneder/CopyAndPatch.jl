@@ -1,4 +1,5 @@
 #include "common.h"
+#include <julia_internal.h> // asan_unpoison_task_stack
 
 void
 _JIT_ENTRY(int prev_ip)
@@ -13,7 +14,7 @@ _JIT_ENTRY(int prev_ip)
       while (--hand_n_leave > 0)
          eh = eh->prev;
       *exc_thrown = 0;
-      printf("SERS?\n");
+      asan_unpoison_task_stack(ct, &eh->eh_ctx);
       jl_longjmp(eh->eh_ctx, 1);
    } else {
       PATCH_JUMP(_JIT_CONT, ip);
