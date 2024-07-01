@@ -252,4 +252,28 @@ end
         @error "Failed foo_throw()"
         rethrow(e)
     end
+
+    function foo_catch()
+        local y
+        x = 1
+        try
+            y = 2
+            opaque()
+            println("SERS")
+            y = 3
+            error()
+        catch e
+            x += 2
+        end
+        (x, y)
+    end
+    try
+        expected = foo_catch()
+        mc = jit(foo_catch, ())
+        ret = CopyAndPatch.call(mc)
+        @test ret == expected
+    catch e
+        @error "Failed foo_catch()"
+        rethrow(e)
+    end
 end
