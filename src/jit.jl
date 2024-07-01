@@ -73,21 +73,12 @@ end
 
 
 function jit(@nospecialize(fn::Function), @nospecialize(args))
-
-    # this here does the linking of all non-copy-patched parts
-    init_stencils()
+    init_stencils() # this here does the linking of all non-copy-patched parts
 
     optimize = true
     codeinfo, rettype = only(code_typed(fn, args; optimize))
     argtypes = length(codeinfo.slottypes) > 0 ? Tuple(codeinfo.slottypes[2:end]) : ()
-
     # @show codeinfo
-    # @show propertynames(codeinfo)
-    # @show codeinfo.code
-    # @show codeinfo.slottypes
-    # @show codeinfo.ssavaluetypes
-    # @show propertynames(codeinfo)
-
     nstencils = length(codeinfo.code)
     stencil_starts = zeros(Int64, nstencils)
     code_size = 0
@@ -102,7 +93,6 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     mc = MachineCode(code_size, fn, rettype, argtypes)
     mc.stencil_starts = stencil_starts
     mc.codeinfo = codeinfo
-
     nslots = length(codeinfo.slottypes)
     nssas = length(codeinfo.ssavaluetypes)
     @assert nssas == length(codeinfo.code)
@@ -112,7 +102,6 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     for (ip,ex) in enumerate(codeinfo.code)
         emitcode!(mc, ip, ex)
     end
-
     return mc
 end
 
@@ -334,7 +323,6 @@ function emitcode!(mc, ip, ex::Expr)
     st, bvec, _ = get_stencil(ex)
     if isexpr(ex, :call)
         g = ex.args[1]
-        # @assert g isa GlobalRef
         fn = g isa GlobalRef ? unwrap(g) : g
         if fn isa Core.IntrinsicFunction
             ex_args = @view ex.args[2:end]
@@ -715,13 +703,13 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
             Δw = max_w - w
             printstyled(ioc, ' '^Δw, "    # $(relocs[nreloc].symbol)", color=:light_blue)
         end
-        print(ioc, '\n')
+        println(ioc)
     end
     if nreloc != length(relocs)
         s = SimpleLogger(ioc)
         with_logger(s) do
             println(ioc)
-            @error "relocation is wrong, found $nreloc but expected $(length(relocs))"
+            @error "relocation failed, found $nreloc but expected $(length(relocs))"
         end
     end
     code = String(take!(io))
