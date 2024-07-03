@@ -177,7 +177,7 @@ function box_arg(@nospecialize(a), mc)
         if a isa Boxable
             push!(static_prms, box(a))
         elseif a isa Nothing
-            push!(static_prms, cglobal(:jl_nothing))
+            push!(static_prms, value_pointer(nothing))
         elseif a isa QuoteNode
             push!(static_prms, value_pointer(a.value))
         elseif a isa Tuple
