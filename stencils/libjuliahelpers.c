@@ -14,7 +14,6 @@ int is_bool(jl_value_t *b) {
    return jl_is_bool(b);
 }
 
-
 // from julia/src/codegen.cpp
 bool jl_is_concrete_immutable(jl_value_t* t)
 {
@@ -32,8 +31,9 @@ bool jl_is_pointerfree(jl_value_t* t)
 
 jl_value_t *jlh_convert_to_jl_value(jl_value_t *ty, void *data) {
     jl_task_t *ct = jl_get_current_task();
-    unsigned sz = jl_datatype_size(ty);
+    size_t sz = jl_datatype_size(ty);
     jl_value_t *v = jl_gc_alloc(ct->ptls, sz, ty);
-    memcpy(jl_data_ptr(v), data, jl_datatype_size(ty));
+    jl_set_typeof(v, ty);
+    memcpy((void *)v, data, sz);
     return v;
 }

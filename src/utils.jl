@@ -149,6 +149,7 @@ ffi_default_abi() = @ccall libffihelpers_path[].ffi_default_abi()::Cint
 sizeof_ffi_cif() = @ccall libffihelpers_path[].sizeof_ffi_cif()::Csize_t
 sizeof_ffi_arg() = @ccall libffihelpers_path[].sizeof_ffi_arg()::Csize_t
 sizeof_ffi_type() = @ccall libffihelpers_path[].sizeof_ffi_type()::Csize_t
+ffi_sizeof(p::Ptr) = @ccall libffihelpers_path[].get_size_ffi_type(p::Ptr{Cvoid})::Csize_t
 
 const Ctypes = Union{Cchar,Cuchar,Cshort,Cstring,Cushort,Cint,Cuint,Clong,Culong,
                      Clonglong,Culonglong,Cintmax_t,Cuintmax_t,Csize_t,Cssize_t,
@@ -161,11 +162,11 @@ function to_c_type(t)
     end
 end
 
-const FFI_TYPE_CACHE = Dict{Any,Vector{UInt8}}()
+const FFI_TYPE_CACHE = Dict{Any,Tuple{Vector{UInt8},Vector{Ptr{Cvoid}}}}()
 function ffi_type_struct(@nospecialize(t::Type{T})) where T
-    # TODO ffi_call segfaults when we use cached ffi_types. Why?
-    # ty = get(FFI_TYPE_CACHE, T, nothing)
-    # !isnothing(ty) && return pointer(ty)
+    if haskey(FFI_TYPE_CACHE, T)
+        return pointer(FFI_TYPE_CACHE[T][1])
+    end
     n = fieldcount(T)
     elements = Vector{Ptr{Cvoid}}(undef, n+1) # +1 for null terminator
     for i in 1:n
@@ -202,7 +203,7 @@ function ffi_type_struct(@nospecialize(t::Type{T})) where T
                      libffi: $(join(Int64.(ffi_offsets),", "))
               """)
     end
-    FFI_TYPE_CACHE[T] = mem_ffi_type
+    FFI_TYPE_CACHE[T] = (mem_ffi_type, elements)
     return pointer(mem_ffi_type)
 end
 
@@ -211,10 +212,15 @@ mutable struct Ffi_cif
     p::Ptr{Cvoid}
     rettype::Type
     argtypes::Vector{Type}
+    ffi_rettype::Ptr{Cvoid}
+    ffi_argtypes::Vector{Ptr{Cvoid}}
     slots::Vector{Ptr{Cvoid}}
 
     function Ffi_cif(@nospecialize(rettype::Type{T}), @nospecialize(argtypes::NTuple{N,Type})) where {T,N}
         # TODO Do we need to hold onto ffi_rettype, ffi_argtypes for the lifetime of Ffi_cfi?
+        if !isconcretetype(T) && T !== Any
+            throw(ArgumentError("rettype must be a concrete type or Any, see the @ccall return type translation guide in the manual"))
+        end
         ffi_rettype = ffi_type(T)
         if any(a -> a === Cvoid, argtypes)
             throw(ArgumentError("Encountered bad argument type Cvoid"))
@@ -231,7 +237,8 @@ mutable struct Ffi_cif
                                 )::Cint
         if status == 0 # = FFI_OK
             slots = Vector{Ptr{Cvoid}}(undef, 2*N)
-            return new(mem_cif, p_cif, T, [ a for a in argtypes ], slots)
+            return new(mem_cif, p_cif, T, [ a for a in argtypes ],
+                       ffi_rettype, N == 0 ? Ptr{Cvoid}[] : ffi_argtypes, slots)
         else
             msg = "Failed to prepare ffi_cif for f(::$(join(argtypes,",::")))::$T; ffi_prep_cif returned status "
             if status == 1
@@ -255,13 +262,12 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
     @assert fn !== C_NULL
     N = length(cif.argtypes)
     @assert N == length(args)
-    ret = if cif.rettype <: Ctypes
-        Ref{cif.rettype}()
-    elseif isconcretetype(cif.rettype) && !(cif.rettype <: Ref)
-        Vector{UInt8}(undef, sizeof(cif.rettype))
-    else# cif.rettype <: Ref
-        Ref{Ptr{Cvoid}}(C_NULL)
+    sz_ret = if cif.rettype <: Ctypes || cif.rettype === Any
+        sizeof_ffi_arg()
+    else # its a concrete type and fn returns-by-copy
+        ffi_sizeof(cif.ffi_rettype)
     end
+    mem_ret = zeros(Int8, sz_ret)
     static_prms = Any[]
     slots = cif.slots
     # TODO I think this and call(::MachineCode, ...) should be the same,
@@ -287,17 +293,17 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
             slots[i] = pointer(slots, N+i)
         end
     end
-    GC.@preserve cif args static_prms begin
+    GC.@preserve cif args static_prms mem_ret begin
         @ccall libffi_path.ffi_call(cif.p::Ptr{Cvoid}, fn::Ptr{Cvoid},
-                                    ret::Ptr{Cvoid}, slots::Ptr{Ptr{Cvoid}})::Cvoid
-    end
-    return if isconcretetype(cif.rettype) && !(cif.rettype <: Ref)
-        @ccall libjuliahelpers_path[].jlh_convert_to_jl_value(cif.rettype::Any,ret::Ptr{Cvoid})::Any
-    elseif cif.rettype <: Ref
-        Base.unsafe_convert(cif.rettype, ret[])
-    elseif cif.rettype <: Ctypes
-        ret[]
-    else
-        unsafe_pointer_to_objref(ret[])
+                                    mem_ret::Ptr{Cvoid}, slots::Ptr{Ptr{Cvoid}})::Cvoid
+        # TODO Need that branch?
+        return if isbitstype(cif.rettype)
+            @ccall jl_new_bits(cif.rettype::Any, mem_ret::Ptr{Cvoid})::Any
+        elseif cif.rettype === Any
+            unsafe_pointer_to_objref(unsafe_load(Ptr{Ptr{Cvoid}}(pointer(mem_ret))))
+        else
+            @ccall libjuliahelpers_path[].jlh_convert_to_jl_value(cif.rettype::Any,
+                                                                  mem_ret::Ptr{Cvoid})::Any
+        end
     end
 end
