@@ -218,10 +218,12 @@ mutable struct Ffi_cif
 
     function Ffi_cif(@nospecialize(rettype::Type{T}), @nospecialize(argtypes::NTuple{N,Type})) where {T,N}
         if !isconcretetype(T) && T !== Any && !(T <: Ref)
-            throw(ArgumentError("$T is an invalid return type, see the @ccall return type translation guide in the manual"))
+            throw(ArgumentError("$T is an invalid return type, " *
+                                "see the @ccall return type translation guide in the manual"))
         end
         if T <: Ref && !(T <: Ptr) && !isconcretetype(eltype(T))
-            throw(ArgumentError("$T is an invalid return type, see the @ccall return type translation guide in the manual"))
+            throw(ArgumentError("$T is an invalid return type, " *
+                                "see the @ccall return type translation guide in the manual"))
         end
         ffi_rettype = ffi_type(T)
         if any(a -> a === Cvoid, argtypes)
@@ -261,16 +263,25 @@ Ffi_cif(@nospecialize(rettype::Type), @nospecialize(s::Core.SimpleVector)) =
 Base.pointer(cif::Ffi_cif) = cif.p
 
 function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
-    @assert fn !== C_NULL
+    if fn === C_NULL
+        throw(ArgumentError("Function ptr can't be NULL"))
+    end
     N = length(cif.argtypes)
-    @assert N == length(args)
+    if N != length(args)
+        throw(ArgumentError("Number of arguments must match with the Ffi_cif's defintion, " *
+                            "found $(length(args)) vs $N"))
+    end
+
+    # return value memory
     sz_ret = if cif.rettype <: Ctypes || cif.rettype === Any || cif.rettype <: Ref
         sizeof_ffi_arg()
     else # its a concrete type and fn returns-by-copy
         ffi_sizeof(cif.ffi_rettype)
     end
     mem_ret = zeros(Int8, sz_ret)
-    static_prms = Any[]
+
+    # slots memory
+    static_prms = Vector{UInt8}[]
     slots = cif.slots
     # TODO I think this and call(::MachineCode, ...) should be the same,
     # but they aren't atm. There might be something wrong somewhere.
@@ -295,6 +306,7 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
             slots[i] = pointer(slots, N+i)
         end
     end
+
     GC.@preserve cif args static_prms mem_ret begin
         @ccall libffi_path.ffi_call(cif.p::Ptr{Cvoid}, fn::Ptr{Cvoid},
                                     mem_ret::Ptr{Cvoid}, slots::Ptr{Ptr{Cvoid}})::Cvoid

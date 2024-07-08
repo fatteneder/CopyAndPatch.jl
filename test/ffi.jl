@@ -13,6 +13,14 @@ const libmwes = dlopen(CopyAndPatch.libmwes_path[])
 end
 
 
+@testset "error handling" begin
+    # return-on-copy requires concrete type
+    @test_throws ArgumentError CopyAndPatch.Ffi_cif(AbstractArray, (Cint,))
+    # Ref{Any} is invalid, use Ptr{Any}
+    @test_throws ArgumentError CopyAndPatch.Ffi_cif(Ref{Any}, (Cint,))
+end
+
+
 @testset "ffi_call with only C types" begin
     handle = dlopen(CopyAndPatch.libmwes_path[])
 
