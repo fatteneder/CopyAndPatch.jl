@@ -148,6 +148,21 @@ end
     result = CopyAndPatch.ffi_call(cif, fn, [x])
     expected = "FFI_ImmutDummy"
     @test unsafe_string(result) == expected
+
+    # some of the ccall.jl tests
+    handle = dlopen(joinpath(@__DIR__, "..", "stencils", "bin", "libccalltest.so"))
+
+    cif = CopyAndPatch.Ffi_cif(Ptr{Int64}, (Any,))
+    fn = dlsym(handle, :test_echo_p)
+    result = CopyAndPatch.ffi_call(cif, fn, [1])
+    expected = 1
+    @test unsafe_load(result) == expected
+
+    cif = CopyAndPatch.Ffi_cif(Ref{Int64}, (Any,))
+    fn = dlsym(handle, :test_echo_p)
+    result = CopyAndPatch.ffi_call(cif, fn, [1])
+    expected = 1
+    @show result
 end
 
 @testset "intrinsics" begin

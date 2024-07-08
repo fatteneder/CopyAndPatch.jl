@@ -217,9 +217,11 @@ mutable struct Ffi_cif
     slots::Vector{Ptr{Cvoid}}
 
     function Ffi_cif(@nospecialize(rettype::Type{T}), @nospecialize(argtypes::NTuple{N,Type})) where {T,N}
-        # TODO Do we need to hold onto ffi_rettype, ffi_argtypes for the lifetime of Ffi_cfi?
-        if !isconcretetype(T) && T !== Any
-            throw(ArgumentError("rettype must be a concrete type or Any, see the @ccall return type translation guide in the manual"))
+        if !isconcretetype(T) && T !== Any && !(T <: Ref)
+            throw(ArgumentError("$T is an invalid return type, see the @ccall return type translation guide in the manual"))
+        end
+        if T <: Ref && !(T <: Ptr) && !isconcretetype(eltype(T))
+            throw(ArgumentError("$T is an invalid return type, see the @ccall return type translation guide in the manual"))
         end
         ffi_rettype = ffi_type(T)
         if any(a -> a === Cvoid, argtypes)
@@ -262,7 +264,7 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
     @assert fn !== C_NULL
     N = length(cif.argtypes)
     @assert N == length(args)
-    sz_ret = if cif.rettype <: Ctypes || cif.rettype === Any
+    sz_ret = if cif.rettype <: Ctypes || cif.rettype === Any || cif.rettype <: Ref
         sizeof_ffi_arg()
     else # its a concrete type and fn returns-by-copy
         ffi_sizeof(cif.ffi_rettype)
@@ -296,10 +298,9 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
     GC.@preserve cif args static_prms mem_ret begin
         @ccall libffi_path.ffi_call(cif.p::Ptr{Cvoid}, fn::Ptr{Cvoid},
                                     mem_ret::Ptr{Cvoid}, slots::Ptr{Ptr{Cvoid}})::Cvoid
-        # TODO Need that branch?
         return if isbitstype(cif.rettype)
             @ccall jl_new_bits(cif.rettype::Any, mem_ret::Ptr{Cvoid})::Any
-        elseif cif.rettype === Any
+        elseif cif.rettype === Any || cif.rettype <: Ref
             unsafe_pointer_to_objref(unsafe_load(Ptr{Ptr{Cvoid}}(pointer(mem_ret))))
         else
             @ccall libjuliahelpers_path[].jlh_convert_to_jl_value(cif.rettype::Any,
