@@ -277,3 +277,18 @@ end
         rethrow(e)
     end
 end
+
+@testset "unused arguments" begin
+    function f_unused_arguments(n)
+        return 321
+    end
+    try
+        expected = f_unused_arguments(123)
+        mc = jit(f_unused_arguments, (Int64,))
+        ret = mc(123)
+        @test ret == expected
+    catch e
+        @error "Failed f_unused_arguments()"
+        rethrow(e)
+    end
+end

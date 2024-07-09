@@ -72,17 +72,18 @@ function patch_default_deps!(bvec::ByteVector, bvecs_data::Vector{ByteVector}, s
 end
 
 
-function jit(@nospecialize(fn::Function), @nospecialize(args))
+function jit(@nospecialize(fn::Function), @nospecialize(argtypes::Tuple))
     init_stencils() # this here does the linking of all non-copy-patched parts
 
     optimize = true
-    codeinfo, rettype = only(code_typed(fn, args; optimize))
-    argtypes = length(codeinfo.slottypes) > 0 ? Tuple(codeinfo.slottypes[2:end]) : ()
+    codeinfo, rettype = only(code_typed(fn, argtypes; optimize))
     # @show codeinfo
+    nslots = length(codeinfo.slotnames)
+    nssas = length(codeinfo.ssavaluetypes)
     nstencils = length(codeinfo.code)
+
     stencil_starts = zeros(Int64, nstencils)
-    code_size = 0
-    data_size = 0
+    code_size, data_size = 0, 0
     for (i,ex) in enumerate(codeinfo.code)
         st, bvec, _ = get_stencil(ex)
         stencil_starts[i] = 1+code_size
@@ -93,8 +94,6 @@ function jit(@nospecialize(fn::Function), @nospecialize(args))
     mc = MachineCode(code_size, fn, rettype, argtypes)
     mc.stencil_starts = stencil_starts
     mc.codeinfo = codeinfo
-    nslots = length(codeinfo.slottypes)
-    nssas = length(codeinfo.ssavaluetypes)
     @assert nssas == length(codeinfo.code)
     resize!(mc.slots, nslots)
     resize!(mc.ssas, nssas)
@@ -358,7 +357,6 @@ function emitcode!(mc, ip, ex::Expr)
     elseif isexpr(ex, :invoke)
         mi, g = ex.args[1], ex.args[2]
         @assert mi isa MethodInstance
-        @assert g isa GlobalRef
         ex_args = ex.args
         boxes = box_args(ex_args, mc)
         append!(mc.gc_roots, boxes)
