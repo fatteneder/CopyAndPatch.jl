@@ -44,6 +44,7 @@ end
 
 
 include("utils.jl")
+include("ffi.jl")
 include("bytevector.jl")
 include("machinecode.jl")
 include("stencil.jl")
