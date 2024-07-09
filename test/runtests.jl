@@ -95,13 +95,6 @@ end
 end
 
 
-try
-    GC.gc() # make room for the tests
-    GC.enable(false)
-    include("jit.jl")
-    include("ffi.jl")
-    include("ccall.jl")
-finally
-    GC.enable(true)
-    GC.gc() # clean up everything after tests
-end
+include("jit.jl")
+include("ffi.jl")
+include("ccall.jl")
