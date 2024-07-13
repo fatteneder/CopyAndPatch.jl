@@ -275,17 +275,34 @@ function emitcode!(mc, ip, ex::Core.PhiNode)
     nedges = length(ex.edges)
     push!(mc.gc_roots, ex.edges)
     vals_boxes = box_args(ex.values, mc)
-    chain_phi = ip < length(mc.codeinfo.code) && mc.codeinfo.code[ip+1] isa Core.PhiNode
-    append!(mc.gc_roots, vals_boxes)
+    n = length(mc.codeinfo.code)
+    local nphis
+    if ip+1 >= n
+        nphis = 1
+    else
+        nphis = findfirst(mc.codeinfo.code[ip+1:end]) do e
+            if e isa Expr || e isa Core.ReturnNode || e isa Core.GotoIfNot ||
+                e isa Core.GotoNode || e isa Core.PhiCNode || e isa Core.UpsilonNode ||
+                e isa Core.SSAValue
+                return true
+            end
+            return false
+        end
+        if isnothing(nphis)
+            nphis = n-ip+1
+        end
+    end
+    ip_blockend = ip+nphis-1
     push!(mc.gc_roots, vals_boxes)
     retbox = pointer(mc.ssas, ip)
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EDGES",     pointer(ex.edges))
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",        Cint(ip))
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CHAIN_PHI", Cint(chain_phi))
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NEDGES",    nedges)
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",       retbox)
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VALS",      pointer(vals_boxes))
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT",      pointer(mc.buf, mc.stencil_starts[ip+1]))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EDGES_FROM",  pointer(ex.edges))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_PHIOFFSET",   pointer_from_objref(mc.phioffset))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",          Cint(ip))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP_BLOCKEND", Cint(ip_blockend))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NEDGES",      nedges)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",         retbox)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VALS",        pointer(vals_boxes))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT",        pointer(mc.buf, mc.stencil_starts[ip+1]))
 end
 function emitcode!(mc, ip, ex::Core.PhiCNode)
     st, bvec, _ = get_stencil(ex)
