@@ -12,7 +12,7 @@ _JIT_ENTRY(int prev_ip)
    jl_value_t **argv;
    JL_GC_PUSHARGS(argv, nargs);
    for (size_t i = 0; i < nargs; i++)
-      argv[i] = *(args[i]);
+      argv[i] = *args[i];
    *ret = jl_apply(argv, nargs);
    JL_GC_POP();
    PATCH_JUMP(_JIT_CONT, ip);

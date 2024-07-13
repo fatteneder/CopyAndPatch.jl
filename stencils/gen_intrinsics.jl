@@ -127,7 +127,7 @@ for line in split(signatures,'\n')
     nargs = length(argtypes)
     @assert nargs <= 6
     patch_args = join([ "PATCH_VALUE(jl_value_t **, a$i, _JIT_A$i);" for i = 1:nargs ], '\n')
-    gc_push = "JL_GC_PUSH$(nargs)(" * join(["*a$i" for i in 1:nargs],',') * ");"
+    gc_push = "JL_GC_PUSH$(nargs)(" * join(["a$i" for i in 1:nargs],',') * ");"
     fn_args = join([ "*a$i" for i = 1:nargs ], ',')
     code = """
 #include "common.h"
