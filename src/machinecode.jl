@@ -5,7 +5,7 @@ mutable struct MachineCode
     buf::Vector{UInt8}
     slots::Vector{Ptr{UInt64}}
     ssas::Vector{Ptr{UInt64}}
-    static_prms::Vector{Ptr{UInt64}}
+    static_prms::Vector{Any}
     gc_roots::Vector{Any}
     exc_thrown::Base.RefValue{Cint}
     # TODO Remove union
@@ -19,7 +19,7 @@ mutable struct MachineCode
         ats = [ at for at in argtypes ]
         buf = mmap(Vector{UInt8}, length(bvec), shared=false, exec=true)
         copy!(buf, bvec)
-        new(fn, rt, ats, buf, UInt64[], UInt64[], UInt64[], gc_roots, Ref(Cint(0)),
+        new(fn, rt, ats, buf, UInt64[], UInt64[], Any[], gc_roots, Ref(Cint(0)),
             nothing, Int64[])
     end
     function MachineCode(sz::Integer, fn,
@@ -28,7 +28,7 @@ mutable struct MachineCode
         rt = rettype <: Union{} ? Nothing : rettype
         ats = [ at for at in argtypes ]
         buf = mmap(Vector{UInt8}, sz, shared=false, exec=true)
-        new(fn, rt, ats, buf, UInt64[], UInt64[], UInt64[], gc_roots, Ref(Cint(0)),
+        new(fn, rt, ats, buf, UInt64[], UInt64[], Any[], gc_roots, Ref(Cint(0)),
             nothing, Int64[])
     end
 end
@@ -48,15 +48,14 @@ function (mc::MachineCode)(@nospecialize(args...))
     gc_roots = mc.gc_roots
     slots = mc.slots
     slots[1] = value_pointer(mc.fn)
-    for (ii,a) in enumerate(args)
-        i = ii+1 # slots[1] is the function itself
-        slots[i] = value_pointer(a)
+    for (i,a) in enumerate(args)
+        slots[i+1] = value_pointer(a)
     end
-    ret_ip = GC.@preserve mc begin
-        ccall(pointer(mc), Cint, (Cint,), 0 #= ip =#)
+    v = GC.@preserve mc begin
+        ret_ip = ccall(pointer(mc), Cint, (Cint,), 0 #= ip =#)
+        Base.unsafe_pointer_to_objref(mc.ssas[ret_ip])
     end
-    p = mc.ssas[ret_ip]
-    return Base.unsafe_pointer_to_objref(p)
+    return v
 end
 
 

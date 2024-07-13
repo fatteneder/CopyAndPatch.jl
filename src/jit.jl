@@ -161,11 +161,11 @@ end
 #   > Note that modification of a jl_value_t pointer in memory is permitted
 #     only if the object is mutable. Otherwise, modification of the value may
 #     corrupt the program and the result will be undefined.
-# Boxed stuff should be irrelevant too iff they have a stable memory address.
-# TODO Need to collect the a's which need to be GC.@preserved when their pointers are used.
-# - Anything to which we apply pointer_from_objref or pointer needs to be preserved when used.
-# - Also slots and ssas need to be kept alive till the function is finished.
-# - What about boxed stuff?
+# TODO https://docs.julialang.org/en/v1/manual/embedding/#Memory-Management
+#   > f the variable is immutable, then it needs to be wrapped in an equivalent mutable
+#     container or, preferably, in a RefValue{Any} before it is pushed to IdDict.
+#     ...
+# const refs = IdDict()
 function box_arg(@nospecialize(a), mc)
     slots, ssas, static_prms = mc.slots, mc.ssas, mc.static_prms
     if a isa Core.Argument
@@ -173,32 +173,33 @@ function box_arg(@nospecialize(a), mc)
     elseif a isa Core.SSAValue
         return pointer(ssas, a.id)
     else
+        # r = Base.RefValue{Any}(a)
+        # refs[r] = r
         if a isa Boxable
-            push!(static_prms, box(a))
+            push!(static_prms, [box(a)])
         elseif a isa Nothing
-            push!(static_prms, value_pointer(nothing))
+            push!(static_prms, [value_pointer(nothing)])
         elseif a isa QuoteNode
-            push!(static_prms, value_pointer(a.value))
+            push!(static_prms, [value_pointer(a.value)])
         elseif a isa Tuple
-            push!(static_prms, value_pointer(a))
+            push!(static_prms, [value_pointer(a)])
         elseif a isa GlobalRef
             # do it similar to src/interpreter.c:jl_eval_globalref
             p = @ccall jl_get_globalref_value(a::Any)::Ptr{Cvoid}
             p === C_NULL && throw(UndefVarError(a.name,a.mod))
-            push!(static_prms, p)
+            push!(static_prms, [p])
         elseif a isa Core.Builtin
-            push!(static_prms, value_pointer(a))
+            push!(static_prms, [value_pointer(a)])
         elseif isbits(a)
-            push!(static_prms, value_pointer(a))
+            push!(static_prms, [value_pointer(a)])
         else
-            push!(static_prms, pointer_from_objref(a))
+            push!(static_prms, [pointer_from_objref(a)])
         end
-        return pointer(static_prms, length(static_prms))
+        return pointer(static_prms[end])
     end
 end
 function box_args(ex_args::AbstractVector, mc::MachineCode)
-    # TODO Need to cast to Ptr{UInt64} here?
-    return Ptr{Cvoid}[ box_arg(a, mc) for a in ex_args ]
+    return Ptr{Any}[ box_arg(a, mc) for a in ex_args ] # =^= jl_value_t ***
 end
 
 
@@ -272,10 +273,11 @@ function emitcode!(mc, ip, ex::Core.PhiNode)
     st, bvec, _ = get_stencil(ex)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     nedges = length(ex.edges)
-    append!(mc.gc_roots, ex.edges)
+    push!(mc.gc_roots, ex.edges)
     vals_boxes = box_args(ex.values, mc)
     chain_phi = ip < length(mc.codeinfo.code) && mc.codeinfo.code[ip+1] isa Core.PhiNode
     append!(mc.gc_roots, vals_boxes)
+    push!(mc.gc_roots, vals_boxes)
     retbox = pointer(mc.ssas, ip)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EDGES",     pointer(ex.edges))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",        Cint(ip))
@@ -327,7 +329,7 @@ function emitcode!(mc, ip, ex::Expr)
             ex_args = @view ex.args[2:end]
             nargs = length(ex_args)
             boxes = box_args(ex_args, mc)
-            append!(mc.gc_roots, boxes)
+            push!(mc.gc_roots, boxes)
             retbox = pointer(mc.ssas, ip)
             name = string("jl_", Symbol(fn))
             st, bvec, _ = get(stencils, name) do
@@ -343,7 +345,7 @@ function emitcode!(mc, ip, ex::Expr)
         elseif iscallable(fn)
             nargs = length(ex.args)
             boxes = box_args(ex.args, mc)
-            append!(mc.gc_roots, boxes)
+            push!(mc.gc_roots, boxes)
             retbox = pointer(mc.ssas, ip)
             copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
             patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_ARGS",    pointer(boxes))
@@ -359,7 +361,7 @@ function emitcode!(mc, ip, ex::Expr)
         @assert mi isa MethodInstance
         ex_args = ex.args
         boxes = box_args(ex_args, mc)
-        append!(mc.gc_roots, boxes)
+        push!(mc.gc_roots, boxes)
         nargs = length(boxes)
         retbox = pointer(mc.ssas, ip)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
@@ -371,7 +373,7 @@ function emitcode!(mc, ip, ex::Expr)
     elseif isexpr(ex, :new)
         ex_args = ex.args
         boxes = box_args(ex_args, mc)
-        append!(mc.gc_roots, boxes)
+        push!(mc.gc_roots, boxes)
         nargs = length(boxes)
         retbox = pointer(mc.ssas, ip)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
@@ -407,16 +409,20 @@ function emitcode!(mc, ip, ex::Expr)
         gc_roots = ex.args[6+length(ex.args[3])+1:end]
         boxes = box_args(args, mc)
         boxed_gc_roots = box_args(gc_roots, mc)
-        append!(mc.gc_roots, boxes)
+        push!(mc.gc_roots, boxes)
+        push!(mc.gc_roots, boxed_gc_roots)
         nargs = length(boxes)
         retbox = pointer(mc.ssas, ip)
         ffi_argtypes = [ Cint(ffi_ctype_id(at)) for at in argtypes ]
+        push!(mc.gc_roots, ffi_argtypes)
         ffi_rettype = Cint(ffi_ctype_id(rettype, return_type=true))
+        # push!(mc.gc_roots, ffi_rettype) # referened through FFI_TYPE_CACHE
         sz_ffi_arg = Csize_t(ffi_rettype == -2 ? sizeof(rettype) : sizeof_ffi_arg())
         ffi_retval = Vector{UInt8}(undef, sz_ffi_arg)
         push!(mc.gc_roots, ffi_retval)
         rettype_ptr = pointer_from_objref(rettype)
         cif = Ffi_cif(rettype, tuple(argtypes...))
+        push!(mc.gc_roots, cif)
         # set up storage for cargs array
         # - the first nargs elements hold pointers to the values
         # - the remaning elements are storage for pass-by-value arguments
@@ -437,9 +443,9 @@ function emitcode!(mc, ip, ex::Expr)
                 offset += sizeof(at)
             end
         end
-        append!(mc.gc_roots, cboxes)
+        push!(mc.gc_roots, cboxes)
         sz_argtypes = Cint[ ffi_argtypes[i] == -2 ? sizeof(argtypes[i]) : 0 for i in 1:nargs ]
-        append!(mc.gc_roots, sz_argtypes)
+        push!(mc.gc_roots, sz_argtypes)
         static_f = true
         fptr = if isnothing(libname)
             if fname isa Symbol
