@@ -52,6 +52,8 @@ function get_stencil_name(ex)
         return "ast_pop_exception"
     elseif isexpr(ex, :the_exception)
         return "ast_the_exception"
+    elseif isexpr(ex, :throw_undef_if_not)
+        return "ast_throw_undef_if_not"
     else
         TODO("Stencil not implemented yet:", ex)
     end
@@ -456,6 +458,16 @@ function emitcode!(mc, ip, ex::Expr)
         ret = pointer(mc.ssas, ip)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
+    elseif isexpr(ex, :throw_undef_if_not)
+        var  = box_arg(ex.args[1], mc)
+        cond = box_arg(ex.args[2], mc)
+        ret = pointer(mc.ssas, ip)
+        copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_COND", cond)
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VAR",  var)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
     else

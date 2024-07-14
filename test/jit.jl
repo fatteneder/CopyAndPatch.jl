@@ -350,3 +350,29 @@ end
         rethrow(e)
     end
 end
+
+function f_undefvar(n)
+    p = 2
+    for i in 2*p:p:n
+        s += rand()
+    end
+end
+@testset "throw_undef_if_not" begin
+    try
+        expected = try
+            f_undefvar(5)
+        catch e
+            e
+        end
+        mc = jit(f_undefvar, (Int64,))
+        ret = try
+            mc(5)
+        catch e
+            e
+        end
+        @test ret == expected
+    catch e
+        @error "Failed f_undefvar()"
+        rethrow(e)
+    end
+end
