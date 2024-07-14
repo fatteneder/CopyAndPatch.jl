@@ -287,7 +287,7 @@ function emitcode!(mc, ip, ex::Expr)
             end
             patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  retbox)
             patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
-        elseif iscallable(fn)
+        elseif iscallable(fn) || g isa Core.SSAValue
             nargs = length(ex.args)
             boxes = box_args(ex.args, mc)
             push!(mc.gc_roots, boxes)

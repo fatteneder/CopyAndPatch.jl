@@ -407,3 +407,31 @@ end
         rethrow(e)
     end
 end
+
+function f_closure(x)
+    function closure()
+        println("hello from the closure, 2x = ", 2*x)
+    end
+    closure()
+    return closure
+end
+@testset "call and return closure" begin
+    for T in (Int64,Int32)
+        try
+            io = IOBuffer()
+            x = rand(T)
+            ret = my_redirect_stdout(io) do
+                mc = jit(f_closure, (T,))
+                ret = mc(x)
+            end
+            @test contains(String(take!(io)), "hello from the closure, 2x = $(2*x)")
+            # my_redirect_stdout(io) do
+            #     ret()
+            # end
+            # @test contains(String(take!(io)), "hello from the closure, 2x = $(2*x)")
+        catch e
+            @error "Failed f_closure(::$T)"
+            rethrow(e)
+        end
+    end
+end
