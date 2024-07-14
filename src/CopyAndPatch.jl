@@ -14,14 +14,89 @@ import REPL
 import REPL: TerminalMenus
 
 
-
 export jit
 
 
-TODO() = error("Not implemented yet")
-TODO(msg) = TODO("Not implemented yet", msg)
-TODO(prefix, msg) = error(prefix, " ", msg)
+include("utils.jl")
+include("ffi.jl")
+include("bytevector.jl")
+include("machinecode.jl")
+include("stencil.jl")
+include("jit.jl")
 
+
+const STENCILS = Ref(Dict{String,Any}())
+const MAGICNR = 0x0070605040302010
+
+
+function init_stencils()
+    stencildir = joinpath(@__DIR__, "..", "stencils", "bin")
+    files = readdir(stencildir, join=true)
+    filter!(files) do f
+        endswith(f, ".json")
+    end
+    empty!(STENCILS[])
+    for f in files
+        try
+            s = StencilGroup(f)
+            bvec = ByteVector(UInt8.(only(s.code.body)))
+            bvecs_data = if !isempty(s.data.body)
+                [ ByteVector(UInt8.(b)) for b in s.data.body ]
+            else
+                [ ByteVector(0) ]
+            end
+            patch_default_deps!(bvec, bvecs_data, s)
+            for h in s.code.relocations
+                @assert h.kind == "R_X86_64_64"
+                bvec[h.offset+1] = MAGICNR
+            end
+            name = first(splitext(basename(f)))
+            STENCILS[][name] = (s,bvec,bvecs_data)
+        catch e
+            println("Failure when processing $f")
+            rethrow(e)
+        end
+    end
+    return
+end
+
+
+function patch_default_deps!(bvec::ByteVector, bvecs_data::Vector{ByteVector}, s::StencilGroup)
+    holes = s.code.relocations
+    patched = Hole[]
+    for h in holes
+        startswith(h.symbol, "_JIT_") && continue
+        ptr = if startswith(h.symbol, "jl_")
+            p = dlsym(libjulia[], h.symbol, throw_error=false)
+            if isnothing(p)
+                p = dlsym(libjuliainternal[], h.symbol, throw_error=false)
+                if isnothing(p)
+                    @warn "failed to find $(h.symbol) symbol"
+                    continue
+                end
+            end
+            p
+        elseif startswith(h.symbol, "jlh_")
+            dlsym(libjuliahelpers[], h.symbol)
+        elseif startswith(h.symbol, ".rodata")
+            idx = get(s.data.symbols, h.symbol) do
+                error("can't locate symbol $(h.symbol) in data section")
+            end
+            bvec_data = bvecs_data[idx+1]
+            @assert h.addend+1 < length(bvec_data)
+            pointer(bvec_data.d, h.addend+1)
+        elseif startswith(h.symbol, "ffi_")
+            dlsym(libffi_handle, Symbol(h.symbol))
+        else
+            dlsym(libc[], h.symbol)
+        end
+        bvec[h.offset+1] = ptr
+        push!(patched, h)
+    end
+    filter!(holes) do h
+        !(h in patched)
+    end
+end
 
 
 const libjuliahelpers_path = Ref{String}("")
@@ -39,16 +114,9 @@ function __init__()
     libjuliainternal[] = dlopen(dlpath("libjulia-internal.so"))
     libc[] = dlopen(dlpath("libc.so.6"))
     libjuliahelpers[] = dlopen(libjuliahelpers_path[])
+    init_stencils()
     nothing
 end
-
-
-include("utils.jl")
-include("ffi.jl")
-include("bytevector.jl")
-include("machinecode.jl")
-include("stencil.jl")
-include("jit.jl")
 
 
 end

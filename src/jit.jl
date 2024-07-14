@@ -1,80 +1,4 @@
-const stencils = Dict{String,Any}()
-const MAGICNR = 0x0070605040302010
-
-
-function init_stencils()
-    stencildir = joinpath(@__DIR__, "..", "stencils", "bin")
-    files = readdir(stencildir, join=true)
-    filter!(files) do f
-        endswith(f, ".json")
-    end
-    empty!(stencils)
-    for f in files
-        try
-            s = StencilGroup(f)
-            bvec = ByteVector(UInt8.(only(s.code.body)))
-            bvecs_data = if !isempty(s.data.body)
-                [ ByteVector(UInt8.(b)) for b in s.data.body ]
-            else
-                [ ByteVector(0) ]
-            end
-            patch_default_deps!(bvec, bvecs_data, s)
-            for h in s.code.relocations
-                @assert h.kind == "R_X86_64_64"
-                bvec[h.offset+1] = MAGICNR
-            end
-            name = first(splitext(basename(f)))
-            stencils[name] = (s,bvec,bvecs_data)
-        catch e
-            println("Failure when processing $f")
-            rethrow(e)
-        end
-    end
-    return
-end
-
-
-function patch_default_deps!(bvec::ByteVector, bvecs_data::Vector{ByteVector}, s::StencilGroup)
-    holes = s.code.relocations
-    patched = Hole[]
-    for h in holes
-        startswith(h.symbol, "_JIT_") && continue
-        ptr = if startswith(h.symbol, "jl_")
-            p = dlsym(libjulia[], h.symbol, throw_error=false)
-            if isnothing(p)
-                p = dlsym(libjuliainternal[], h.symbol, throw_error=false)
-                if isnothing(p)
-                    @warn "failed to find $(h.symbol) symbol"
-                    continue
-                end
-            end
-            p
-        elseif startswith(h.symbol, "jlh_")
-            dlsym(libjuliahelpers[], h.symbol)
-        elseif startswith(h.symbol, ".rodata")
-            idx = get(s.data.symbols, h.symbol) do
-                error("can't locate symbol $(h.symbol) in data section")
-            end
-            bvec_data = bvecs_data[idx+1]
-            @assert h.addend+1 < length(bvec_data)
-            pointer(bvec_data.d, h.addend+1)
-        elseif startswith(h.symbol, "ffi_")
-            dlsym(libffi_handle, Symbol(h.symbol))
-        else
-            dlsym(libc[], h.symbol)
-        end
-        bvec[h.offset+1] = ptr
-        push!(patched, h)
-    end
-    filter!(holes) do h
-        !(h in patched)
-    end
-end
-
-
 function jit(@nospecialize(fn::Function), @nospecialize(argtypes::Tuple))
-    init_stencils() # this here does the linking of all non-copy-patched parts
-
     optimize = true
     codeinfo, rettype = only(code_typed(fn, argtypes; optimize))
     # @show codeinfo
@@ -145,10 +69,10 @@ get_stencil_name(ex::Nothing)          = "ast_goto"
 
 function get_stencil(ex)
     name = get_stencil_name(ex)
-    if !haskey(stencils, name)
+    if !haskey(STENCILS[], name)
         error("no stencil '$name' found for expression $ex")
     end
-    return stencils[name]
+    return STENCILS[][name]
 end
 
 
@@ -351,7 +275,7 @@ function emitcode!(mc, ip, ex::Expr)
             push!(mc.gc_roots, boxes)
             retbox = pointer(mc.ssas, ip)
             name = string("jl_", Symbol(fn))
-            st, bvec, _ = get(stencils, name) do
+            st, bvec, _ = get(STENCILS[], name) do
                 error("don't know how to handle intrinsic $name")
             end
             copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
