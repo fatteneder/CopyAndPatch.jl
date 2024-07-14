@@ -273,8 +273,8 @@ function emitcode!(mc, ip, ex::Core.PhiNode)
     st, bvec, _ = get_stencil(ex)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     nedges = length(ex.edges)
-    push!(mc.gc_roots, ex.edges)
     vals_boxes = box_args(ex.values, mc)
+    push!(mc.gc_roots, vals_boxes)
     n = length(mc.codeinfo.code)
     local nphis
     if ip+1 >= n
@@ -286,6 +286,9 @@ function emitcode!(mc, ip, ex::Core.PhiNode)
                 e isa Core.SSAValue
                 return true
             end
+            if !(e isa Core.PhiNode)
+                TODO("encountered $e in a phi block")
+            end
             return false
         end
         if isnothing(nphis)
@@ -293,7 +296,6 @@ function emitcode!(mc, ip, ex::Core.PhiNode)
         end
     end
     ip_blockend = ip+nphis-1
-    push!(mc.gc_roots, vals_boxes)
     retbox = pointer(mc.ssas, ip)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EDGES_FROM",  pointer(ex.edges))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_PHIOFFSET",   pointer_from_objref(mc.phioffset))
@@ -433,7 +435,7 @@ function emitcode!(mc, ip, ex::Expr)
         ffi_argtypes = [ Cint(ffi_ctype_id(at)) for at in argtypes ]
         push!(mc.gc_roots, ffi_argtypes)
         ffi_rettype = Cint(ffi_ctype_id(rettype, return_type=true))
-        # push!(mc.gc_roots, ffi_rettype) # referened through FFI_TYPE_CACHE
+        # push!(mc.gc_roots, ffi_rettype) # kept alive through FFI_TYPE_CACHE
         sz_ffi_arg = Csize_t(ffi_rettype == -2 ? sizeof(rettype) : sizeof_ffi_arg())
         ffi_retval = Vector{UInt8}(undef, sz_ffi_arg)
         push!(mc.gc_roots, ffi_retval)
@@ -452,6 +454,7 @@ function emitcode!(mc, ip, ex::Expr)
             end
         end
         cboxes = ByteVector(sz_cboxes)
+        push!(mc.gc_roots, cboxes)
         offset = sizeof(Ptr{UInt64})*nargs+1
         for (i,ffi_at) in enumerate(ffi_argtypes)
             if 0 ≤ ffi_at ≤ 10 || ffi_at == -2
@@ -460,7 +463,6 @@ function emitcode!(mc, ip, ex::Expr)
                 offset += sizeof(at)
             end
         end
-        push!(mc.gc_roots, cboxes)
         sz_argtypes = Cint[ ffi_argtypes[i] == -2 ? sizeof(argtypes[i]) : 0 for i in 1:nargs ]
         push!(mc.gc_roots, sz_argtypes)
         static_f = true

@@ -306,3 +306,21 @@ end
         rethrow(e)
     end
 end
+
+function f_implicit_block(n)
+    p = 2
+    for i in 2*p:p:n
+    end
+end
+@testset "potential bug in implicit block logic in src/interpreter.c" begin
+    # see comment about <= vs < in stencils/ast_phinode.c
+    try
+        expected = f_implicit_block(5)
+        mc = jit(f_implicit_block, (Int64,))
+        ret = mc(5)
+        @test ret == expected
+    catch e
+        @error "Failed f_implicit_block()"
+        rethrow(e)
+    end
+end

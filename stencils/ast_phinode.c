@@ -26,7 +26,9 @@ _JIT_ENTRY(int prev_ip)
           if (edge == -1)
               edge = j;
       }
-      else if (closest < edge_from && edge_from < (to + *phioffset + 0)) {
+      // TODO We use a <= in the second test instead of <.
+      // This might be a big in src/interpreter.c, but I fail to trigger this issue there.
+      else if (closest < edge_from && edge_from <= (to + *phioffset + 0)) {
           // if we found a nearer implicit branch from fall-through,
           // that occurred since the last explicit branch,
           // we should use the value from that edge instead
@@ -43,7 +45,7 @@ _JIT_ENTRY(int prev_ip)
       *phioffset = 0;
       PATCH_JUMP(_JIT_CONT, ip);
    } else {
-      (*phioffset)++;
+      *phioffset += 1;
       PATCH_JUMP(_JIT_CONT, prev_ip);
    }
 }
