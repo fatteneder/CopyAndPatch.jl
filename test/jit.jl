@@ -58,26 +58,22 @@ end
     end
 end
 
-function f(x)
+function f_println(x)
     println("sers oida: ", x)
 end
 @testset "println" begin
     for T in (Int64,Int32)
-        expected = f(one(T))
-        # io = IOBuffer()
-        # TODO This segfaults when capturing stdout.
-        # Maybe need to porperly handle the data section now?
-        # my_redirect_stdout(io) do
-            try
-                mc = jit(f, (T,))
-                res = CopyAndPatch.call(mc, one(T))
-                @test res == expected
-            catch e
-                @error "Failed $f(::$T)"
-                rethrow(e)
+        try
+            io = IOBuffer()
+            my_redirect_stdout(io) do
+                mc = jit(f_println, (T,))
+                mc(one(T))
             end
-        # end
-        # @test contains(String(take!(io)), "sers oida: 2")
+            @test contains(String(take!(io)), "sers oida: 1")
+        catch e
+            @error "Failed f(::$T)"
+            rethrow(e)
+        end
     end
 end
 
