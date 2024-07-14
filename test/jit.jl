@@ -372,3 +372,38 @@ end
         rethrow(e)
     end
 end
+
+# https://en.wikipedia.org/wiki/Sieve_of_Eratosthenes
+function eratosthenes_sieve(n)
+    qs = 1:n
+    ms = zeros(Int64, length(qs))
+    p = 2
+    while true
+        for i in 2*p:p:n
+            ms[i] = 1
+        end
+        next_p = nothing
+        for i in 1:length(qs)
+            if ms[i] == 0 && i > p
+                next_p = i
+                break
+            end
+        end
+        isnothing(next_p) && break
+        p = next_p
+    end
+    ps = [ q for (i,q) in enumerate(qs) if ms[i] == 0 && q > 1 ]
+    ps
+end
+@testset "Eratosthenes sieve" begin
+    n = 30
+    expected = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29 ]
+    try
+        mc = jit(eratosthenes_sieve, (Int64,))
+        ret = mc(n)
+        @test ret == expected
+    catch e
+        @error "Failed eratosthenes_sieve($n)"
+        rethrow(e)
+    end
+end
