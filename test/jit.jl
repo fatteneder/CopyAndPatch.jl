@@ -324,3 +324,29 @@ end
         rethrow(e)
     end
 end
+
+function f_avoid_box(n)
+    s = 0
+    p = 2
+    for i in 2*p:p:n
+        println(i)
+        s += rand()
+    end
+    s
+end
+@testset "use value_pointer over box" begin
+    # calling f_avoid_box fails to store a box of 1.1102230246251565e-16 inline
+    # in the subsequent mul_float call this gives a type mismatch error
+    # interesetingly this only happens on the first call, afterwards it just works
+    try
+        Random.seed!(123)
+        expected = f_avoid_box(5)
+        Random.seed!(123)
+        mc = jit(f_avoid_box, (Int64,))
+        ret = mc(5)
+        @test ret == expected
+    catch e
+        @error "Failed f_avoid_box()"
+        rethrow(e)
+    end
+end

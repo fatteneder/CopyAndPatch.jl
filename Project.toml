@@ -26,3 +26,6 @@ MacroTools = "0.5.13"
 Mmap = "1.11.0"
 Printf = "1.11.0"
 REPL = "1.11.0"
+
+[targets]
+test = ["Test", "Random", "Libdl"]

@@ -176,7 +176,7 @@ function box_arg(@nospecialize(a), mc)
         # r = Base.RefValue{Any}(a)
         # refs[r] = r
         if a isa Boxable
-            push!(static_prms, [box(a)])
+            push!(static_prms, [value_pointer(a)])
         elseif a isa Nothing
             push!(static_prms, [value_pointer(nothing)])
         elseif a isa QuoteNode

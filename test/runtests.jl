@@ -4,6 +4,7 @@ using CopyAndPatch
 import CopyAndPatch: ByteVector, MachineCode, is_little_endian, jit
 using Libdl
 using Base.Libc
+using Random
 
 
 # from https://github.com/JuliaLang/julia/issues/12711#issuecomment-912740865
