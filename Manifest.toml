@@ -2,7 +2,7 @@
 
 julia_version = "1.12.0-DEV"
 manifest_format = "2.0"
-project_hash = "d65d2c59f270827bc1b8933336a276874f87086d"
+project_hash = "63a0cfb168ee6cb7ee78ccde4de50a1c52d2e563"
 
 [[deps.About]]
 deps = ["InteractiveUtils", "JuliaSyntaxHighlighting", "StyledStrings"]
