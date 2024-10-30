@@ -533,3 +533,9 @@ Here is a SO post about `__builtin___clear_cache`: https://stackoverflow.com/que
 
 - Do we need to prepare the IR similarly to the call to `jl_code_for_interpreter`
   in `src/interpreter.c`?
+- Do we need `GC_PUSH`s inside stencils?
+  We have all SSA results 'rooted' in the compiled code, no?
+  Removing `GC_PUSH` and friends seems to simplify the asm noticably.
+- Can/should we use `-fPIC` for stencil generation?
+  The idea would be to only use relative offsets into the data section within each stencil.
+  The hope is to avoid an extra point indirection, but not sure if that works.
