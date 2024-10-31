@@ -33,8 +33,6 @@ mutable struct MachineCode
             nothing, Int64[])
     end
 end
-MachineCode(fn, @nospecialize(rettype), @nospecialize(argtypes), bvec, gc_roots::Vector{Any}=Any[]) =
-    MachineCode(fn, rettype, argtypes, ByteVector(bvec), gc_roots)
 
 
 Base.pointer(code::MachineCode) = Base.unsafe_convert(Ptr{Cvoid}, pointer(code.buf))
