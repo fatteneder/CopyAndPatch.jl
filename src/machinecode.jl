@@ -1,7 +1,7 @@
 mutable struct MachineCode
     fn::Any # TODO Should this be Function? What about callable structs?
     rettype::Union{<:Union,DataType}
-    argtypes::Vector{DataType}
+    argtypes::Vector{Union{DataType,UnionAll}}
     buf::Vector{UInt8}
     slots::Vector{Ptr{UInt64}}
     ssas::Vector{Ptr{UInt64}}
@@ -13,9 +13,9 @@ mutable struct MachineCode
     codeinfo::Union{Nothing,CodeInfo}
     stencil_starts::Vector{Int64}
 
-    function MachineCode(bvec::ByteVector, fn,
-            @nospecialize(rettype::Type), @nospecialize(argtypes::NTuple{N,DataType}),
-            gc_roots::Vector{Any}=Any[]) where N
+    function MachineCode(bvec::ByteVector, @nospecialize(fn),
+            @nospecialize(rettype::Type), @nospecialize(argtypes::Tuple),
+            gc_roots::Vector{Any}=Any[])
         rt = rettype <: Union{} ? Nothing : rettype
         ats = [ at for at in argtypes ]
         buf = mmap(Vector{UInt8}, length(bvec), shared=false, exec=true)
@@ -23,9 +23,9 @@ mutable struct MachineCode
         new(fn, rt, ats, buf, UInt64[], UInt64[], Any[], gc_roots, Ref(Cint(0)), Ref(Cint(0)),
             nothing, Int64[])
     end
-    function MachineCode(sz::Integer, fn,
-            @nospecialize(rettype::Type), @nospecialize(argtypes::NTuple{N,DataType}),
-            gc_roots::Vector{Any}=Any[]) where N
+    function MachineCode(sz::Integer, @nospecialize(fn),
+            @nospecialize(rettype::Type), @nospecialize(argtypes::Tuple),
+            gc_roots::Vector{Any}=Any[])
         rt = rettype <: Union{} ? Nothing : rettype
         ats = [ at for at in argtypes ]
         buf = mmap(Vector{UInt8}, sz, shared=false, exec=true)
