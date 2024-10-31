@@ -1,7 +1,4 @@
-function jit(@nospecialize(fn::Function), @nospecialize(argtypes::Tuple))
-    optimize = true
-    codeinfo, rettype = only(code_typed(fn, argtypes; optimize))
-    # @show codeinfo
+function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype), @nospecialize(argtypes))
     nslots = length(codeinfo.slotnames)
     nssas = length(codeinfo.ssavaluetypes)
     nstencils = length(codeinfo.code)
@@ -26,6 +23,13 @@ function jit(@nospecialize(fn::Function), @nospecialize(argtypes::Tuple))
         emitcode!(mc, ip, ex)
     end
     return mc
+end
+
+
+function jit(@nospecialize(fn), @nospecialize(argtypes::Tuple))
+    optimize = true
+    codeinfo, rettype = only(code_typed(fn, argtypes; optimize))
+    return jit(codeinfo, fn, rettype, argtypes)
 end
 
 

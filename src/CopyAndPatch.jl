@@ -98,6 +98,32 @@ function patch_default_deps!(bvec::ByteVector, bvecs_data::Vector{ByteVector}, s
     end
 end
 
+function install_hooks()
+    if !isdefined(Base, :cpjit)
+        @eval Base function cpjit(ci::Core.CodeInstance, src::Core.CodeInfo)
+            # TODO Should we move the try ... catch block
+            # from jl_cpjit_compile_codeinst_impl to here?
+            rettype = ci.rettype
+            @assert ci.def.def isa Method
+            fn, argtypes... = ci.def.def.sig
+            mc = jit(src, fn, rettype, argtypes)
+            @atomic :monotonic ci.cpjit_mc = mc
+            return Cint(1)
+        end
+    end
+    if !isdefined(Base, :cpjit_call)
+        @eval Base function cpjit_call(mc::MachineCode, @nospecialize(args::Vector))
+            cif = Ffi_cif(mc.rettype, mc.argtypes)
+            return ffi_call(cif, pointer(mc), args)
+        end
+    end
+end
+
+function enable(toggle::Bool)
+    install_hooks()
+    @ccall jl_use_cpjit_set(toogle::Cint)::Cvoid
+end
+
 
 const libjuliahelpers_path = Ref{String}("")
 const libffihelpers_path = Ref{String}("")
