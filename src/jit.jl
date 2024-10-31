@@ -58,6 +58,26 @@ function get_stencil_name(ex)
         return "ast_the_exception"
     elseif isexpr(ex, :throw_undef_if_not)
         return "ast_throw_undef_if_not"
+    elseif isexpr(ex, :meta)
+        return "ast_meta"
+    elseif isexpr(ex, :coverageeffect)
+        return "ast_coverageeffect"
+    elseif isexpr(ex, :inbounds)
+        return "ast_inbounds"
+    elseif isexpr(ex, :loopinfo)
+        return "ast_loopinfo"
+    elseif isexpr(ex, :aliasscope)
+        return "ast_aliasscope"
+    elseif isexpr(ex, :popaliasscope)
+        return "ast_popaliasscope"
+    elseif isexpr(ex, :inline)
+        return "ast_inline"
+    elseif isexpr(ex, :noinline)
+        return "ast_noinline"
+    elseif isexpr(ex, :gc_preserve_begin)
+        return "ast_gc_preserve_begin"
+    elseif isexpr(ex, :gc_preserve_end)
+        return "ast_gc_preserve_end"
     else
         TODO("Stencil not implemented yet:", ex)
     end
@@ -472,6 +492,15 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_COND", cond)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VAR",  var)
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
+    elseif any(s -> isexpr(ex, s),
+               (:meta, :coverageeffect, :inbounds, :loopinfo, :aliasscope, :popaliasscope,
+                :inline, :noinline, :gc_preserve_begin, :gc_preserve_end)
+              )
+        ret = pointer(mc.ssas, ip)
+        copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
     else
