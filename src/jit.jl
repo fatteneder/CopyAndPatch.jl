@@ -123,8 +123,6 @@ function box_arg(@nospecialize(a), mc)
     elseif a isa Core.SSAValue
         return pointer(ssas, a.id)
     else
-        # r = Base.RefValue{Any}(a)
-        # refs[r] = r
         if a isa Boxable
             push!(static_prms, [value_pointer(a)])
         elseif a isa Nothing
@@ -141,6 +139,8 @@ function box_arg(@nospecialize(a), mc)
         elseif a isa Core.Builtin
             push!(static_prms, [value_pointer(a)])
         elseif isbits(a)
+            push!(static_prms, [value_pointer(a)])
+        elseif a isa Union
             push!(static_prms, [value_pointer(a)])
         else
             push!(static_prms, [pointer_from_objref(a)])
@@ -231,13 +231,12 @@ function emitcode!(mc, ip, ex::Core.PhiNode)
         nphis = 1
     else
         nphis = findfirst(mc.codeinfo.code[ip+1:end]) do e
-            if e isa Expr || e isa Core.ReturnNode || e isa Core.GotoIfNot ||
-                e isa Core.GotoNode || e isa Core.PhiCNode || e isa Core.UpsilonNode ||
-                e isa Core.SSAValue
-                return true
-            end
             if !(e isa Core.PhiNode)
-                TODO("encountered $e in a phi block")
+                if e isa Expr || e isa Core.ReturnNode || e isa Core.GotoIfNot ||
+                    e isa Core.GotoNode || e isa Core.PhiCNode || e isa Core.UpsilonNode ||
+                    e isa Core.SSAValue
+                    return true
+                end
             end
             return false
         end

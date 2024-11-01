@@ -321,6 +321,42 @@ end
     end
 end
 
+function mwe_phiblock_w_nothing()
+    @debug "hello world"
+    return 1
+end
+@testset "logging macro" begin
+    try
+        expected = mwe_phiblock_w_nothing()
+        mc = jit(mwe_phiblock_w_nothing, ())
+        ret = mc()
+        @test ret == expected
+    catch e
+        @error "Failed mwe_phiblock_w_nothing()"
+        rethrow(e)
+    end
+end
+
+struct InterpolateIntoMacro
+    x::Any
+end
+function mwe_interpolate_into_logging_macro(a::InterpolateIntoMacro)
+    @debug "$(a.x)"
+    return 123
+end
+@testset "interpolation into logging macro" begin
+    try
+        a = InterpolateIntoMacro(123)
+        expected = mwe_interpolate_into_logging_macro(a)
+        mc = jit(mwe_interpolate_into_logging_macro, (InterpolateIntoMacro,))
+        ret = mc(a)
+        @test ret == expected
+    catch e
+        @error "Failed mwe_interpolate_into_logging_macro()"
+        rethrow(e)
+    end
+end
+
 function f_avoid_box(n)
     s = 0
     p = 2
