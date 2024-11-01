@@ -321,18 +321,18 @@ end
     end
 end
 
-function mwe_phiblock_w_nothing()
+function f_phiblock_w_nothing()
     @debug "hello world"
     return 1
 end
 @testset "logging macro" begin
     try
-        expected = mwe_phiblock_w_nothing()
-        mc = jit(mwe_phiblock_w_nothing, ())
+        expected = f_phiblock_w_nothing()
+        mc = jit(f_phiblock_w_nothing, ())
         ret = mc()
         @test ret == expected
     catch e
-        @error "Failed mwe_phiblock_w_nothing()"
+        @error "Failed f_phiblock_w_nothing()"
         rethrow(e)
     end
 end
@@ -340,19 +340,19 @@ end
 struct InterpolateIntoMacro
     x::Any
 end
-function mwe_interpolate_into_logging_macro(a::InterpolateIntoMacro)
+function f_interpolate_into_logging_macro(a::InterpolateIntoMacro)
     @debug "$(a.x)"
     return 123
 end
 @testset "interpolation into logging macro" begin
     try
         a = InterpolateIntoMacro(123)
-        expected = mwe_interpolate_into_logging_macro(a)
-        mc = jit(mwe_interpolate_into_logging_macro, (InterpolateIntoMacro,))
+        expected = f_interpolate_into_logging_macro(a)
+        mc = jit(f_interpolate_into_logging_macro, (InterpolateIntoMacro,))
         ret = mc(a)
         @test ret == expected
     catch e
-        @error "Failed mwe_interpolate_into_logging_macro()"
+        @error "Failed f_interpolate_into_logging_macro()"
         rethrow(e)
     end
 end
@@ -469,5 +469,20 @@ end
             @error "Failed f_closure(::$T)"
             rethrow(e)
         end
+    end
+end
+
+function f_vararg(x...)
+    return sum(x)
+end
+@testset "vararg" begin
+    try
+        expected = f_vararg(1,2,3)
+        mc = jit(f_vararg, (Vararg{Int64},))
+        ret = mc((1,2,3))
+        @test ret == expected
+    catch e
+        @error "Failed f_vararg()"
+        rethrow(e)
     end
 end
