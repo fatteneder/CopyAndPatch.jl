@@ -355,7 +355,8 @@ function emitcode!(mc, ip, ex::Expr)
             ex.args[1].value, nothing
         elseif ex.args[1] isa Expr
             @assert Base.isexpr(ex.args[1], :call)
-            eval(ex.args[1].args[2]), ex.args[1].args[3]
+            @assert ex.args[1].args[2] isa QuoteNode
+            ex.args[1].args[2].value, ex.args[1].args[3]
         elseif ex.args[1] isa Core.SSAValue || ex.args[1] isa Core.Argument
             ex.args[1], nothing
         else
