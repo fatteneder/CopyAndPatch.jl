@@ -486,3 +486,14 @@ end
         rethrow(e)
     end
 end
+
+@testset ":foreigncall with nreq>0 and (cconv|effects)" begin
+    try
+        mc = jit(IOBuffer, ())
+        ret = mc()
+        @test ret isa IOBuffer
+    catch e
+        @error "Failed IOBuffer()"
+        rethrow(e)
+    end
+end

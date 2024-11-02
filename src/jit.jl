@@ -371,9 +371,10 @@ function emitcode!(mc, ip, ex::Expr)
         rettype = ex.args[2]
         argtypes = ex.args[3]
         nreq = ex.args[4]
-        @assert nreq == 0
+        @assert length(argtypes) ≥ nreq
         conv = ex.args[5]
-        @assert conv === QuoteNode(:ccall)
+        @assert conv isa QuoteNode
+        @assert conv.value === :ccall || first(conv.value) === :ccall
         args = ex.args[6:5+length(ex.args[3])]
         gc_roots = ex.args[6+length(ex.args[3])+1:end]
         boxes = box_args(args, mc)
