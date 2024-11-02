@@ -101,27 +101,37 @@ end
 function install_hooks()
     if !isdefined(Base, :cpjit)
         @eval Base function cpjit(ci::Core.CodeInstance, src::Core.CodeInfo)
-            # TODO Should we move the try ... catch block
-            # from jl_cpjit_compile_codeinst_impl to here?
-            rettype = ci.rettype
-            @assert ci.def.def isa Method
-            fn, argtypes... = ci.def.def.sig
-            mc = jit(src, fn, rettype, argtypes)
-            @atomic :monotonic ci.cpjit_mc = mc
-            return Cint(1)
+            rettype = getfield(ci, :rettype)
+            fn, argtypes... = ci.def.specTypes.parameters
+            try
+                # TODO Remove the try ... catch block from jl_cpjit_compile_codeinst_impl
+                @debug "cpjit: compiling $fn($(join("::".*string.(argtypes),",")))::$(rettype)"
+                mc = $(jit)(src, fn, rettype, Tuple(argtypes))
+                @atomic :monotonic ci.cpjit_mc = mc
+                return Cint(1)
+            catch e
+                @debug "cpjit: compilation of $fn($(join("::".*string.(argtypes),",")))::$(rettype) failed with" current_exceptions()
+                return Cint(0)
+            end
         end
     end
     if !isdefined(Base, :cpjit_call)
-        @eval Base function cpjit_call(mc::MachineCode, @nospecialize(args::Vector))
-            cif = Ffi_cif(mc.rettype, mc.argtypes)
-            return ffi_call(cif, pointer(mc), args)
+        @eval Base function cpjit_call(mc::$(MachineCode), @nospecialize(args...))
+            try
+                @debug "cpjit_call: calling $(mc.fn)"
+                cif = $(Ffi_cif)(mc.rettype, Tuple(mc.argtypes))
+                return $(ffi_call)(cif, pointer(mc), [a for a in args])
+            catch e
+                @debug "cpjit_call: call of $(mc.fn)($(join("::".*string.(mc.argtypes),",")))::$(mc.rettype) failed with" current_exceptions()
+                return nothing
+            end
         end
     end
 end
 
 function enable(toggle::Bool)
     install_hooks()
-    @ccall jl_use_cpjit_set(toogle::Cint)::Cvoid
+    @ccall jl_use_cpjit_set(toggle::Cint)::Cvoid
 end
 
 
