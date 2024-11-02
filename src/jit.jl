@@ -142,8 +142,15 @@ function box_arg(@nospecialize(a), mc)
             push!(static_prms, [value_pointer(a)])
         elseif a isa Union
             push!(static_prms, [value_pointer(a)])
+        elseif a isa Type
+            push!(static_prms, [value_pointer(a)])
         else
-            push!(static_prms, [pointer_from_objref(a)])
+            try
+                push!(static_prms, [pointer_from_objref(a)])
+            catch e
+                @error "boxing of $a failed"
+                rethrow(e)
+            end
         end
         return pointer(static_prms[end])
     end
