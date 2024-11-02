@@ -112,7 +112,7 @@ mutable struct Ffi_cif
     ffi_argtypes::Vector{Ptr{Cvoid}}
     slots::Vector{Ptr{Cvoid}}
 
-    function Ffi_cif(@nospecialize(rettype::Type{T}), @nospecialize(argtypes::NTuple{N,Type})) where {T,N}
+    function Ffi_cif(@nospecialize(rettype::Type{T}), @nospecialize(argtypes::NTuple{N})) where {T,N}
         if !isconcretetype(T) && T !== Any && !(T <: Ref)
             throw(ArgumentError("$T is an invalid return type, " *
                                 "see the @ccall return type translation guide in the manual"))
