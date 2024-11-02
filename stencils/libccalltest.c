@@ -966,3 +966,21 @@ DLLEXPORT void c_exit_finalizer(void* v) {
 
 // global variable for cglobal testing
 DLLEXPORT const int global_var = 1;
+
+//////////////////////////////////
+// Newly added tests for libffi ccall.
+
+
+DLLEXPORT int test_sum_vec_int(int *v, int n) {
+    int sum = 0;
+    for (int i=0; i<n; i++)
+        sum += v[i];
+    return sum;
+}
+
+DLLEXPORT double test_sum_vec_double(double *v, int n) {
+    double sum = 0;
+    for (int i=0; i<n; i++)
+        sum += v[i];
+    return sum;
+}

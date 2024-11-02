@@ -18,6 +18,25 @@ end
     @test_broken result == expected
 end
 
+function f_ccall_array_int(v::Vector{Int32})
+    n = length(v)
+    return @ccall libccalltest.test_sum_vec_int(v::Ref{Cint}, n::Cint)::Cint
+end
+function f_ccall_array_double(v::Vector{Float64})
+    n = length(v)
+    return @ccall libccalltest.test_sum_vec_double(v::Ref{Cdouble}, n::Cint)::Cdouble
+end
+@testset "test ccall array argument" begin
+    mc = jit(f_ccall_array_int, (Vector{Int32},))
+    result = CopyAndPatch.call(mc, Int32[1,2,3])
+    expected = f_ccall_array_int(Int32[1,2,3])
+    @test result == expected
+    mc = jit(f_ccall_array_double, (Vector{Float64},))
+    result = CopyAndPatch.call(mc, Float64[1,2,3])
+    expected = f_ccall_array_double(Float64[1,2,3])
+    @test result == expected
+end
+
 #### The following tests were copied from julia/src/ccall.jl
 
 const verbose = true
