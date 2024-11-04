@@ -4,27 +4,21 @@ authors = ["Florian Atteneder"]
 version = "0.1.0"
 
 [deps]
-About = "69d22d85-9f48-4c46-bbbe-7ad8341ff72a"
 InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
-JuliaInterpreter = "aa1ae85d-cabe-5617-a682-6adf51b2e16a"
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
 Libffi_jll = "e9f186c6-92d2-5b65-8a66-fee21dc1b490"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
-MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 REPL = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 
 [compat]
-About = "0.1.0"
 InteractiveUtils = "1.11.0"
 JSON = "0.21.4"
-JuliaInterpreter = "0.9.28"
 Libdl = "1.11.0"
 Libffi_jll = "3.4.6"
 Logging = "1.11.0"
-MacroTools = "0.5.13"
 Mmap = "1.11.0"
 Printf = "1.11.0"
 REPL = "1.11.0"
@@ -32,10 +26,10 @@ Random = "1.11.0"
 Test = "1.11.0"
 
 [extras]
+InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
+Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
-InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 
 [targets]
 test = ["Test", "Random", "Libdl", "InteractiveUtils"]

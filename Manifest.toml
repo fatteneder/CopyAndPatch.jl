@@ -2,21 +2,7 @@
 
 julia_version = "1.12.0-DEV"
 manifest_format = "2.0"
-project_hash = "63a0cfb168ee6cb7ee78ccde4de50a1c52d2e563"
-
-[[deps.About]]
-deps = ["InteractiveUtils", "JuliaSyntaxHighlighting", "StyledStrings"]
-git-tree-sha1 = "f4e1c186fbcb936d39243ce7acc2e97eda77eb08"
-repo-rev = "main"
-repo-url = "https://github.com/tecosaur/About.jl.git"
-uuid = "69d22d85-9f48-4c46-bbbe-7ad8341ff72a"
-version = "0.1.0"
-
-    [deps.About.extensions]
-    PkgExt = "Pkg"
-
-    [deps.About.weakdeps]
-    Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+project_hash = "7a7434713a906094e0c5bc014ce1c75df8c9ea8e"
 
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
@@ -25,12 +11,6 @@ version = "1.11.0"
 [[deps.Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 version = "1.11.0"
-
-[[deps.CodeTracking]]
-deps = ["InteractiveUtils", "UUIDs"]
-git-tree-sha1 = "c0216e792f518b39b22212127d4a84dc31e4e386"
-uuid = "da1fd8a2-8d9e-5ec2-8556-3022fb5608a2"
-version = "1.3.5"
 
 [[deps.Dates]]
 deps = ["Printf"]
@@ -54,17 +34,6 @@ git-tree-sha1 = "31e996f0a15c7b280ba9f76636b3ff9e2ae58c9a"
 uuid = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 version = "0.21.4"
 
-[[deps.JuliaInterpreter]]
-deps = ["CodeTracking", "InteractiveUtils", "Random", "UUIDs"]
-git-tree-sha1 = "a6adc2dcfe4187c40dc7c2c9d2128e326360e90a"
-uuid = "aa1ae85d-cabe-5617-a682-6adf51b2e16a"
-version = "0.9.32"
-
-[[deps.JuliaSyntaxHighlighting]]
-deps = ["StyledStrings"]
-uuid = "dc6e5ff7-fb65-4e79-a425-ec3bc9c03011"
-version = "1.11.0"
-
 [[deps.Libdl]]
 uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
 version = "1.11.0"
@@ -79,12 +48,6 @@ version = "3.4.6+0"
 deps = ["StyledStrings"]
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 version = "1.11.0"
-
-[[deps.MacroTools]]
-deps = ["Markdown", "Random"]
-git-tree-sha1 = "2fa9ee3e63fd3a4f7a9a4f4744a52f4856de82df"
-uuid = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
-version = "0.5.13"
 
 [[deps.Markdown]]
 deps = ["Base64"]
