@@ -1140,10 +1140,7 @@ macro test_spill_n(n::Int, intargs, floatargs)
     end
 end
 
-# TODO This allocates a lot, because of the number of jitted functions,
-# and so it would need to GC frequently. But atm we run with GC.enable(false)
-# because we do not yet copy inlined allocated data types into stenicls.
-# Hence, we shortened the loop length.
+# We shortened the loop length for faster tests.
 let
 # for i in 1:100
 for i in 1:10
@@ -1217,7 +1214,7 @@ struct Bits22734 <: Abstract22734
     y::Float64
 end
 function cb22734(ptr::Ptr{Cvoid})
-    # GC.gc() # disabled due to current jit restrictions
+    GC.gc()
     obj = unsafe_pointer_to_objref(ptr)::Bits22734
     obj.x + obj.y
 end
@@ -1303,20 +1300,19 @@ end
 #     @test arr[1] == '0'
 # end
 
-# TODO This depends on :gc_preserve_begin expr node.
-# # issue #38751
-# let
-#     function f38751!(dest::Vector{UInt8}, src::Vector{UInt8}, n::UInt)
-#         d, s = pointer(dest), pointer(src)
-#         GC.@preserve dest src ccall(:memcpy, Cvoid, (Ptr{UInt8}, Ptr{UInt8}, Csize_t), d, s, n)
-#         return dest
-#     end
-#     dest = zeros(UInt8, 8)
-#     mc = jit(f38751!, (Vector{UInt8}, Vector{UInt8}, UInt))
-#     @test mc(dest, collect(0x1:0x8), UInt(8)) == 0x1:0x8
-#     llvm = sprint(code_llvm, f38751!, (Vector{UInt8}, Vector{UInt8}, UInt))
-#     @test !occursin("call void inttoptr", llvm)
-# end
+# issue #38751
+let
+    function f38751!(dest::Vector{UInt8}, src::Vector{UInt8}, n::UInt)
+        d, s = pointer(dest), pointer(src)
+        GC.@preserve dest src ccall(:memcpy, Cvoid, (Ptr{UInt8}, Ptr{UInt8}, Csize_t), d, s, n)
+        return dest
+    end
+    dest = zeros(UInt8, 8)
+    mc = jit(f38751!, (Vector{UInt8}, Vector{UInt8}, UInt))
+    @test mc(dest, collect(0x1:0x8), UInt(8)) == 0x1:0x8
+    llvm = sprint(code_llvm, f38751!, (Vector{UInt8}, Vector{UInt8}, UInt))
+    @test !occursin("call void inttoptr", llvm)
+end
 
 # TODO Relevant for us?
 # # issue #34061
@@ -1362,20 +1358,20 @@ end
     mc = jit(test_at_ccall_1, ())
     @test mc() == 2.0
 
-    # TODO This depends on :throw_undef_if_not expr node.
-    # str = "hello"
-    # function test_at_ccall_2(str)
-    #     buf = Ptr{UInt8}(Libc.malloc((length(str) + 1) * sizeof(Cchar)))
-    #     @ccall strcpy(buf::Cstring, str::Cstring)::Cstring
-    #     buf
-    # end
-    # try
-    #   mc = jit(test_at_ccall_2, (typeof(str),))
-    #   buf = mc()
-    #   @test unsafe_string(buf) == str
-    # catch
-    #   buf != C_NULL && Libc.free(buf)
-    # end
+    str = "hello"
+    function test_at_ccall_2(str)
+        buf = Ptr{UInt8}(Libc.malloc((length(str) + 1) * sizeof(Cchar)))
+        @ccall strcpy(buf::Cstring, str::Cstring)::Cstring
+        buf
+    end
+    buf = C_NULL
+    try
+      mc = jit(test_at_ccall_2, (typeof(str),))
+      buf = mc(str)
+      @test unsafe_string(buf) == str
+    finally
+      buf != C_NULL && Libc.free(buf)
+    end
 
     # test pointer interpolation
     str_identity = @cfunction(identity, Cstring, (Cstring,))
@@ -1394,43 +1390,43 @@ end
     strp = Ref{Ptr{Cchar}}(0)
     fmt = "hi+%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%.1f-%.1f-%.1f-%.1f-%.1f-%.1f-%.1f-%.1f-%.1f\n"
 
-    # TODO Depends on handling varargs for ccall, e.g. nreq > 0 in ast.
-    # function test_at_ccall_5()
-    #     @ccall asprintf(
-    #     strp::Ptr{Ptr{Cchar}},
-    #     fmt::Cstring,
-    #     ; # begin varargs
-    #     0x1::UInt8, 0x2::UInt8, 0x3::UInt8, 0x4::UInt8, 0x5::UInt8, 0x6::UInt8, 0x7::UInt8, 0x8::UInt8, 0x9::UInt8, 0xa::UInt8, 0xb::UInt8, 0xc::UInt8, 0xd::UInt8, 0xe::UInt8, 0xf::UInt8,
-    #     1.1::Cfloat, 2.2::Cfloat, 3.3::Cfloat, 4.4::Cfloat, 5.5::Cfloat, 6.6::Cfloat, 7.7::Cfloat, 8.8::Cfloat, 9.9::Cfloat,
-    #     )::Cint
-    # end
-    # mc = jit(test_at_ccall_5, ())
-    # len = mc()
-    # str = unsafe_string(strp[], len)
-    # @ccall free(strp[]::Cstring)::Cvoid
-    # @test str == "hi+1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-1.1-2.2-3.3-4.4-5.5-6.6-7.7-8.8-9.9\n"
+    function test_at_ccall_5()
+        @ccall asprintf(
+        strp::Ptr{Ptr{Cchar}},
+        fmt::Cstring,
+        ; # begin varargs
+        0x1::UInt8, 0x2::UInt8, 0x3::UInt8, 0x4::UInt8, 0x5::UInt8, 0x6::UInt8, 0x7::UInt8, 0x8::UInt8, 0x9::UInt8, 0xa::UInt8, 0xb::UInt8, 0xc::UInt8, 0xd::UInt8, 0xe::UInt8, 0xf::UInt8,
+        1.1::Cfloat, 2.2::Cfloat, 3.3::Cfloat, 4.4::Cfloat, 5.5::Cfloat, 6.6::Cfloat, 7.7::Cfloat, 8.8::Cfloat, 9.9::Cfloat,
+        )::Cint
+    end
+    mc = jit(test_at_ccall_5, ())
+    len = mc()
+    str = unsafe_string(strp[], len)
+    @ccall free(strp[]::Cstring)::Cvoid
+    @test_broken str == "hi+1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-1.1-2.2-3.3-4.4-5.5-6.6-7.7-8.8-9.9\n"
 end
 
-# TODO Depends on handling varargs for ccall, e.g. nreq > 0 in ast.
-# @testset "Cwstring" begin
-#     buffer = Array{Cwchar_t}(undef, 100)
-#     function test_cwstring(buffer)
-#         @static if Sys.iswindows()
-#             @ccall swprintf_s(buffer::Ptr{Cwchar_t}, length(buffer)::Csize_t, "α+%ls=%hhd"::Cwstring; "β"::Cwstring, 0xf::UInt8)::Cint
-#         else
-#             @ccall swprintf(buffer::Ptr{Cwchar_t}, length(buffer)::Csize_t, "α+%ls=%hhd"::Cwstring; "β"::Cwstring, 0xf::UInt8)::Cint
-#         end
-#     end
-#     mc = jit(test_cwstring, (typeof(buffer),))
-#     len = mc(buffer)
-#     Libc.systemerror("swprintf", len < 0)
-#     str = GC.@preserve buffer unsafe_string(pointer(buffer), len)
-#     @test str == "α+β=15"
-#     str = GC.@preserve buffer unsafe_string(Cwstring(pointer(buffer)))
-#     @test str == "α+β=15"
-# end
+@testset "Cwstring" begin
+    buffer = Array{Cwchar_t}(undef, 100)
+    function test_cwstring(buffer)
+        @static if Sys.iswindows()
+            @ccall swprintf_s(buffer::Ptr{Cwchar_t}, length(buffer)::Csize_t, "α+%ls=%hhd"::Cwstring; "β"::Cwstring, 0xf::UInt8)::Cint
+        else
+            @ccall swprintf(buffer::Ptr{Cwchar_t}, length(buffer)::Csize_t, "α+%ls=%hhd"::Cwstring; "β"::Cwstring, 0xf::UInt8)::Cint
+        end
+    end
+    mc = jit(test_cwstring, (typeof(buffer),))
+    len = mc(buffer)
+    Libc.systemerror("swprintf", len < 0)
+    str = GC.@preserve buffer unsafe_string(pointer(buffer), len)
+    @test str == "α+β=15"
+    str = GC.@preserve buffer unsafe_string(Cwstring(pointer(buffer)))
+    @test str == "α+β=15"
+end
 
 # TODO This depends on manual evaluation of compute_lib_name() in ast.
+# Idea: Add a new stencil ast_foreigncall_w_dlsym which does a dlsym() lookup
+# on the first call to and stores the result in a static variable.
 # # issue #36458
 # compute_lib_name() = "libcc" * "alltest"
 # let
@@ -1469,6 +1465,8 @@ end
     aa = mc(a)
     @test aa === a
 end
+
+fn45187() = nothing
 
 # issue 33413
 @testset "cglobal lowering" begin
@@ -1531,29 +1529,27 @@ end
     # TODO Segfault
     # mc = jit(cglobal33413_literal_notype, ())
     # @test mc() != C_NULL
-    # TODO These require exception handling.
-    # @test_throws(TypeError, cglobal49142_nothing())
-    # @test_throws(TypeError, cglobal45187fn())
-    # @test_throws(TypeError, @eval cglobal(nothing))
-    # @test_throws(TypeError, @eval cglobal((:fn, fn45187)))
+    @test_throws(TypeError, cglobal49142_nothing())
+    @test_throws(TypeError, cglobal45187fn())
+    @test_throws(TypeError, @eval cglobal(nothing))
+    @test_throws(TypeError, @eval cglobal((:fn, fn45187)))
 end
 
-# TODO These require exception handling.
-# const libfrobozz = ""
-#
-# function somefunction_not_found()
-#     ccall((:somefunction, libfrobozz), Cvoid, ())
-# end
-#
-# function somefunction_not_found_libc()
-#     ccall(:test,Int,())
-# end
-#
-# @testset "library not found" begin
-#     if Sys.islinux()
-#         @test_throws "could not load symbol \"somefunction\"" somefunction_not_found()
-#     else
-#         @test_throws "could not load library \"\"" somefunction_not_found()
-#     end
-#     @test_throws "could not load symbol \"test\"" somefunction_not_found_libc()
-# end
+const libfrobozz = ""
+
+function somefunction_not_found()
+    ccall((:somefunction, libfrobozz), Cvoid, ())
+end
+
+function somefunction_not_found_libc()
+    ccall(:test,Int,())
+end
+
+@testset "library not found" begin
+    if Sys.islinux()
+        @test_throws "could not load symbol \"somefunction\"" somefunction_not_found()
+    else
+        @test_throws "could not load library \"\"" somefunction_not_found()
+    end
+    @test_throws "could not load symbol \"test\"" somefunction_not_found_libc()
+end
