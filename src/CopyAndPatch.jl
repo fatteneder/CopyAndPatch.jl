@@ -23,6 +23,7 @@ include("bytevector.jl")
 include("machinecode.jl")
 include("stencil.jl")
 include("jit.jl")
+include("code_native.jl")
 
 
 const STENCILS = Ref(Dict{String,Any}())
