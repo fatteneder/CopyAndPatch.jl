@@ -13,16 +13,6 @@ mutable struct MachineCode
     codeinfo::Union{Nothing,CodeInfo}
     stencil_starts::Vector{Int64}
 
-    function MachineCode(bvec::ByteVector, @nospecialize(fn),
-            @nospecialize(rettype::Type), @nospecialize(argtypes::Tuple),
-            gc_roots::Vector{Any}=Any[])
-        rt = rettype <: Union{} ? Nothing : rettype
-        ats = [ at for at in argtypes ]
-        buf = mmap(Vector{UInt8}, length(bvec), shared=false, exec=true)
-        copy!(buf, bvec)
-        new(fn, rt, ats, buf, UInt64[], UInt64[], Any[], gc_roots, Ref(Cint(0)), Ref(Cint(0)),
-            nothing, Int64[])
-    end
     function MachineCode(sz::Integer, @nospecialize(fn),
             @nospecialize(rettype::Type), @nospecialize(argtypes::Tuple),
             gc_roots::Vector{Any}=Any[])
@@ -31,6 +21,13 @@ mutable struct MachineCode
         buf = mmap(Vector{UInt8}, sz, shared=false, exec=true)
         new(fn, rt, ats, buf, UInt64[], UInt64[], Any[], gc_roots, Ref(Cint(0)), Ref(Cint(0)),
             nothing, Int64[])
+    end
+    function MachineCode(bvec::ByteVector, @nospecialize(fn),
+            @nospecialize(rettype::Type), @nospecialize(argtypes::Tuple),
+            gc_roots::Vector{Any}=Any[])
+        mc = MachineCode(length(bvec), fn, rettype, argtypes, gc_roots)
+        copyto!(mc.bvec, 1, bvec, 1, length(bvec))
+        return mc
     end
 end
 
