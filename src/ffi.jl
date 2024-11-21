@@ -196,7 +196,9 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
             @assert isconcretetype(cif.argtypes[i])
             mem = Vector{UInt8}(undef, sizeof(cif.argtypes[i]))
             push!(static_prms, mem)
-            unsafe_copyto!(pointer(mem), Base.unsafe_convert(Ptr{UInt8}, value_pointer(a)), sizeof(a))
+            GC.@preserve mem begin
+                unsafe_copyto!(pointer(mem), Base.unsafe_convert(Ptr{UInt8}, value_pointer(a)), sizeof(a))
+            end
             slots[i] = pointer(mem)
         else
             slots[N+i] = value_pointer(a)
