@@ -248,14 +248,11 @@ function StencilGroup(json::Vector{Any})
 end
 
 
-holes(g::StencilGroup) = g.code.relocations
-
 patch!(m::MachineCode, h::Hole, p::Ptr) = m.buf[h.offset+1] = p
-patch!(b::ByteVector, h::Hole, val)     = patch!(b, 0, h, val)
+patch!(b::ByteVector,  h::Hole, val)    = patch!(b, 0, h, val)
 
-patch!(b::ByteVector, start::Integer, h::Hole, val) =
-    b[start #=1-based=# + h.offset #=0-based=#] = val
-patch!(bvec::ByteVector, st::Stencil, symbol::String, val) = patch!(bvec, 0, st, symbol, val)
+patch!(b::ByteVector,    start::Integer, h::Hole,        val) = b[start #=1-based=# + h.offset] = val
+patch!(bvec::ByteVector, st::Stencil,    symbol::String, val) = patch!(bvec, 0, st, symbol, val)
 
 function patch!(bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, val)
     holes = st.relocations
