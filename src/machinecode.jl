@@ -1,5 +1,5 @@
 mutable struct MachineCode
-    fn::Any # TODO Should this be Function? What about callable structs?
+    fn::Any
     rettype::Any
     argtypes::Vector{Any}
     buf::Vector{UInt8}
