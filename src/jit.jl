@@ -1,8 +1,5 @@
 function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype), @nospecialize(argtypes))
-    nslots = length(codeinfo.slotnames)
-    nssas = length(codeinfo.ssavaluetypes)
     nstencils = length(codeinfo.code)
-
     stencil_starts = zeros(Int64, nstencils)
     code_size, data_size = 0, 0
     for (i,ex) in enumerate(codeinfo.code)
@@ -12,12 +9,7 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
         data_size += sum(length(b) for b in st.code.body)
     end
 
-    mc = MachineCode(code_size, fn, rettype, argtypes)
-    mc.stencil_starts = stencil_starts
-    mc.codeinfo = codeinfo
-    @assert nssas == length(codeinfo.code)
-    resize!(mc.slots, nslots)
-    resize!(mc.ssas, nssas)
+    mc = MachineCode(code_size, fn, rettype, argtypes, codeinfo, stencil_starts)
 
     for (ip,ex) in enumerate(codeinfo.code)
         emitcode!(mc, ip, ex)
