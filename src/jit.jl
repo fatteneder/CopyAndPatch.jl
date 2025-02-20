@@ -178,13 +178,13 @@ function emitcode!(mc, ip, ex::GlobalRef)
 end
 function emitcode!(mc, ip, ex::Core.EnterNode)
     st, bvec, _ = get_stencil(ex)
-    new_scope = isdefined(ex, :scope) ? box_arg(ex.scope, mc) : C_NULL
+    scope = isdefined(ex, :scope) ? box_arg(ex.scope, mc) : C_NULL
     ret = pointer(mc.ssas, ip)
     catch_ip = ex.catch_dest
     leave_ip = catch_ip-1
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",         Cint(ip))
-    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NEW_SCOPE",  new_scope)
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_SCOPE",      scope)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",        ret)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EXC_THROWN", pointer_from_objref(mc.exc_thrown))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CALL", pointer(mc.buf, mc.stencil_starts[ip+1]))
@@ -325,7 +325,7 @@ function emitcode!(mc, ip, ex::Expr)
         end
     elseif isexpr(ex, :invoke)
         mi, g = ex.args[1], ex.args[2]
-        @assert mi isa MethodInstance
+        @assert mi isa Base.CodeInstance
         ex_args = ex.args
         boxes = box_args(ex_args, mc)
         push!(mc.gc_roots, boxes)

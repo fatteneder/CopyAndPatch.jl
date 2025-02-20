@@ -11,8 +11,11 @@ _JIT_ENTRY(int prev_ip)
    jl_task_t *ct = jl_current_task;
    if (hand_n_leave > 0) {
       jl_handler_t *eh = ct->eh;
-      while (--hand_n_leave > 0)
+      while (--hand_n_leave > 0) {
+         // pop GC frames for any skipped handlers
+         ct->gcstack = eh->gcstack;
          eh = eh->prev;
+      }
       *exc_thrown = 0;
       asan_unpoison_task_stack(ct, &eh->eh_ctx);
       jl_longjmp(eh->eh_ctx, 1);
