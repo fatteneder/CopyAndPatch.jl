@@ -14,7 +14,7 @@ Prerequisites for stencil generation
 - `libffi`: library and headers
 - `llvm-mc`: exe (for `code_native` implementation)
 - `llvm-objdump`: exe (optional for debugging stencils)
-- `julia`: exe, library and headers; need a local build of [this](https://github.com/fatteneder/julia/tree/fa/prot_exec) branch which implements `exec` option for `mmap`
+- `julia`: exe, library and headers; need a local build of [this](https://github.com/fatteneder/julia/tree/fa/prot_exec_rebase) branch which implements `exec` option for `mmap`
 
 LLVM dependencies should be from `LLVM 17+`.
 You can download prebuild binaries from https://github.com/llvm/llvm-project/releases/tag/llvmorg-17.0.6
