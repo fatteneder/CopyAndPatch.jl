@@ -434,7 +434,9 @@ function emitcode!(mc, ip, ex::Expr)
                 libname = unwrap(libname)
             elseif libname isa Expr
                 @assert Base.isexpr(libname, :call)
-                libname = unwrap(libname.args[2])
+                # TODO: This is ugly and wrong. @ccall allows for non-constant library names,
+                # cf. issue #36458, also see TODOs in test/ccall.jl
+                libname = (@eval Main, $libname)[2]
             end
             dlsym(dlopen(libname isa Ref ? libname[] : libname), fname)
         end
