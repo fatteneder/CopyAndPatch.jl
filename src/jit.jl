@@ -325,7 +325,7 @@ function emitcode!(mc, ip, ex::Expr)
         end
     elseif isexpr(ex, :invoke)
         mi, g = ex.args[1], ex.args[2]
-        @assert mi isa Base.CodeInstance
+        @assert mi isa MethodInstance || mi isa Base.CodeInstance
         ex_args = ex.args
         boxes = box_args(ex_args, mc)
         push!(mc.gc_roots, boxes)
