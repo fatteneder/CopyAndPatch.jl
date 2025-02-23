@@ -51,13 +51,9 @@ ffi_sizeof(p::Ptr) = @ccall libffihelpers_path[].get_size_ffi_type(p::Ptr{Cvoid}
 const Ctypes = Union{Cchar,Cuchar,Cshort,Cstring,Cushort,Cint,Cuint,Clong,Culong,
                      Clonglong,Culonglong,Cintmax_t,Cuintmax_t,Csize_t,Cssize_t,
                      Cptrdiff_t,Cwchar_t,Cwstring,Cfloat,Cdouble,Cvoid}
-function to_c_type(t)
-    return if t <: Ctypes
-        return t
-    else
-        return Ptr{Cvoid}
-    end
-end
+
+to_c_type(t::Ctypes) = t
+to_c_type(t)         = Ptr{Cvoid}
 
 const FFI_TYPE_CACHE = Dict{Any,Tuple{Vector{UInt8},Vector{Ptr{Cvoid}}}}()
 function ffi_type_struct(@nospecialize(t::Type{T})) where T
@@ -193,7 +189,6 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
         elseif a isa AbstractArray
             slots[i] = cif.argtypes[i] <: Ptr ? value_pointer(a) : pointer(a)
         elseif isconcretetype(cif.argtypes[i])
-            @assert isconcretetype(cif.argtypes[i])
             mem = Vector{UInt8}(undef, sizeof(cif.argtypes[i]))
             push!(static_prms, mem)
             GC.@preserve mem begin

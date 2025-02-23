@@ -47,7 +47,6 @@ function (mc::MachineCode)(@nospecialize(args...))
     if length(args) != nargs
         throw(MethodError(mc, args))
     end
-    gc_roots = mc.gc_roots
     slots = mc.slots
     slots[1] = value_pointer(mc.fn)
     for (i,a) in enumerate(args)
