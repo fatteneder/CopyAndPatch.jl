@@ -1,7 +1,5 @@
 default_terminal() = REPL.LineEdit.terminal(Base.active_repl)
 
-code_native(code::AbstractVector; kwargs...) = code_native(UInt8.(code); kwargs...)
-code_native(code::Vector{UInt8};  kwargs...) = code_native(stdout, code; kwargs...)
 function code_native(mc::MachineCode;
                      syntax::Symbol=:intel, interactive::Bool=false, color::Bool=true,
                      hex_for_imm::Bool=true)
@@ -14,7 +12,7 @@ function code_native(mc::MachineCode;
         io = IOBuffer()
         ioc = IOContext(io, stdout) # to keep the colors!!
         for i in 1:length(mc.codeinfo.code)
-            _code_native!(ioc, mc, i; syntax, color, hex_for_imm)
+            cpjit_code_native!(ioc, mc, i; syntax, color, hex_for_imm)
         end
         println(stdout, String(take!(io)))
     end
@@ -52,7 +50,9 @@ function code_native(io::IO, code::AbstractVector{UInt8};
     # whenever there are just zeros. Is that a bug?
     color ? print_native(io, str_out) : print(io, str_out)
 end
-function _code_native!(io::IO, mc::MachineCode, i::Int64;
+
+
+function cpjit_code_native!(io::IO, mc::MachineCode, i::Int64;
                        syntax::Symbol=:intel, color::Bool=true, hex_for_imm::Bool=true)
     starts = mc.stencil_starts
     nstarts = length(starts)
@@ -67,18 +67,17 @@ function _code_native!(io::IO, mc::MachineCode, i::Int64;
         name = get_stencil_name(ex)
         title = " | $(name) | $ex"
     end
-    _code_native!(io, title, stencil, i; syntax, color, hex_for_imm)
+    cpjit_code_native!(io, title, stencil, i; syntax, color, hex_for_imm)
 end
-@inline function _code_native!(io::IO, title, stencil, i;
+@inline function cpjit_code_native!(io::IO, title, stencil, i;
                                syntax::Symbol=:intel, color::Bool=true, hex_for_imm::Bool=true)
     printstyled(io, i, ' ', title, '\n', bold=true, color=:green)
     code_native(io, stencil; syntax, color, hex_for_imm)
 end
 
 
-
-mutable struct CopyAndPatchMenu{T_MC<:MachineCode} <: TerminalMenus.ConfiguredMenu{TerminalMenus.Config}
-    mc::T_MC
+mutable struct CopyAndPatchMenu <: TerminalMenus.ConfiguredMenu{TerminalMenus.Config}
+    mc::MachineCode
     syntax::Symbol
     hex_for_imm::Bool
     str_ssas::Vector{String}
@@ -93,7 +92,6 @@ mutable struct CopyAndPatchMenu{T_MC<:MachineCode} <: TerminalMenus.ConfiguredMe
     print_relocs::Bool
     config::TerminalMenus.Config
 end
-
 function CopyAndPatchMenu(mc, syntax, hex_for_imm)
     config = TerminalMenus.Config(scroll_wrap=true)
     str_ssas = vcat("", string.(mc.codeinfo.code))
@@ -113,12 +111,13 @@ function CopyAndPatchMenu(mc, syntax, hex_for_imm)
     return menu
 end
 
+
 TerminalMenus.options(m::CopyAndPatchMenu) = 1:length(m.mc.codeinfo.code)+1
 TerminalMenus.cancel(m::CopyAndPatchMenu) = m.selected = -1
 function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
     io = IOBuffer()
     ioc = IOContext(io, stdout)
-    _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, hex_for_imm=menu.hex_for_imm)
+    cpjit_code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, hex_for_imm=menu.hex_for_imm)
     code = String(take!(io))
     menu.print_relocs || return code
     # this is a hacky way to relocate the _JIT_* patches in the native code output
@@ -136,9 +135,9 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
         stencilinfo, buf, _ = get_stencil(ex)
     end
     relocs = stencilinfo.code.relocations
-    _code_native!(ioc, ssa, buf, cursor; syntax=menu.syntax, color=false, hex_for_imm=menu.hex_for_imm)
+    cpjit_code_native!(ioc, ssa, buf, cursor; syntax=menu.syntax, color=false, hex_for_imm=menu.hex_for_imm)
     unpatched_code = String(take!(io))
-    _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, color=false, hex_for_imm=menu.hex_for_imm)
+    cpjit_code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, color=false, hex_for_imm=menu.hex_for_imm)
     uncolored_code = String(take!(io))
     max_w = maximum(split(uncolored_code,'\n')[2:end]) do line
         # ignore first line which contains the SSA expression
@@ -168,11 +167,14 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
     code = String(take!(io))
     return code
 end
+
+
 function annotated_code_native_with_newlines(menu::CopyAndPatchMenu, cursor::Int64)
     N = length(menu.mc.codeinfo.code)+1 # +1 for abi stencil
     n = min(N,menu.pagesize)+menu.nheader-1
     println(stdout, '\n'^(menu.nheader-1), annotated_code_native(menu, cursor), '\n'^n)
 end
+
 
 function TerminalMenus.move_down!(menu::CopyAndPatchMenu, cursor::Int64, lastoption::Int64)
     # from stdlib/REPL/TerminalMenus/AbstractMenu.jl
@@ -211,12 +213,10 @@ function TerminalMenus.move_up!(menu::CopyAndPatchMenu, cursor::Int64, lastoptio
     end
     cursor
 end
-
 function TerminalMenus.pick(menu::CopyAndPatchMenu, cursor::Int)
     menu.selected = cursor
     return false
 end
-
 function TerminalMenus.header(menu::CopyAndPatchMenu)
     io = IOBuffer(); ioc = IOContext(io, stdout)
     printstyled(ioc, 'q', color=:light_red, bold=true)
@@ -239,7 +239,6 @@ function TerminalMenus.header(menu::CopyAndPatchMenu)
        ip$(' '^(menu.ip_col_width-2)) | stencil$(' '^(menu.stencil_name_col_width-7)) | SSA
     """
 end
-
 function TerminalMenus.writeline(buf::IOBuffer, menu::CopyAndPatchMenu, idx::Int, iscursor::Bool)
     ioc = IOContext(buf, stdout)
     str_idx = format(menu.ip_fmt, idx)
@@ -255,8 +254,6 @@ function TerminalMenus.writeline(buf::IOBuffer, menu::CopyAndPatchMenu, idx::Int
         print(ioc, str_idx, " | ", sname, " | ", menu.str_ssas[idx])
     end
 end
-
-
 function TerminalMenus.keypress(menu::CopyAndPatchMenu, key::UInt32)
     if key == UInt32('s')
         menu.syntax = (menu.syntax === :intel) ? :att : :intel
