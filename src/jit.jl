@@ -2,6 +2,10 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
     nstencils = length(codeinfo.code)
     stencil_starts = zeros(Int64, nstencils)
     code_size, data_size = 0, 0
+
+    st, bvec, _ = get_stencil("abi")
+    code_size = length(only(st.code.body))
+    data_size = sum(length(b) for b in st.code.body)
     for (i,ex) in enumerate(codeinfo.code)
         st, bvec, _ = get_stencil(ex)
         stencil_starts[i] = 1+code_size
@@ -11,6 +15,7 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
 
     mc = MachineCode(code_size, fn, rettype, argtypes, codeinfo, stencil_starts)
 
+    emitcode_abi!(mc)
     for (ip,ex) in enumerate(codeinfo.code)
         emitcode!(mc, ip, ex)
     end
@@ -25,7 +30,7 @@ function jit(@nospecialize(fn), @nospecialize(argtypes::Tuple))
 end
 
 
-function get_stencil_name(ex)
+function get_stencil_name(ex::Expr)
     if isexpr(ex, :call)
         g = ex.args[1]
         fn = g isa GlobalRef ? unwrap(g) : g
@@ -85,10 +90,16 @@ get_stencil_name(ex::Core.ReturnNode)  = "ast_returnnode"
 get_stencil_name(ex::Core.UpsilonNode) = "ast_upsilonnode"
 get_stencil_name(ex::Nothing)          = "ast_goto"
 
+function get_stencil(name::String)
+    if !haskey(STENCILS[], name)
+        error("no stencil named '$name'")
+    end
+    return STENCILS[][name]
+end
 function get_stencil(ex)
     name = get_stencil_name(ex)
     if !haskey(STENCILS[], name)
-        error("no stencil '$name' found for expression $ex")
+        error("no stencil named '$name' found for expression $ex")
     end
     return STENCILS[][name]
 end
@@ -149,6 +160,16 @@ function box_arg(@nospecialize(a), mc)
 end
 function box_args(ex_args::AbstractVector, mc::MachineCode)
     return Ptr{Any}[ box_arg(a, mc) for a in ex_args ] # =^= jl_value_t ***
+end
+
+
+function emitcode_abi!(mc::MachineCode)
+    st, bvec, _ = get_stencil("abi")
+    copyto!(mc.buf, 1, bvec, 1, length(bvec))
+    patch!(mc.buf, 1, st.code, "_JIT_SLOTS",      pointer(mc.slots))
+    patch!(mc.buf, 1, st.code, "_JIT_SSAS",       pointer(mc.ssas))
+    patch!(mc.buf, 1, st.code, "_JIT_PHIOFFSET",  pointer_from_objref(mc.phioffset))
+    patch!(mc.buf, 1, st.code, "_JIT_STENCIL",    pointer(mc.buf, mc.stencil_starts[1]))
 end
 
 

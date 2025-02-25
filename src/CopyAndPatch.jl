@@ -121,7 +121,7 @@ function install_hooks()
             try
                 @debug "cpjit_call: calling $(mc.fn)"
                 cif = $(Ffi_cif)(mc.rettype, Tuple(mc.argtypes))
-                return $(ffi_call)(cif, pointer(mc), [a for a in args])
+                return $(ffi_call)(cif, invoke_pointer(mc), [a for a in args])
             catch e
                 @debug "cpjit_call: call of $(mc.fn)($(join("::".*string.(mc.argtypes),",")))::$(mc.rettype) failed with" current_exceptions()
                 return nothing

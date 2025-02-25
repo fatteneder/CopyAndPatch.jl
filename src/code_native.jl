@@ -31,9 +31,9 @@ function code_native(io::IO, code::AbstractVector{UInt8};
     end
     codestr = join(Iterators.map(string, code), ' ')
     out, err = Pipe(), Pipe()
-    # TODO src/disasm.cpp also exports exports a disassembler which is based on llvm-mc
+    # TODO src/disasm.cpp also exports a disassembler which is based on llvm-mc
     # jl_value_t *jl_dump_fptr_asm_impl(uint64_t fptr, char emit_mc, const char* asm_variant, const char *debuginfo, char binary)
-    # maybe we can repurpose that to avoid the extra llvm-mc dependence?
+    # maybe we can repurpose that to avoid the extra llvm-mc dependency?
     if hex_for_imm
         cmd = `llvm-mc --disassemble --output-asm-variant=$variant --print-imm-hex`
     else
@@ -56,11 +56,17 @@ function _code_native!(io::IO, mc::MachineCode, i::Int64;
                        syntax::Symbol=:intel, color::Bool=true, hex_for_imm::Bool=true)
     starts = mc.stencil_starts
     nstarts = length(starts)
-    rng = starts[i]:(i < nstarts ? starts[i+1]-1 : length(mc.buf))
-    stencil = view(mc.buf, rng)
-    ex = mc.codeinfo.code[i]
-    name = get_stencil_name(ex)
-    title = " | $(name) | $ex"
+    if i == 1
+        rng = 1:(nstarts > 0 ? mc.stencil_starts[1]-1 : length(mc.buf))
+        stencil = view(mc.buf, rng)
+        title = " | abi | "
+    else
+        rng = starts[i-1]:(i-1 < nstarts ? starts[i]-1 : length(mc.buf))
+        stencil = view(mc.buf, rng)
+        ex = mc.codeinfo.code[i-1]
+        name = get_stencil_name(ex)
+        title = " | $(name) | $ex"
+    end
     _code_native!(io, title, stencil, i; syntax, color, hex_for_imm)
 end
 @inline function _code_native!(io::IO, title, stencil, i;
@@ -75,7 +81,7 @@ mutable struct CopyAndPatchMenu{T_MC<:MachineCode} <: TerminalMenus.ConfiguredMe
     mc::T_MC
     syntax::Symbol
     hex_for_imm::Bool
-    options::Vector{String}
+    str_ssas::Vector{String}
     selected::Int
     pagesize::Int
     pageoffset::Int
@@ -90,16 +96,16 @@ end
 
 function CopyAndPatchMenu(mc, syntax, hex_for_imm)
     config = TerminalMenus.Config(scroll_wrap=true)
-    options = string.(mc.codeinfo.code)
+    str_ssas = vcat("", string.(mc.codeinfo.code))
     pagesize = 10
     pageoffset = 0
-    ip_col_width = max(ndigits(length(options)),2)
+    ip_col_width = max(ndigits(length(str_ssas)),2)
     ip_fmt = Format("%-$(ip_col_width)d")
     stencil_name_col_width = maximum(ex -> length(get_stencil_name(ex)), mc.codeinfo.code)
     stencil_name_fmt = Format("%-$(stencil_name_col_width)s")
     nheader = 0
     print_relocs = true
-    menu = CopyAndPatchMenu(mc, syntax, hex_for_imm, options, 1, pagesize, pageoffset,
+    menu = CopyAndPatchMenu(mc, syntax, hex_for_imm, str_ssas, 1, pagesize, pageoffset,
                             ip_col_width, ip_fmt, stencil_name_col_width, stencil_name_fmt,
                             nheader, print_relocs, config)
     header = TerminalMenus.header(menu)
@@ -107,7 +113,7 @@ function CopyAndPatchMenu(mc, syntax, hex_for_imm)
     return menu
 end
 
-TerminalMenus.options(m::CopyAndPatchMenu) = m.options
+TerminalMenus.options(m::CopyAndPatchMenu) = 1:length(m.mc.codeinfo.code)+1
 TerminalMenus.cancel(m::CopyAndPatchMenu) = m.selected = -1
 function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
     io = IOBuffer()
@@ -121,10 +127,16 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
     # we then compare code vs unpatched_code line by line, and every mismatch is a line where we patched
     # in practice we use the uncolored version of code_native to ignore any ansii color codes,
     # because we also need to compute the max line width for each line
-    stencilinfo, buf, _ = get_stencil(menu.mc.codeinfo.code[cursor])
+    if cursor == 1
+        stencilinfo, buf, _ = get_stencil("abi")
+        ssa = menu.str_ssas[cursor]
+    else
+        ssa = menu.str_ssas[cursor]
+        ex = menu.mc.codeinfo.code[cursor-1]
+        stencilinfo, buf, _ = get_stencil(ex)
+    end
     relocs = stencilinfo.code.relocations
-    ex = menu.mc.codeinfo.code[cursor]
-    _code_native!(ioc, ex, buf, cursor; syntax=menu.syntax, color=false, hex_for_imm=menu.hex_for_imm)
+    _code_native!(ioc, ssa, buf, cursor; syntax=menu.syntax, color=false, hex_for_imm=menu.hex_for_imm)
     unpatched_code = String(take!(io))
     _code_native!(ioc, menu.mc, cursor; syntax=menu.syntax, color=false, hex_for_imm=menu.hex_for_imm)
     uncolored_code = String(take!(io))
@@ -157,7 +169,7 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
     return code
 end
 function annotated_code_native_with_newlines(menu::CopyAndPatchMenu, cursor::Int64)
-    N = length(menu.mc.codeinfo.code)
+    N = length(menu.mc.codeinfo.code)+1 # +1 for abi stencil
     n = min(N,menu.pagesize)+menu.nheader-1
     println(stdout, '\n'^(menu.nheader-1), annotated_code_native(menu, cursor), '\n'^n)
 end
@@ -230,13 +242,17 @@ end
 
 function TerminalMenus.writeline(buf::IOBuffer, menu::CopyAndPatchMenu, idx::Int, iscursor::Bool)
     ioc = IOContext(buf, stdout)
-    sidx = format(menu.ip_fmt, idx)
-    name = get_stencil_name(menu.mc.codeinfo.code[idx])
+    str_idx = format(menu.ip_fmt, idx)
+    if idx == 1
+        name = "abi"
+    else
+        name = get_stencil_name(menu.mc.codeinfo.code[idx-1])
+    end
     sname = format(menu.stencil_name_fmt, name)
     if iscursor
-        printstyled(ioc, sidx, " | ", sname, " | ", menu.options[idx], bold=true, color=:green)
+        printstyled(ioc, str_idx, " | ", sname, " | ", menu.str_ssas[idx], bold=true, color=:green)
     else
-        print(ioc, sidx, " | ", sname, " | ", menu.options[idx])
+        print(ioc, str_idx, " | ", sname, " | ", menu.str_ssas[idx])
     end
 end
 

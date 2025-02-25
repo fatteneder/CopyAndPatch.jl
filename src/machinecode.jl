@@ -38,26 +38,19 @@ mutable struct MachineCode
 end
 
 
-Base.pointer(code::MachineCode) = Base.unsafe_convert(Ptr{Cvoid}, pointer(code.buf))
+invoke_pointer(code::MachineCode) = Base.unsafe_convert(Ptr{Cvoid}, pointer(code.buf))
 
 
 call(mc::MachineCode, @nospecialize(args...)) = mc(args...)
+
+
 function (mc::MachineCode)(@nospecialize(args...))
-    nargs = length(mc.argtypes)
-    if length(args) != nargs
-        throw(MethodError(mc, args))
+    p = invoke_pointer(mc)
+    fn = mc.fn
+    nargs = length(args)
+    return GC.@preserve mc args begin
+        @ccall $p(fn::Any, args::Ref{Any}, nargs::UInt32)::Any
     end
-    slots = mc.slots
-    slots[1] = value_pointer(mc.fn)
-    for (i,a) in enumerate(args)
-        slots[i+1] = value_pointer(a)
-    end
-    mc.phioffset[] = Cint(0)
-    v = GC.@preserve mc begin
-        ret_ip = ccall(pointer(mc), Cint, (Cint,), 0 #= ip =#)
-        Base.unsafe_pointer_to_objref(mc.ssas[ret_ip])
-    end
-    return v
 end
 
 
