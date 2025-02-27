@@ -48,7 +48,7 @@ function code_native(io::IO, code::AbstractVector{UInt8};
     # TODO print_native outputs a place holder expression like
     #   add     byte ptr [rax], al
     # whenever there are just zeros. Is that a bug?
-    color ? print_native(io, str_out) : print(io, str_out)
+    color ? InteractiveUtils.print_native(io, str_out) : print(io, str_out)
 end
 
 
@@ -85,9 +85,9 @@ mutable struct CopyAndPatchMenu <: TerminalMenus.ConfiguredMenu{TerminalMenus.Co
     pagesize::Int
     pageoffset::Int
     ip_col_width::Int
-    ip_fmt::Format
+    ip_fmt::Printf.Format
     stencil_name_col_width::Int
-    stencil_name_fmt::Format
+    stencil_name_fmt::Printf.Format
     nheader::Int
     print_relocs::Bool
     config::TerminalMenus.Config
@@ -98,9 +98,9 @@ function CopyAndPatchMenu(mc, syntax, hex_for_imm)
     pagesize = 10
     pageoffset = 0
     ip_col_width = max(ndigits(length(str_ssas)),2)
-    ip_fmt = Format("%-$(ip_col_width)d")
+    ip_fmt = Printf.Format("%-$(ip_col_width)d")
     stencil_name_col_width = maximum(ex -> length(get_stencil_name(ex)), mc.codeinfo.code)
-    stencil_name_fmt = Format("%-$(stencil_name_col_width)s")
+    stencil_name_fmt = Printf.Format("%-$(stencil_name_col_width)s")
     nheader = 0
     print_relocs = true
     menu = CopyAndPatchMenu(mc, syntax, hex_for_imm, str_ssas, 1, pagesize, pageoffset,
@@ -158,8 +158,8 @@ function annotated_code_native(menu::CopyAndPatchMenu, cursor::Int64)
         println(ioc)
     end
     if nreloc != length(relocs)
-        s = SimpleLogger(ioc)
-        with_logger(s) do
+        s = Logging.SimpleLogger(ioc)
+        Logging.with_logger(s) do
             println(ioc)
             @error "relocation failed, found $nreloc but expected $(length(relocs))"
         end

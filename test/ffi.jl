@@ -1,4 +1,4 @@
-const libmwes = dlopen(CopyAndPatch.libmwes_path[])
+const libmwes = dlopen(CopyAndPatch.LIBMWES_PATH[])
 
 
 @testset "libffi.ffi_type" begin
@@ -22,7 +22,7 @@ end
 
 
 @testset "ffi_call with only C types" begin
-    handle = dlopen(CopyAndPatch.libmwes_path[])
+    handle = dlopen(CopyAndPatch.LIBMWES_PATH[])
 
     cif = CopyAndPatch.Ffi_cif(Cint, (Cint,))
     fn = dlsym(handle, :mwe_my_square)
@@ -70,7 +70,7 @@ mutable struct my_type
     x::Cint
 end
 @testset "ffi_call with Julia types" begin
-    handle = dlopen(CopyAndPatch.libmwes_path[])
+    handle = dlopen(CopyAndPatch.LIBMWES_PATH[])
 
     cif = CopyAndPatch.Ffi_cif(Clonglong, (Any,))
     fn = dlsym(handle, :mwe_my_square_jl)

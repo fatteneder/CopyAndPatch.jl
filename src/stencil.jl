@@ -1,4 +1,4 @@
-const hexfmt = Format("%02x")
+const HEXFMT = Printf.Format("%02x")
 
 baremodule HoleValues
 import Base: @enum
@@ -205,7 +205,7 @@ function emit_global_offset_table!(group)
 end
 
 
-StencilGroup(path::AbstractString) = StencilGroup(parsefile(string(path)))
+StencilGroup(path::AbstractString) = StencilGroup(JSON.parsefile(string(path)))
 function StencilGroup(json::Vector{Any})
     group = StencilGroup(Stencil(), Stencil(), Dict())
     for sec in json[1]["Sections"]
@@ -216,7 +216,7 @@ function StencilGroup(json::Vector{Any})
     if length(group.data.body) > 0
         # @assert length(group.data.body) == 1
         body = UInt8.(group.data.body[1])
-        line = "0: $(join(format.(Ref(hexfmt), body), ' '))"
+        line = "0: $(join(Printf.format.(Ref(HEXFMT), body), ' '))"
         push!(group.data.disassembly, line)
     end
 

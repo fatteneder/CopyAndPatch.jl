@@ -11,15 +11,15 @@ iscallable(@nospecialize(f)) = !isempty(methods(f))
 
 
 # from stencils/libjuliahelpers.c
-is_method_instance(mi) = @ccall libjuliahelpers_path[].is_method_instance(mi::Any)::Cint
+is_method_instance(mi) = @ccall LIBJULIAHELPERS_PATH[].is_method_instance(mi::Any)::Cint
 function is_bool(b)
     p = box(b)
-    GC.@preserve b @ccall libjuliahelpers_path[].is_bool(p::Ptr{Cvoid})::Cint
+    GC.@preserve b @ccall LIBJULIAHELPERS_PATH[].is_bool(p::Ptr{Cvoid})::Cint
 end
 is_concrete_immutable(@nospecialize(x::DataType)) =
-    @ccall libjuliahelpers_path[].jl_is_concrete_immutable(x::Any)::Bool
+    @ccall LIBJULIAHELPERS_PATH[].jl_is_concrete_immutable(x::Any)::Bool
 is_pointerfree(@nospecialize(x::DataType)) =
-    @ccall libjuliahelpers_path[].jl_is_pointerfree(x::Any)::Bool
+    @ccall LIBJULIAHELPERS_PATH[].jl_is_pointerfree(x::Any)::Bool
 
 # from julia_internal.h
 # TODO What about Base.allocatedinline?

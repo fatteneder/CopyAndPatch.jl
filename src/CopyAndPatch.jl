@@ -1,20 +1,18 @@
 module CopyAndPatch
 
 
-import Base: isexpr, code_typed, unsafe_convert, Iterators
-import Base.Libc.Libdl: dlpath, dlopen, dlsym
-import Core: MethodInstance, CodeInfo
-import InteractiveUtils: print_native
-import JSON: parsefile
-import Libffi_jll: libffi_handle, libffi_path, libffi
-import Logging: SimpleLogger, with_logger
-import Mmap: mmap
-import Printf: Format, format
+import Base
+import Base.Iterators
+import Core
+import InteractiveUtils
+import JSON
+import Libdl
+import Libffi_jll
+import Logging
+import Mmap
+import Printf
 import REPL
-import REPL: TerminalMenus
-
-
-export jit
+import REPL.TerminalMenus
 
 
 include("utils.jl")
@@ -68,9 +66,9 @@ function patch_default_deps!(bvec::ByteVector, bvecs_data::Vector{ByteVector}, s
     for h in holes
         startswith(h.symbol, "_JIT_") && continue
         ptr = if startswith(h.symbol, "jl_")
-            p = dlsym(libjulia[], h.symbol, throw_error=false)
+            p = Libdl.dlsym(LIBJULIA[], h.symbol, throw_error=false)
             if isnothing(p)
-                p = dlsym(libjuliainternal[], h.symbol, throw_error=false)
+                p = Libdl.dlsym(LIBJULIAINTERNAL[], h.symbol, throw_error=false)
                 if isnothing(p)
                     @warn "failed to find $(h.symbol) symbol"
                     continue
@@ -78,7 +76,7 @@ function patch_default_deps!(bvec::ByteVector, bvecs_data::Vector{ByteVector}, s
             end
             p
         elseif startswith(h.symbol, "jlh_")
-            dlsym(libjuliahelpers[], h.symbol)
+            Libdl.dlsym(LIBJULIAHELPERS[], h.symbol)
         elseif startswith(h.symbol, ".rodata")
             idx = get(s.data.symbols, h.symbol) do
                 error("can't locate symbol $(h.symbol) in data section")
@@ -87,9 +85,9 @@ function patch_default_deps!(bvec::ByteVector, bvecs_data::Vector{ByteVector}, s
             @assert h.addend+1 < length(bvec_data)
             pointer(bvec_data.d, h.addend+1)
         elseif startswith(h.symbol, "ffi_")
-            dlsym(libffi_handle, Symbol(h.symbol))
+            Libdl.dlsym(Libffi_jll.libffi_handle, Symbol(h.symbol))
         else
-            dlsym(libc[], h.symbol)
+            Libdl.dlsym(LIBC[], h.symbol)
         end
         bvec[h.offset+1] = ptr
         push!(patched, h)
@@ -136,21 +134,21 @@ function enable(toggle::Bool)
 end
 
 
-const libjuliahelpers_path = Ref{String}("")
-const libffihelpers_path = Ref{String}("")
-const libmwes_path = Ref{String}("")
-const libjulia = Ref{Ptr{Cvoid}}(0)
-const libjuliainternal = Ref{Ptr{Cvoid}}(0)
-const libc = Ref{Ptr{Cvoid}}(0)
-const libjuliahelpers = Ref{Ptr{Cvoid}}(0)
+const LIBJULIAHELPERS_PATH = Ref{String}("")
+const LIBFFIHELPERS_PATH = Ref{String}("")
+const LIBMWES_PATH = Ref{String}("")
+const LIBJULIA = Ref{Ptr{Cvoid}}(0)
+const LIBJULIAINTERNAL = Ref{Ptr{Cvoid}}(0)
+const LIBC = Ref{Ptr{Cvoid}}(0)
+const LIBJULIAHELPERS = Ref{Ptr{Cvoid}}(0)
 function __init__()
-    libjuliahelpers_path[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libjuliahelpers.so"))
-    libffihelpers_path[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libffihelpers.so"))
-    libmwes_path[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libmwes.so"))
-    libjulia[] = dlopen(dlpath("libjulia.so"))
-    libjuliainternal[] = dlopen(dlpath("libjulia-internal.so"))
-    libc[] = dlopen(dlpath("libc.so.6"))
-    libjuliahelpers[] = dlopen(libjuliahelpers_path[])
+    LIBJULIAHELPERS_PATH[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libjuliahelpers.so"))
+    LIBFFIHELPERS_PATH[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libffihelpers.so"))
+    LIBMWES_PATH[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libmwes.so"))
+    LIBJULIA[] = Libdl.dlopen(Libdl.dlpath("libjulia.so"))
+    LIBJULIAINTERNAL[] = Libdl.dlopen(Libdl.dlpath("libjulia-internal.so"))
+    LIBC[] = Libdl.dlopen(Libdl.dlpath("libc.so.6"))
+    LIBJULIAHELPERS[] = Libdl.dlopen(LIBJULIAHELPERS_PATH[])
     init_stencils()
     nothing
 end

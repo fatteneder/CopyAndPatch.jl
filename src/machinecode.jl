@@ -3,7 +3,7 @@ mutable struct MachineCode
     rettype::Any
     argtypes::Vector{Any}
     buf::Vector{UInt8}
-    codeinfo::CodeInfo
+    codeinfo::Core.CodeInfo
     stencil_starts::Vector{Int64}
     slots::Vector{Ptr{UInt64}}
     ssas::Vector{Ptr{UInt64}}
@@ -14,11 +14,11 @@ mutable struct MachineCode
 
     function MachineCode(sz::Integer, @nospecialize(fn),
             @nospecialize(rettype), @nospecialize(argtypes::Tuple),
-            codeinfo::CodeInfo, stencil_starts::Vector{Int64},
+            codeinfo::Core.CodeInfo, stencil_starts::Vector{Int64},
             gc_roots::Vector{Any}=Any[])
         rt = rettype <: Union{} ? Nothing : rettype
         ats = [ at for at in argtypes ]
-        buf = mmap(Vector{UInt8}, sz, shared=false, exec=true)
+        buf = Mmap.mmap(Vector{UInt8}, sz, shared=false, exec=true)
         nslots = length(codeinfo.slotnames)
         nssas = length(codeinfo.ssavaluetypes)
         @assert nssas == length(codeinfo.code)
@@ -29,7 +29,7 @@ mutable struct MachineCode
     end
     function MachineCode(bvec::ByteVector, @nospecialize(fn),
             @nospecialize(rettype), @nospecialize(argtypes::Tuple),
-            codeinfo::CodeInfo, stencil_starts::Vector{Int64},
+            codeinfo::Core.CodeInfo, stencil_starts::Vector{Int64},
             gc_roots::Vector{Any}=Any[])
         mc = MachineCode(length(bvec), fn, rettype, argtypes, codeinfo, stencil_starts; gc_roots)
         copyto!(mc.bvec, 1, bvec, 1, length(bvec))

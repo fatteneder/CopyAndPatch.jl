@@ -11,22 +11,22 @@
 # ---
 # here we define a mapping between julia's native types and ffi's types
 # this should be enough to automatically map the C type alias
-ffi_type(p::Type{Cvoid})      = cglobal((:ffi_type_void,libffi),p)
-ffi_type(p::Type{UInt8})      = cglobal((:ffi_type_uint8,libffi),p)
-ffi_type(p::Type{Int8})       = cglobal((:ffi_type_sint8,libffi),p)
-ffi_type(p::Type{UInt16})     = cglobal((:ffi_type_uint16,libffi),p)
-ffi_type(p::Type{Int16})      = cglobal((:ffi_type_sint16,libffi),p)
-ffi_type(p::Type{UInt32})     = cglobal((:ffi_type_uint32,libffi),p)
-ffi_type(p::Type{Int32})      = cglobal((:ffi_type_sint32,libffi),p)
-ffi_type(p::Type{UInt64})     = cglobal((:ffi_type_uint64,libffi),p)
-ffi_type(p::Type{Int64})      = cglobal((:ffi_type_sint64,libffi),p)
-ffi_type(p::Type{Float32})    = cglobal((:ffi_type_float,libffi),p)
-ffi_type(p::Type{Float64})    = cglobal((:ffi_type_double,libffi),p)
-ffi_type(p::Type{ComplexF32}) = cglobal((:ffi_type_complex_float,libffi),p)
-ffi_type(p::Type{ComplexF64}) = cglobal((:ffi_type_complex_double,libffi),p)
-ffi_type(p::Type{Cstring})    = cglobal((:ffi_type_pointer,libffi),p)
+ffi_type(p::Type{Cvoid})      = cglobal((:ffi_type_void,Libffi_jll.libffi),p)
+ffi_type(p::Type{UInt8})      = cglobal((:ffi_type_uint8,Libffi_jll.libffi),p)
+ffi_type(p::Type{Int8})       = cglobal((:ffi_type_sint8,Libffi_jll.libffi),p)
+ffi_type(p::Type{UInt16})     = cglobal((:ffi_type_uint16,Libffi_jll.libffi),p)
+ffi_type(p::Type{Int16})      = cglobal((:ffi_type_sint16,Libffi_jll.libffi),p)
+ffi_type(p::Type{UInt32})     = cglobal((:ffi_type_uint32,Libffi_jll.libffi),p)
+ffi_type(p::Type{Int32})      = cglobal((:ffi_type_sint32,Libffi_jll.libffi),p)
+ffi_type(p::Type{UInt64})     = cglobal((:ffi_type_uint64,Libffi_jll.libffi),p)
+ffi_type(p::Type{Int64})      = cglobal((:ffi_type_sint64,Libffi_jll.libffi),p)
+ffi_type(p::Type{Float32})    = cglobal((:ffi_type_float,Libffi_jll.libffi),p)
+ffi_type(p::Type{Float64})    = cglobal((:ffi_type_double,Libffi_jll.libffi),p)
+ffi_type(p::Type{ComplexF32}) = cglobal((:ffi_type_complex_float,Libffi_jll.libffi),p)
+ffi_type(p::Type{ComplexF64}) = cglobal((:ffi_type_complex_double,Libffi_jll.libffi),p)
+ffi_type(p::Type{Cstring})    = cglobal((:ffi_type_pointer,Libffi_jll.libffi),p)
 ffi_type(p::Type{Cwstring})   = ffi_type(Ptr{Cwchar_t})
-ffi_type(@nospecialize(p::Type{Ptr{T}})) where T = cglobal((:ffi_type_pointer,libffi),p)
+ffi_type(@nospecialize(p::Type{Ptr{T}})) where T = cglobal((:ffi_type_pointer,Libffi_jll.libffi),p)
 ffi_type(@nospecialize(t))    = (isconcretetype(t)) ? ffi_type_struct(t) : ffi_type(Ptr{Cvoid})
 # Note for AArch64 (from julia/src/ccalltests.c)
 # `i128` is a native type on aarch64 so the type here is wrong.
@@ -42,11 +42,11 @@ ffi_type(@nospecialize(p::Type{<:Array})) = ffi_type(fieldtype(p, :ref))
 ffi_type(@nospecialize(p::Type{<:GenericMemoryRef{<:Any,T,Core.CPU}})) where {T} = ffi_type(Ptr{T})
 
 # wrappers for libffihelper.so
-ffi_default_abi() = @ccall libffihelpers_path[].ffi_default_abi()::Cint
-sizeof_ffi_cif() = @ccall libffihelpers_path[].sizeof_ffi_cif()::Csize_t
-sizeof_ffi_arg() = @ccall libffihelpers_path[].sizeof_ffi_arg()::Csize_t
-sizeof_ffi_type() = @ccall libffihelpers_path[].sizeof_ffi_type()::Csize_t
-ffi_sizeof(p::Ptr) = @ccall libffihelpers_path[].get_size_ffi_type(p::Ptr{Cvoid})::Csize_t
+ffi_default_abi() = @ccall LIBFFIHELPERS_PATH[].ffi_default_abi()::Cint
+sizeof_ffi_cif() = @ccall LIBFFIHELPERS_PATH[].sizeof_ffi_cif()::Csize_t
+sizeof_ffi_arg() = @ccall LIBFFIHELPERS_PATH[].sizeof_ffi_arg()::Csize_t
+sizeof_ffi_type() = @ccall LIBFFIHELPERS_PATH[].sizeof_ffi_type()::Csize_t
+ffi_sizeof(p::Ptr) = @ccall LIBFFIHELPERS_PATH[].get_size_ffi_type(p::Ptr{Cvoid})::Csize_t
 
 const Ctypes = Union{Cchar,Cuchar,Cshort,Cstring,Cushort,Cint,Cuint,Clong,Culong,
                      Clonglong,Culonglong,Cintmax_t,Cuintmax_t,Csize_t,Cssize_t,
@@ -67,13 +67,12 @@ function ffi_type_struct(@nospecialize(t::Type{T})) where T
     end
     elements[end] = C_NULL
     mem_ffi_type = Vector{UInt8}(undef, sizeof_ffi_type())
-    @ccall libffihelpers_path[].setup_ffi_type_struct(mem_ffi_type::Ref{UInt8},
+    @ccall LIBFFIHELPERS_PATH[].setup_ffi_type_struct(mem_ffi_type::Ref{UInt8},
                                                       elements::Ref{Ptr{Cvoid}})::Cvoid
     ffi_offsets = Vector{Csize_t}(undef, n)
     default_abi = ffi_default_abi()
-    status = @ccall libffi_path.ffi_get_struct_offsets(default_abi::Cint,
-                                                       mem_ffi_type::Ref{UInt8},
-                                                       ffi_offsets::Ref{Csize_t})::Cint
+    status = @ccall Libffi_jll.libffi_path.ffi_get_struct_offsets(default_abi::Cint,
+                                    mem_ffi_type::Ref{UInt8}, ffi_offsets::Ref{Csize_t})::Cint
     if status != 0
         msg = "Failed to setup a ffi struct type for $T; ffi_get_struct_offsets returned status "
         if status == 1
@@ -128,7 +127,7 @@ mutable struct Ffi_cif
         mem_cif = Vector{UInt8}(undef, sizeof(UInt8)*sz_cif)
         p_cif = pointer(mem_cif)
         default_abi = ffi_default_abi()
-        status = @ccall libffi_path.ffi_prep_cif(
+        status = @ccall Libffi_jll.libffi_path.ffi_prep_cif(
                                 p_cif::Ptr{Cvoid}, default_abi::Cint, N::Cint,
                                 ffi_rettype::Ptr{Cvoid}, ffi_argtypes::Ptr{Ptr{Cvoid}}
                                 )::Cint
@@ -202,14 +201,14 @@ function ffi_call(cif::Ffi_cif, fn::Ptr{Cvoid}, @nospecialize(args::Vector))
     end
 
     GC.@preserve cif args static_prms mem_ret begin
-        @ccall libffi_path.ffi_call(cif.p::Ptr{Cvoid}, fn::Ptr{Cvoid},
+        @ccall Libffi_jll.libffi_path.ffi_call(cif.p::Ptr{Cvoid}, fn::Ptr{Cvoid},
                                     mem_ret::Ptr{Cvoid}, slots::Ptr{Ptr{Cvoid}})::Cvoid
         return if isbitstype(cif.rettype)
             @ccall jl_new_bits(cif.rettype::Any, mem_ret::Ptr{Cvoid})::Any
         elseif cif.rettype === Any || cif.rettype <: Ref
             unsafe_pointer_to_objref(unsafe_load(Ptr{Ptr{Cvoid}}(pointer(mem_ret))))
         else
-            @ccall libjuliahelpers_path[].jlh_convert_to_jl_value(cif.rettype::Any,
+            @ccall LIBJULIAHELPERS_PATH[].jlh_convert_to_jl_value(cif.rettype::Any,
                                                                   mem_ret::Ptr{Cvoid})::Any
         end
     end

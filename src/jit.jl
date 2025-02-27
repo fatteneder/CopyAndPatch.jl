@@ -25,13 +25,13 @@ end
 
 function jit(@nospecialize(fn), @nospecialize(argtypes::Tuple))
     optimize = true
-    codeinfo, rettype = only(code_typed(fn, argtypes; optimize))
+    codeinfo, rettype = only(Base.code_typed(fn, argtypes; optimize))
     return jit(codeinfo, fn, rettype, argtypes)
 end
 
 
 function get_stencil_name(ex::Expr)
-    if isexpr(ex, :call)
+    if Base.isexpr(ex, :call)
         g = ex.args[1]
         fn = g isa GlobalRef ? unwrap(g) : g
         if fn isa Core.IntrinsicFunction
@@ -39,41 +39,41 @@ function get_stencil_name(ex::Expr)
         else
             return "ast_call"
         end
-    elseif isexpr(ex, :invoke)
+    elseif Base.isexpr(ex, :invoke)
         return "ast_invoke"
-    elseif isexpr(ex, :new)
+    elseif Base.isexpr(ex, :new)
         return "ast_new"
-    elseif isexpr(ex, :foreigncall)
+    elseif Base.isexpr(ex, :foreigncall)
         return "ast_foreigncall"
-    elseif isexpr(ex, :boundscheck)
+    elseif Base.isexpr(ex, :boundscheck)
         return "ast_boundscheck"
-    elseif isexpr(ex, :leave)
+    elseif Base.isexpr(ex, :leave)
         return "ast_leave"
-    elseif isexpr(ex, :pop_exception)
+    elseif Base.isexpr(ex, :pop_exception)
         return "ast_pop_exception"
-    elseif isexpr(ex, :the_exception)
+    elseif Base.isexpr(ex, :the_exception)
         return "ast_the_exception"
-    elseif isexpr(ex, :throw_undef_if_not)
+    elseif Base.isexpr(ex, :throw_undef_if_not)
         return "ast_throw_undef_if_not"
-    elseif isexpr(ex, :meta)
+    elseif Base.isexpr(ex, :meta)
         return "ast_meta"
-    elseif isexpr(ex, :coverageeffect)
+    elseif Base.isexpr(ex, :coverageeffect)
         return "ast_coverageeffect"
-    elseif isexpr(ex, :inbounds)
+    elseif Base.isexpr(ex, :inbounds)
         return "ast_inbounds"
-    elseif isexpr(ex, :loopinfo)
+    elseif Base.isexpr(ex, :loopinfo)
         return "ast_loopinfo"
-    elseif isexpr(ex, :aliasscope)
+    elseif Base.isexpr(ex, :aliasscope)
         return "ast_aliasscope"
-    elseif isexpr(ex, :popaliasscope)
+    elseif Base.isexpr(ex, :popaliasscope)
         return "ast_popaliasscope"
-    elseif isexpr(ex, :inline)
+    elseif Base.isexpr(ex, :inline)
         return "ast_inline"
-    elseif isexpr(ex, :noinline)
+    elseif Base.isexpr(ex, :noinline)
         return "ast_noinline"
-    elseif isexpr(ex, :gc_preserve_begin)
+    elseif Base.isexpr(ex, :gc_preserve_begin)
         return "ast_gc_preserve_begin"
-    elseif isexpr(ex, :gc_preserve_end)
+    elseif Base.isexpr(ex, :gc_preserve_end)
         return "ast_gc_preserve_end"
     else
         TODO("Stencil not implemented yet:", ex)
@@ -118,7 +118,6 @@ end
 #   > f the variable is immutable, then it needs to be wrapped in an equivalent mutable
 #     container or, preferably, in a RefValue{Any} before it is pushed to IdDict.
 #     ...
-# const refs = IdDict()
 function box_arg(@nospecialize(a), mc)
     slots, ssas, static_prms = mc.slots, mc.ssas, mc.static_prms
     if a isa Core.Argument
@@ -310,7 +309,7 @@ function emitcode!(mc, ip, ex::Core.UpsilonNode)
 end
 function emitcode!(mc, ip, ex::Expr)
     st, bvec, _ = get_stencil(ex)
-    if isexpr(ex, :call)
+    if Base.isexpr(ex, :call)
         g = ex.args[1]
         fn = g isa GlobalRef ? unwrap(g) : g
         if fn isa Core.IntrinsicFunction
@@ -344,9 +343,9 @@ function emitcode!(mc, ip, ex::Expr)
         else
             TODO(fn)
         end
-    elseif isexpr(ex, :invoke)
+    elseif Base.isexpr(ex, :invoke)
         mi, g = ex.args[1], ex.args[2]
-        @assert mi isa MethodInstance || mi isa Base.CodeInstance
+        @assert mi isa Core.MethodInstance || mi isa Base.CodeInstance
         ex_args = ex.args
         boxes = box_args(ex_args, mc)
         push!(mc.gc_roots, boxes)
@@ -358,7 +357,7 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NARGS",   nargs)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",     retbox)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT",    pointer(mc.buf, mc.stencil_starts[ip+1]))
-    elseif isexpr(ex, :new)
+    elseif Base.isexpr(ex, :new)
         ex_args = ex.args
         boxes = box_args(ex_args, mc)
         push!(mc.gc_roots, boxes)
@@ -370,11 +369,11 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NARGS",   nargs)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",     retbox)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT",    pointer(mc.buf, mc.stencil_starts[ip+1]))
-    elseif isexpr(ex, :foreigncall)
+    elseif Base.isexpr(ex, :foreigncall)
         fname, libname = if ex.args[1] isa QuoteNode
             ex.args[1].value, nothing
         elseif ex.args[1] isa Expr
-            @assert Base.isexpr(ex.args[1], :call)
+            @assert Base.Base.isexpr(ex.args[1], :call)
             @assert ex.args[1].args[2] isa QuoteNode
             ex.args[1].args[2].value, ex.args[1].args[3]
         elseif ex.args[1] isa Core.SSAValue || ex.args[1] isa Core.Argument
@@ -439,11 +438,11 @@ function emitcode!(mc, ip, ex::Expr)
         static_f = true
         fptr = if isnothing(libname)
             if fname isa Symbol
-                h = dlopen(dlpath("libjulia.so"))
-                p = dlsym(h, fname, throw_error=false)
+                h = Libdl.dlopen(Libdl.dlpath("libjulia.so"))
+                p = Libdl.dlsym(h, fname, throw_error=false)
                 if isnothing(p)
-                    h = dlopen(dlpath("libjulia-internal.so"))
-                    p = dlsym(h, fname)
+                    h = Libdl.dlopen(Libdl.dlpath("libjulia-internal.so"))
+                    p = Libdl.dlsym(h, fname)
                 end
                 p
             else
@@ -454,12 +453,12 @@ function emitcode!(mc, ip, ex::Expr)
             if libname isa GlobalRef
                 libname = unwrap(libname)
             elseif libname isa Expr
-                @assert Base.isexpr(libname, :call)
+                @assert Base.Base.isexpr(libname, :call)
                 # TODO: This is ugly and wrong. @ccall allows for non-constant library names,
                 # cf. issue #36458, also see TODOs in test/ccall.jl
                 libname = (@eval Main, $libname)[2]
             end
-            dlsym(dlopen(libname isa Ref ? libname[] : libname), fname)
+            Libdl.dlsym(Libdl.dlopen(libname isa Ref ? libname[] : libname), fname)
         end
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_ARGS",        pointer(boxes))
@@ -478,13 +477,13 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NARGS",       nargs)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",         retbox)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT",        pointer(mc.buf, mc.stencil_starts[ip+1]))
-    elseif isexpr(ex, :boundscheck)
+    elseif Base.isexpr(ex, :boundscheck)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         ret = pointer(mc.ssas, ip)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
-    elseif isexpr(ex, :leave)
+    elseif Base.isexpr(ex, :leave)
         hand_n_leave = count(ex.args) do a
             a !== nothing && mc.codeinfo.code[a.id] !== nothing
         end
@@ -493,19 +492,19 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_HAND_N_LEAVE", Cint(hand_n_leave))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EXC_THROWN",   pointer_from_objref(mc.exc_thrown))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
-    elseif isexpr(ex, :pop_exception)
+    elseif Base.isexpr(ex, :pop_exception)
         prev_state = pointer(mc.ssas, ex.args[1].id)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",         Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_PREV_STATE", prev_state)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
-    elseif isexpr(ex, :the_exception)
+    elseif Base.isexpr(ex, :the_exception)
         ret = pointer(mc.ssas, ip)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP",   Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
-    elseif isexpr(ex, :throw_undef_if_not)
+    elseif Base.isexpr(ex, :throw_undef_if_not)
         var  = box_arg(ex.args[1], mc)
         cond = box_arg(ex.args[2], mc)
         ret = pointer(mc.ssas, ip)
@@ -515,7 +514,7 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VAR",  var)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET",  ret)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip+1]))
-    elseif any(s -> isexpr(ex, s),
+    elseif any(s -> Base.isexpr(ex, s),
                (:meta, :coverageeffect, :inbounds, :loopinfo, :aliasscope, :popaliasscope,
                 :inline, :noinline, :gc_preserve_begin, :gc_preserve_end)
               )

@@ -140,19 +140,19 @@ struct JIT_ImmutDummy
     x
 end
 function foreign_1(x::Int64)
-    @ccall CopyAndPatch.libmwes_path[].mwe_my_square(x::Int64)::Int64
+    @ccall CopyAndPatch.LIBMWES_PATH[].mwe_my_square(x::Int64)::Int64
 end
 function foreign_2(n::Int64)
-    @ccall CopyAndPatch.libmwes_path[].mwe_foreign_carg_cret(n::Clonglong)::Clonglong
+    @ccall CopyAndPatch.LIBMWES_PATH[].mwe_foreign_carg_cret(n::Clonglong)::Clonglong
 end
 function foreign_3(n::Int64)
-    @ccall CopyAndPatch.libmwes_path[].mwe_foreign_carg_jlret(n::Clonglong)::Any
+    @ccall CopyAndPatch.LIBMWES_PATH[].mwe_foreign_carg_jlret(n::Clonglong)::Any
 end
 function foreign_w_jl_1(n)
-    @ccall CopyAndPatch.libmwes_path[].mwe_foreign_jlarg_cret(n::Any)::Clonglong
+    @ccall CopyAndPatch.LIBMWES_PATH[].mwe_foreign_jlarg_cret(n::Any)::Clonglong
 end
 function foreign_w_jl_2(n)
-    @ccall CopyAndPatch.libmwes_path[].mwe_foreign_jlarg_jlret(n::Any)::Any
+    @ccall CopyAndPatch.LIBMWES_PATH[].mwe_foreign_jlarg_jlret(n::Any)::Any
 end
 @testset ":foreign node" begin
     for f in (foreign_1,foreign_2,foreign_3)
