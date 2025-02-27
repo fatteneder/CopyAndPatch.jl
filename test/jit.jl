@@ -1,9 +1,9 @@
-f1(x) = x+2
-f2(x) = (x+2)*3-x^3
-f3(x) = (x+2)/3
+f1(x) = x + 2
+f2(x) = (x + 2) * 3 - x^3
+f3(x) = (x + 2) / 3
 @testset "intrinsics" begin
-    for T in (Int64,Int32)
-        for (i,f) in enumerate((f1,f2,f3))
+    for T in (Int64, Int32)
+        for (i, f) in enumerate((f1, f2, f3))
             expected = f(one(T))
             try
                 mc = CP.jit(f, (T,))
@@ -18,7 +18,7 @@ f3(x) = (x+2)/3
 end
 
 function mybitcast(x)
-    Core.bitcast(UInt, x)
+    return Core.bitcast(UInt, x)
 end
 @testset "bit" begin
     expected = mybitcast(C_NULL)
@@ -32,20 +32,20 @@ end
     end
 end
 
-@noinline function g(x,y)
+@noinline function g(x, y)
     InteractiveUtils.versioninfo()
-    x + y
+    return x + y
 end
 function f(x)
     InteractiveUtils.versioninfo()
-    g(x,2*x)
+    g(x, 2 * x)
     x += log(x)
-    (x+2)/3
+    return (x + 2) / 3
 end
 @testset "multiple calls" begin
     xx = 1.0
     expected = f(xx)
-    for T in (Int64,Int32)
+    for T in (Int64, Int32)
         expected = f(one(T))
         try
             mc = CP.jit(f, (T,))
@@ -59,10 +59,10 @@ end
 end
 
 function f_println(x)
-    println("sers oida: ", x)
+    return println("sers oida: ", x)
 end
 @testset "println" begin
-    for T in (Int64,Int32)
+    for T in (Int64, Int32)
         try
             io = IOBuffer()
             my_redirect_stdout(io) do
@@ -80,7 +80,7 @@ end
 f(x) = x > 1 ? 1 : 2
 @testset "GotoIfNot" begin
     expected = f(1.0)
-    for T in (Int64,Int32)
+    for T in (Int64, Int32)
         expected = f(one(T))
         try
             mc = CP.jit(f, (T,))
@@ -103,7 +103,7 @@ function f(n)
     return x
 end
 @testset "GotoNode and PhiNode" begin
-    for T in (Int64,Int32)
+    for T in (Int64, Int32)
         expected = f(one(T))
         try
             mc = CP.jit(f, (T,))
@@ -120,7 +120,7 @@ function f(n)
     return 1:n
 end
 @testset ":new node" begin
-    for T in (Int64,Int32)
+    for T in (Int64, Int32)
         expected = f(one(T))
         try
             mc = CP.jit(f, (T,))
@@ -140,22 +140,22 @@ struct JIT_ImmutDummy
     x
 end
 function foreign_1(x::Int64)
-    @ccall CP.LIBMWES_PATH[].mwe_my_square(x::Int64)::Int64
+    return @ccall CP.LIBMWES_PATH[].mwe_my_square(x::Int64)::Int64
 end
 function foreign_2(n::Int64)
-    @ccall CP.LIBMWES_PATH[].mwe_foreign_carg_cret(n::Clonglong)::Clonglong
+    return @ccall CP.LIBMWES_PATH[].mwe_foreign_carg_cret(n::Clonglong)::Clonglong
 end
 function foreign_3(n::Int64)
-    @ccall CP.LIBMWES_PATH[].mwe_foreign_carg_jlret(n::Clonglong)::Any
+    return @ccall CP.LIBMWES_PATH[].mwe_foreign_carg_jlret(n::Clonglong)::Any
 end
 function foreign_w_jl_1(n)
-    @ccall CP.LIBMWES_PATH[].mwe_foreign_jlarg_cret(n::Any)::Clonglong
+    return @ccall CP.LIBMWES_PATH[].mwe_foreign_jlarg_cret(n::Any)::Clonglong
 end
 function foreign_w_jl_2(n)
-    @ccall CP.LIBMWES_PATH[].mwe_foreign_jlarg_jlret(n::Any)::Any
+    return @ccall CP.LIBMWES_PATH[].mwe_foreign_jlarg_jlret(n::Any)::Any
 end
 @testset ":foreign node" begin
-    for f in (foreign_1,foreign_2,foreign_3)
+    for f in (foreign_1, foreign_2, foreign_3)
         try
             expected = f(3)
             mc = CP.jit(f, (Int64,))
@@ -167,8 +167,8 @@ end
         end
     end
 
-    for f in (foreign_w_jl_1,foreign_w_jl_2)
-        for T in (JIT_MutDummy,JIT_ImmutDummy)
+    for f in (foreign_w_jl_1, foreign_w_jl_2)
+        for T in (JIT_MutDummy, JIT_ImmutDummy)
             arg = T(3)
             try
                 expected = f(arg)
@@ -184,7 +184,7 @@ end
 end
 
 function mytuple(n::Int64)
-    tpl = (n,2*n)
+    tpl = (n, 2 * n)
     return tpl
 end
 @testset "make and return tuple" begin
@@ -212,7 +212,7 @@ function foo_no_throw()
         # error() ### disabling error inserts a :leave
     catch
     end
-    (x, y)
+    return (x, y)
 end
 function foo_throw()
     local y
@@ -225,7 +225,7 @@ function foo_throw()
         error()
     catch
     end
-    (x, y)
+    return (x, y)
 end
 function foo_catch()
     local y
@@ -239,7 +239,7 @@ function foo_catch()
     catch e
         x += 2
     end
-    (x, y)
+    return (x, y)
 end
 @testset "exceptions" begin
     try
@@ -305,8 +305,9 @@ end
 
 function f_implicit_block(n)
     p = 2
-    for i in 2*p:p:n
+    for i in (2 * p):p:n
     end
+    return
 end
 @testset "potential bug in implicit block logic in src/interpreter.c" begin
     # see comment about <= vs < in stencils/ast_phinode.c
@@ -360,11 +361,11 @@ end
 function f_avoid_box(n)
     s = 0
     p = 2
-    for i in 2*p:p:n
+    for i in (2 * p):p:n
         println(i)
         s += rand()
     end
-    s
+    return s
 end
 @testset "use value_pointer over box" begin
     # calling f_avoid_box fails to store a box of 1.1102230246251565e-16 inline
@@ -385,9 +386,10 @@ end
 
 function f_undefvar(n)
     p = 2
-    for i in 2*p:p:n
+    for i in (2 * p):p:n
         s += rand()
     end
+    return
 end
 @testset "throw_undef_if_not" begin
     try
@@ -415,7 +417,7 @@ function eratosthenes_sieve(n)
     ms = zeros(Int64, length(qs))
     p = 2
     while true
-        for i in 2*p:p:n
+        for i in (2 * p):p:n
             ms[i] = 1
         end
         next_p = nothing
@@ -428,12 +430,12 @@ function eratosthenes_sieve(n)
         isnothing(next_p) && break
         p = next_p
     end
-    ps = [ q for (i,q) in enumerate(qs) if ms[i] == 0 && q > 1 ]
-    ps
+    ps = [ q for (i, q) in enumerate(qs) if ms[i] == 0 && q > 1 ]
+    return ps
 end
 @testset "Eratosthenes sieve" begin
     n = 30
-    expected = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29 ]
+    expected = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]
     try
         mc = CP.jit(eratosthenes_sieve, (Int64,))
         ret = mc(n)
@@ -446,13 +448,13 @@ end
 
 function f_closure(x)
     function closure()
-        println("hello from the closure, 2x = ", 2*x)
+        return println("hello from the closure, 2x = ", 2 * x)
     end
     closure()
     return closure
 end
 @testset "call and return closure" begin
-    for T in (Int64,Int32)
+    for T in (Int64, Int32)
         try
             io = IOBuffer()
             x = rand(T)
@@ -460,7 +462,7 @@ end
                 mc = CP.jit(f_closure, (T,))
                 ret = mc(x)
             end
-            @test contains(String(take!(io)), "hello from the closure, 2x = $(2*x)")
+            @test contains(String(take!(io)), "hello from the closure, 2x = $(2 * x)")
             # my_redirect_stdout(io) do
             #     ret()
             # end
@@ -477,9 +479,9 @@ function f_vararg(x...)
 end
 @testset "vararg" begin
     try
-        expected = f_vararg(1,2,3)
+        expected = f_vararg(1, 2, 3)
         mc = CP.jit(f_vararg, (Vararg{Int64},))
-        ret = mc((1,2,3))
+        ret = mc((1, 2, 3))
         @test ret == expected
     catch e
         @error "Failed f_vararg()"
