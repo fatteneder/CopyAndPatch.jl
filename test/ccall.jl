@@ -11,8 +11,8 @@ function mimic_test(x)
     return a15
 end
 @testset "mimic ccall test" begin
-    mc = jit(mimic_test, (Int64,))
-    result = CopyAndPatch.call(mc, 132)
+    mc = CP.jit(mimic_test, (Int64,))
+    result = CP.call(mc, 132)
     expected = mimic_test(132)
     # not sure if really broken, and where the initial test came from
     @test_broken result == expected
@@ -27,12 +27,12 @@ function f_ccall_array_double(v::Vector{Float64})
     return @ccall libccalltest.test_sum_vec_double(v::Ref{Cdouble}, n::Cint)::Cdouble
 end
 @testset "test ccall array argument" begin
-    mc = jit(f_ccall_array_int, (Vector{Int32},))
-    result = CopyAndPatch.call(mc, Int32[1,2,3])
+    mc = CP.jit(f_ccall_array_int, (Vector{Int32},))
+    result = CP.call(mc, Int32[1,2,3])
     expected = f_ccall_array_int(Int32[1,2,3])
     @test result == expected
-    mc = jit(f_ccall_array_double, (Vector{Float64},))
-    result = CopyAndPatch.call(mc, Float64[1,2,3])
+    mc = CP.jit(f_ccall_array_double, (Vector{Float64},))
+    result = CP.call(mc, Float64[1,2,3])
     expected = f_ccall_array_double(Float64[1,2,3])
     @test result == expected
 end
@@ -60,8 +60,8 @@ function gen_ccall_echo(x, T, U, ret=nothing)
     @gensym func_name
     @eval @noinline $func_name(x) = $func_ex
     esc(quote
-            mc = jit($func_name, (typeof($x),))
-            CopyAndPatch.call(mc, $x)
+            mc = CP.jit($func_name, (typeof($x),))
+            CP.call(mc, $x)
     end)
     # :($func_name($(esc(x))))
 end
@@ -105,7 +105,7 @@ let a, ci_ary, x
     a = 20 + 51im
 
     ctest(a) = ccall((:ctest, libccalltest), Complex{Int}, (Complex{Int},), a)
-    mc = jit(ctest, (typeof(a),))
+    mc = CP.jit(ctest, (typeof(a),))
     x = mc(a)
 
     @test x == a + 1 - 2im
@@ -113,14 +113,14 @@ let a, ci_ary, x
     ci_ary = [a] # Make sure the array is alive during unsafe_load
     cptest(ci_ary) = unsafe_load(ccall((:cptest, libccalltest), Ptr{Complex{Int}},
                                  (Ptr{Complex{Int}},), ci_ary))
-    mc = jit(cptest, (typeof(ci_ary),))
+    mc = CP.jit(cptest, (typeof(ci_ary),))
     x = mc(ci_ary)
 
     @test x == a + 1 - 2im
     @test a == 20 + 51im
 
     cptest_static(a) = ccall((:cptest_static, libccalltest), Ptr{Complex{Int}}, (Ref{Complex{Int}},), a)
-    mc = jit(cptest_static, (typeof(a),))
+    mc = CP.jit(cptest_static, (typeof(a),))
     x = mc(a)
     @test unsafe_load(x) == a
     @assert x !== C_NULL
@@ -131,14 +131,14 @@ let a, b, x
     a = 2.84 + 5.2im
 
     cgtest(a) = ccall((:cgtest, libccalltest), ComplexF64, (ComplexF64,), a)
-    mc = jit(cgtest, (typeof(a),))
+    mc = CP.jit(cgtest, (typeof(a),))
     x = mc(a)
 
     @test x == a + 1 - 2im
 
     b = [a] # Make sure the array is alive during unsafe_load
     cgptest(b) = unsafe_load(ccall((:cgptest, libccalltest), Ptr{ComplexF64}, (Ptr{ComplexF64},), b))
-    mc = jit(cgptest, (typeof(b),))
+    mc = CP.jit(cgptest, (typeof(b),))
     x = mc(b)
 
     @test x == a + 1 - 2im
@@ -149,14 +149,14 @@ let a, b, x
     a = 3.34f0 + 53.2f0im
 
     cftest(a) = ccall((:cftest, libccalltest), ComplexF32, (ComplexF32,), a)
-    mc = jit(cftest, (typeof(a),))
+    mc = CP.jit(cftest, (typeof(a),))
     x = mc(a)
 
     @test x == a + 1 - 2im
 
     b = [a] # Make sure the array is alive during unsafe_load
     cfptest(b) = unsafe_load(ccall((:cfptest, libccalltest), Ptr{ComplexF32}, (Ptr{ComplexF32},), b))
-    mc = jit(cfptest, (typeof(b),))
+    mc = CP.jit(cfptest, (typeof(b),))
     x = mc(b)
 
     @test x == a + 1 - 2im
@@ -170,7 +170,7 @@ let a
     a = 2.84 + 5.2im
 
     cptest(a) = ccall((:cptest, libccalltest), Ptr{Complex{Int}}, (Ptr{Complex{Int}},), a)
-    mc = jit(cptest, (typeof(a),))
+    mc = CP.jit(cptest, (typeof(a),))
     @test_throws MethodError mc(a)
 end
 
@@ -197,10 +197,10 @@ for Struct in (Struct1,Struct1I)
 
     a2 = copy(a)
     if Struct === Struct1
-        mc = jit(test_1_Struct1, (typeof(a2),typeof(b)))
+        mc = CP.jit(test_1_Struct1, (typeof(a2),typeof(b)))
         x = mc(a2, b)
     else
-        mc = jit(test_1_Struct1I, (typeof(a2),typeof(b)))
+        mc = CP.jit(test_1_Struct1I, (typeof(a2),typeof(b)))
         x = mc(a2, b)
     end
 
@@ -218,7 +218,7 @@ let a, b, x
     a2 = copy(a)
 
     test_1long_a(a2,b) = ccall((:test_1long_a, libccalltest), Struct1, (Int, Int, Int, Struct1, Float32), 2, 3, 4, a2, b)
-    mc = jit(test_1long_a, (typeof(a2),typeof(b)))
+    mc = CP.jit(test_1long_a, (typeof(a2),typeof(b)))
     x = mc(a2, b)
     @test a2.x == a.x && a2.y == a.y
     @test !(a2 === x)
@@ -226,7 +226,7 @@ let a, b, x
     @test x.y ≈ a.y - 2*b
 
     test_1long_b(a2,b) = ccall((:test_1long_b, libccalltest), Struct1, (Int, Float64, Int, Struct1, Float32), 2, 3, 4, a2, b)
-    mc = jit(test_1long_b, (typeof(a2),typeof(b)))
+    mc = CP.jit(test_1long_b, (typeof(a2),typeof(b)))
     x = mc(a2, b)
     @test a2.x == a.x && a2.y == a.y
     @test !(a2 === x)
@@ -234,7 +234,7 @@ let a, b, x
     @test x.y ≈ a.y - 2*b
 
     test_1long_c(a2,b) = ccall((:test_1long_c, libccalltest), Struct1, (Int, Float64, Int, Int, Struct1, Float32), 2, 3, 4, 5, a2, b)
-    mc = jit(test_1long_c, (typeof(a2),typeof(b)))
+    mc = CP.jit(test_1long_c, (typeof(a2),typeof(b)))
     x = mc(a2, b)
     @test a2.x == a.x && a2.y == a.y
     @test !(a2 === x)
@@ -248,9 +248,9 @@ let a, b, x, y
 
     test_2a(a,b) = ccall((:test_2a, libccalltest), Complex{Int32}, (Complex{Int32}, Int32), a, b)
     test_2b(a,b) = ccall((:test_2b, libccalltest), Complex{Int32}, (Complex{Int32}, Int32), a, b)
-    mc = jit(test_2a, (typeof(a),typeof(b)))
+    mc = CP.jit(test_2a, (typeof(a),typeof(b)))
     x = mc(a,b)
-    mc = jit(test_2b, (typeof(a),typeof(b)))
+    mc = CP.jit(test_2b, (typeof(a),typeof(b)))
     y = mc(a,b)
 
     @test a == Complex{Int32}(Int32(10),Int32(31))
@@ -266,11 +266,11 @@ let a, b, x, y, z
     test_3a(a,b) = ccall((:test_3a, libccalltest), Complex{Int64}, (Complex{Int64}, Int64), a, b)
     test_3b(a,b) = ccall((:test_3b, libccalltest), Complex{Int64}, (Complex{Int64}, Int64), a, b)
     test_128(a,b) = ccall((:test_128, libccalltest), Complex{Int64}, (Complex{Int64}, Int64), a, b)
-    mc = jit(test_3a, (typeof(a),typeof(b)))
+    mc = CP.jit(test_3a, (typeof(a),typeof(b)))
     x = mc(a,b)
-    mc = jit(test_3b, (typeof(a),typeof(b)))
+    mc = CP.jit(test_3b, (typeof(a),typeof(b)))
     y = mc(a,b)
-    mc = jit(test_128, (typeof(a),typeof(b)))
+    mc = CP.jit(test_128, (typeof(a),typeof(b)))
     z = mc(a,b)
 
     @test a == Complex{Int64}(Int64(20),Int64(51))
@@ -300,10 +300,10 @@ for Struct in (Struct4,Struct4I)
     b = Int32(42)
 
     if Struct === Struct4
-        mc = jit(test_4_Struct4, (typeof(a),typeof(b)))
+        mc = CP.jit(test_4_Struct4, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
-        mc = jit(test_4_Struct4I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_4_Struct4I, (typeof(a),typeof(b)))
         x = mc(a,b)
     end
 
@@ -334,10 +334,10 @@ for Struct in (Struct5,Struct5I)
     b = Int32(42)
 
     if Struct === Struct5
-        mc = jit(test_5_Struct5, (typeof(a),typeof(b)))
+        mc = CP.jit(test_5_Struct5, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
-        mc = jit(test_5_Struct5I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_5_Struct5I, (typeof(a),typeof(b)))
         x = mc(a,b)
     end
 
@@ -367,10 +367,10 @@ for Struct in (Struct6,Struct6I)
     b = Int64(42)
 
     if Struct === Struct6
-        mc = jit(test_6_Struct6, (typeof(a),typeof(b)))
+        mc = CP.jit(test_6_Struct6, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
-        mc = jit(test_6_Struct6I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_6_Struct6I, (typeof(a),typeof(b)))
         x = mc(a,b)
     end
 
@@ -397,10 +397,10 @@ for Struct in (Struct7,Struct7I)
     b = Int8(42)
 
     if Struct === Struct7
-        mc = jit(test_7_Struct7, (typeof(a),typeof(b)))
+        mc = CP.jit(test_7_Struct7, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
-        mc = jit(test_7_Struct7I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_7_Struct7I, (typeof(a),typeof(b)))
         x = mc(a,b)
     end
 
@@ -426,10 +426,10 @@ for Struct in (Struct8,Struct8I)
     b = Int8(42)
 
     if Struct === Struct8
-        mc = jit(test_8_Struct8, (typeof(a),typeof(b)))
+        mc = CP.jit(test_8_Struct8, (typeof(a),typeof(b)))
         r8 = mc(a,b)
     else
-        mc = jit(test_8_Struct8I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_8_Struct8I, (typeof(a),typeof(b)))
         r8 = mc(a,b)
     end
 
@@ -455,10 +455,10 @@ for Struct in (Struct9,Struct9I)
     b = Int16(42)
 
     if Struct === Struct9
-        mc = jit(test_9_Struct9, (typeof(a),typeof(b)))
+        mc = CP.jit(test_9_Struct9, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
-        mc = jit(test_9_Struct9I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_9_Struct9I, (typeof(a),typeof(b)))
         x = mc(a,b)
     end
 
@@ -488,10 +488,10 @@ for Struct in (Struct10,Struct10I)
     b = Int8(2)
 
     if Struct === Struct10
-        mc = jit(test_10_Struct10, (typeof(a),typeof(b)))
+        mc = CP.jit(test_10_Struct10, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
-        mc = jit(test_10_Struct10I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_10_Struct10I, (typeof(a),typeof(b)))
         x = mc(a,b)
     end
 
@@ -517,10 +517,10 @@ for Struct in (Struct11,Struct11I)
     b = Float32(42)
 
     if Struct === Struct11
-        mc = jit(test_11_Struct11, (typeof(a),typeof(b)))
+        mc = CP.jit(test_11_Struct11, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
-        mc = jit(test_11_Struct11I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_11_Struct11I, (typeof(a),typeof(b)))
         x = mc(a,b)
     end
 
@@ -545,10 +545,10 @@ for Struct in (Struct12,Struct12I)
     b = Float32(42)
 
     if Struct === Struct12
-        mc = jit(test_12_Struct12, (typeof(a),typeof(b)))
+        mc = CP.jit(test_12_Struct12, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
-        mc = jit(test_12_Struct12I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_12_Struct12I, (typeof(a),typeof(b)))
         x = mc(a,b)
     end
 
@@ -572,10 +572,10 @@ for Struct in (Struct13,Struct13I)
     b = Float64(42)
 
     if Struct === Struct13
-        mc = jit(test_13_Struct13, (typeof(a),typeof(b)))
+        mc = CP.jit(test_13_Struct13, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
-        mc = jit(test_13_Struct13I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_13_Struct13I, (typeof(a),typeof(b)))
         x = mc(a,b)
     end
 
@@ -600,10 +600,10 @@ for Struct in (Struct14,Struct14I)
     b = Float32(42)
 
     if Struct === Struct14
-        mc = jit(test_14_Struct14, (typeof(a),typeof(b)))
+        mc = CP.jit(test_14_Struct14, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
-        mc = jit(test_14_Struct14I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_14_Struct14I, (typeof(a),typeof(b)))
         x = mc(a,b)
     end
 
@@ -629,10 +629,10 @@ for Struct in (Struct15,Struct15I)
     b = Float64(42)
 
     if Struct === Struct15
-        mc = jit(test_15_Struct15, (typeof(a),typeof(b)))
+        mc = CP.jit(test_15_Struct15, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
-        mc = jit(test_15_Struct15I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_15_Struct15I, (typeof(a),typeof(b)))
         x = mc(a,b)
     end
 
@@ -671,14 +671,14 @@ for (Struct,quoteplz) in [(Struct16,false),
     b = Float32(42)
 
     if Struct === Struct16
-        mc = jit(test_16_Struct16, (typeof(a),typeof(b)))
+        mc = CP.jit(test_16_Struct16, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
         if quoteplz
-            mc = jit(test_16_Struct16I_quoteplz, (typeof(a),))
+            mc = CP.jit(test_16_Struct16I_quoteplz, (typeof(a),))
             x = mc(a,b)
         else
-            mc = jit(test_16_Struct16I, (typeof(a),typeof(b)))
+            mc = CP.jit(test_16_Struct16I, (typeof(a),typeof(b)))
             x = mc(a,b)
         end
     end
@@ -709,10 +709,10 @@ for Struct in (Struct17,Struct17I)
     b = Int8(2)
 
     if Struct === Struct17
-        mc = jit(test_17_Struct17, (typeof(a),typeof(b)))
+        mc = CP.jit(test_17_Struct17, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
-        mc = jit(test_17_Struct17I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_17_Struct17I, (typeof(a),typeof(b)))
         x = mc(a,b)
     end
 
@@ -740,10 +740,10 @@ for Struct in (Struct18,Struct18I)
     b = Int8(2)
 
     if Struct === Struct18
-        mc = jit(test_18_Struct18, (typeof(a),typeof(b)))
+        mc = CP.jit(test_18_Struct18, (typeof(a),typeof(b)))
         x = mc(a,b)
     else
-        mc = jit(test_18_Struct18I, (typeof(a),typeof(b)))
+        mc = CP.jit(test_18_Struct18I, (typeof(a),typeof(b)))
         x = mc(a,b)
     end
 
@@ -758,7 +758,7 @@ let a, b, x
     b = Int64(1)
 
     test_128(a,b) = ccall((:test_128, libccalltest), Int128, (Int128, Int64), a, b)
-    mc = jit(test_128, (typeof(a),typeof(b)))
+    mc = CP.jit(test_128, (typeof(a),typeof(b)))
     x = mc(a,b)
 
     @test x == a + b*1
@@ -786,10 +786,10 @@ for Struct in (Struct_Big,Struct_BigI)
     a2 = copy(a)
 
     if Struct == Struct_Big
-        mc = jit(test_big_Struct_Big, (typeof(a2),))
+        mc = CP.jit(test_big_Struct_Big, (typeof(a2),))
         x = mc(a2)
     else
-        mc = jit(test_big_Struct_BigI, (typeof(a2),))
+        mc = CP.jit(test_big_Struct_BigI, (typeof(a2),))
         x = mc(a2)
     end
 
@@ -804,7 +804,7 @@ let a, a2, x
     a = Struct_Big(424,-5,Int8('Z'))
     a2 = copy(a)
     test_big_long(a2) = ccall((:test_big_long, libccalltest), Struct_Big, (Int, Int, Int, Struct_Big,), 2, 3, 4, a2)
-    mc = jit(test_big_long, (typeof(a2),))
+    mc = CP.jit(test_big_long, (typeof(a2),))
     x = mc(a2)
     @test a2.x == a.x && a2.y == a.y && a2.z == a.z
     @test x.x == a.x + 10
@@ -879,7 +879,7 @@ macro test_huge(i, b, init)
         let a = $ty($(esc(init))...), f
             f(b) = ccall(($f, libccalltest), $ty, (Cchar, $ty, Cchar), '0' + $i, a, $b[1])
             #code_llvm(f, typeof((a,)))
-            mc = jit(f, (typeof(a),))
+            mc = CP.jit(f, (typeof(a),))
             verify_huge($ty($(esc(init))...), a, mc(a))
         end
     end
@@ -909,7 +909,7 @@ foo13031(x) = Cint(1)
 simple_foo13031p = @cfunction(foo13031, Cint, (Cint,))
 simple_test_foo13031p(x) = ccall(simple_foo13031p, Cint, (Cint,), x)
 let
-    mc = jit(simple_test_foo13031p, (Cint,))
+    mc = CP.jit(simple_test_foo13031p, (Cint,))
     @test mc(Cint(1)) == Cint(1)
 end
 
@@ -918,7 +918,7 @@ foo13031(x) = Cint(1)
 foo13031p = @cfunction(foo13031, Cint, (Ref{Tuple{}},))
 test_foo13031p() = ccall(foo13031p, Cint, (Ref{Tuple{}},), ())
 let
-    mc = jit(test_foo13031p, ())
+    mc = CP.jit(test_foo13031p, ())
     @test mc() == Cint(1)
 end
 
@@ -926,7 +926,7 @@ foo13031(x,y,z) = z
 foo13031p = @cfunction(foo13031, Cint, (Ref{Tuple{}}, Ref{Tuple{}}, Cint))
 test_foo13031p(x) = ccall(foo13031p, Cint, (Ref{Tuple{}},Ref{Tuple{}},Cint), (), (), x)
 let
-    mc = jit(test_foo13031p, (Cint,))
+    mc = CP.jit(test_foo13031p, (Cint,))
     @test mc(Cint(8)) == Cint(8)
 end
 
@@ -936,7 +936,7 @@ unstable26078(x) = x > 0 ? x : "foo"
 handle26078 = @cfunction(unstable26078, Int32, (Int32,))
 test_handle26078(x) = ccall(handle26078, Int32, (Int32,), x)
 let
-    mc = jit(test_handle26078, (Int32,))
+    mc = CP.jit(test_handle26078, (Int32,))
     @test mc(Int32(1)) == 1
 end
 
@@ -944,13 +944,13 @@ end
 let f = @cfunction(Base.last, String, (Tuple{Int,String},))
     # String inside a struct is a pointer even though String.size == 0
     test(tpl) = ccall(f, Ref{String}, (Tuple{Int,String},), tpl)
-    mc = jit(test, (Tuple{Int,String},))
+    mc = CP.jit(test, (Tuple{Int,String},))
     @test mc((1, "a string?")) === "a string?"
 end
 
 test_isa(x::Any) = isa(x, Ptr{Cvoid})
 let
-    mc = jit(test_isa, (Any,))
+    mc = CP.jit(test_isa, (Any,))
     @test mc(C_NULL) == true
     @test mc(nothing) == false
 end
@@ -961,7 +961,7 @@ function ccall_reassigned_ptr(ptr::Ptr{Cvoid})
     ccall(ptr, Any, (Any,), "foo")
 end
 let
-    mc = jit(ccall_reassigned_ptr, (Ptr{Cvoid},))
+    mc = CP.jit(ccall_reassigned_ptr, (Ptr{Cvoid},))
     @test mc(C_NULL) == "foo"
 end
 
@@ -973,9 +973,9 @@ end
 #     @threadcall((:testUcharX, libccalltest), Int32, (UInt8,), x % UInt8)
 #
 # let
-#     mc = jit(threadcall_test_func, (Int64,))
+#     mc = CP.jit(threadcall_test_func, (Int64,))
 #     @test mc(3) == 1
-#     mc = jit(threadcall_test_func, (Int64,))
+#     mc = CP.jit(threadcall_test_func, (Int64,))
 #     @test mc(259) == 1
 # end
 #
@@ -1017,7 +1017,7 @@ end
 let A = [1]
     ccall((:set_c_int, libccalltest), Cvoid, (Cint,), 1)
     test_get_c_int() = ccall((:get_c_int, libccalltest), Cint, ())
-    mc = jit(test_get_c_int, ())
+    mc = CP.jit(test_get_c_int, ())
     @test mc() == 1
     finalizer(cglobal((:finalizer_cptr, libccalltest), Cvoid), A)
     finalize(A)
@@ -1045,7 +1045,7 @@ end
 # end
 # test_f17204() = ccall(@cfunction(f17204, Vector{Any}, (Vector{Any},)), Vector{Any}, (Vector{Any},), Any[1:10;])
 # let
-#     mc = jit(test_f17204, ())
+#     mc = CP.jit(test_f17204, ())
 #     @test mc() == Any[11:20;]
 # end
 
@@ -1056,7 +1056,7 @@ end
 @inline f17413() = (g17413(); g17413())
 test_f17413() = ccall((:test_echo_p, libccalltest), Ptr{Cvoid}, (Any,), f17413())
 let
-    mc = jit(test_f17413, ())
+    mc = CP.jit(test_f17413, ())
     mc()
     for i in 1:3
         mc()
@@ -1068,16 +1068,16 @@ let r = Ref{Any}(10)
         pa = Base.unsafe_convert(Ptr{Any}, r) # pointer to value
         pv = Base.unsafe_convert(Ptr{Cvoid}, r) # pointer to data
         f1(pa) = Ptr{Cvoid}(pa)
-        mc = jit(f1, (typeof(pa),))
+        mc = CP.jit(f1, (typeof(pa),))
         @test mc(pa) != pv
         f2(pa) = unsafe_load(pa)
-        mc = jit(f2, (typeof(pa),))
+        mc = CP.jit(f2, (typeof(pa),))
         @test mc(pa) === 10
         f3(pa) = unsafe_load(Ptr{Ptr{Cvoid}}(pa))
-        mc = jit(f3, (typeof(pa),))
+        mc = CP.jit(f3, (typeof(pa),))
         @test mc(pa) === pv
         f4(pv) = unsafe_load(Ptr{Int}(pv))
-        mc = jit(f4, (typeof(pv),))
+        mc = CP.jit(f4, (typeof(pv),))
         @test mc(pv) === 10
     end
 end
@@ -1087,16 +1087,16 @@ let r = Ref{Any}("123456789")
         pa = Base.unsafe_convert(Ptr{Any}, r) # pointer to value
         pv = Base.unsafe_convert(Ptr{Cvoid}, r) # pointer to data
         f1(pa) = Ptr{Cvoid}(pa)
-        mc = jit(f1, (typeof(pa),))
+        mc = CP.jit(f1, (typeof(pa),))
         @test mc(pa) != pv
         f2(pa) = unsafe_load(pa)
-        mc = jit(f2, (typeof(pa),))
+        mc = CP.jit(f2, (typeof(pa),))
         @test mc(pa) === r[]
         f3(pa) = unsafe_load(Ptr{Ptr{Cvoid}}(pa))
-        mc = jit(f3, (typeof(pa),))
+        mc = CP.jit(f3, (typeof(pa),))
         @test mc(pa) === pv
         f4(pv) = unsafe_load(Ptr{Int}(pv))
-        mc = jit(f4, (typeof(pv),))
+        mc = CP.jit(f4, (typeof(pv),))
         @test mc(pv) === length(r[])
     end
 end
@@ -1128,14 +1128,14 @@ macro test_spill_n(n::Int, intargs, floatargs)
                                ($((:(Ref{Cint}) for j in 1:n)...), SpillPint),
                                 $(args...))
         $(unpack_args_int...)
-        mc = jit(f1, typeof.(tuple($(unpack_args_int...))))
+        mc = CP.jit(f1, typeof.(tuple($(unpack_args_int...))))
         @test mc($(args...)) == sum(ints[1:($n+2)])
 
         f2($(args...)) = ccall(($(QuoteNode(fname_float)), libccalltest), Float32,
                                ($((:Float32 for j in 1:n)...), NTuple{2,Float32}),
                                 $(args...))
         $(unpack_args_float...)
-        mc = jit(f1, typeof.(tuple($(unpack_args_float...))))
+        mc = CP.jit(f1, typeof.(tuple($(unpack_args_float...))))
         @test mc($(args...)) == sum(floats[1:($n+2)])
     end
 end
@@ -1160,7 +1160,7 @@ for i in 1:10
                 intargs[5], intargs[6], intargs[7], intargs[8],
                 intargs[9], intargs[10], intargs[11], intargs[12],
                 intargs[13], intargs[14])
-    mc = jit(test_long_args_intp, (typeof(intargs),))
+    mc = CP.jit(test_long_args_intp, (typeof(intargs),))
     @test mc(intargs) == intsum
     test_long_args_int(intargs) = ccall((:test_long_args_int, libccalltest), Cint,
                 (Cint, Cint, Cint, Cint, Cint, Cint, Cint, Cint,
@@ -1169,7 +1169,7 @@ for i in 1:10
                 intargs[5], intargs[6], intargs[7], intargs[8],
                 intargs[9], intargs[10], intargs[11], intargs[12],
                 intargs[13], intargs[14])
-    mc = jit(test_long_args_int, (typeof(intargs),))
+    mc = CP.jit(test_long_args_int, (typeof(intargs),))
     @test mc(intargs) == intsum
     test_long_args_float(floatargs) = ccall((:test_long_args_float, libccalltest), Float32,
                 (Float32, Float32, Float32, Float32, Float32, Float32,
@@ -1179,7 +1179,7 @@ for i in 1:10
                 floatargs[5], floatargs[6], floatargs[7], floatargs[8],
                 floatargs[9], floatargs[10], floatargs[11], floatargs[12],
                 floatargs[13], floatargs[14])
-    mc = jit(test_long_args_float, (typeof(floatargs),))
+    mc = CP.jit(test_long_args_float, (typeof(floatargs),))
     @test mc(floatargs) ≈ float32sum
     test_long_args_double(floatargs) = ccall((:test_long_args_double, libccalltest), Float64,
                 (Float64, Float64, Float64, Float64, Float64, Float64,
@@ -1189,7 +1189,7 @@ for i in 1:10
                 floatargs[5], floatargs[6], floatargs[7], floatargs[8],
                 floatargs[9], floatargs[10], floatargs[11], floatargs[12],
                 floatargs[13], floatargs[14])
-    mc = jit(test_long_args_double, (typeof(floatargs),))
+    mc = CP.jit(test_long_args_double, (typeof(floatargs),))
     @test mc(floatargs) ≈ float64sum
 
     @test_spill_n 1 int32args float32args
@@ -1224,7 +1224,7 @@ function caller22734(ptr)
     ccall(ptr, Float64, (Ref{Abstract22734},), obj)
 end
 let
-    mc = jit(caller22734, (typeof(ptr22734),))
+    mc = CP.jit(caller22734, (typeof(ptr22734),))
     @test mc(ptr22734) === 32.0
 end
 
@@ -1237,14 +1237,14 @@ end
 # let ptr = @cfunction(identity, NonBits46786, (NonBits46786,))
 #     obj1 = NonBits46786((0x01,0x02,0x03))
 #     test_obj2(obj1) = ccall(ptr, NonBits46786, (NonBits46786,), obj1)
-#     mc = jit(test_obj2, (typeof(obj1),))
+#     mc = CP.jit(test_obj2, (typeof(obj1),))
 #     obj2 = mc(obj1)
 #     @test obj1 === obj2
 # end
 # let ptr = @cfunction(identity, Base.RefValue{NonBits46786}, (Base.RefValue{NonBits46786},))
 #     obj1 = Base.RefValue(NonBits46786((0x01,0x02,0x03)))
 #     test_obj2(obj1) = ccall(ptr, Base.RefValue{NonBits46786}, (Base.RefValue{NonBits46786},), obj1)
-#     mc = jit(test_obj2, (typeof(obj1),))
+#     mc = CP.jit(test_obj2, (typeof(obj1),))
 #     obj2 = mc(obj1)
 #     # @test obj1 !== obj2
 #     # @test obj1.x === obj2.x
@@ -1262,7 +1262,7 @@ end
 # end
 # let
 #     cglobal26297() = @cglobal26297(:global_var)
-#     mc = jit(cglobal26297, ())
+#     mc = CP.jit(cglobal26297, ())
 #     @test mc() != C_NULL
 # end
 
@@ -1277,7 +1277,7 @@ test27477() = ccall((:ctest, Pkg27477.libccalltest), Complex{Int}, (Complex{Int}
 end
 
 let
-    mc = jit(Test27477.test27477, ())
+    mc = CP.jit(Test27477.test27477, ())
     @test mc() == 2 + 0im
 end
 
@@ -1294,7 +1294,7 @@ end
 #         ptr = eval(:(ccall(:memcpy, Ptr{Cvoid}, (Ptr{Cvoid}, Ptr{Cvoid}, UInt), $(arr), $(a), $(nba))))
 #         ptr, arr
 #     end
-#     mc = jit(f31073, ())
+#     mc = CP.jit(f31073, ())
 #     ptr, arr = mc()
 #     @test isa(ptr, Ptr{Cvoid})
 #     @test arr[1] == '0'
@@ -1308,7 +1308,7 @@ let
         return dest
     end
     dest = zeros(UInt8, 8)
-    mc = jit(f38751!, (Vector{UInt8}, Vector{UInt8}, UInt))
+    mc = CP.jit(f38751!, (Vector{UInt8}, Vector{UInt8}, UInt))
     @test mc(dest, collect(0x1:0x8), UInt(8)) == 0x1:0x8
     llvm = sprint(code_llvm, f38751!, (Vector{UInt8}, Vector{UInt8}, UInt))
     @test !occursin("call void inttoptr", llvm)
@@ -1333,19 +1333,19 @@ let
 
     src  = Ref((1,2,3))
     test_memcpy_1(dest,src) = ccall(:memcpy, Ptr{Cvoid}, (Ptr{Int}, Ptr{Int}, Csize_t), dest, src, 3*sizeof(Int))
-    mc = jit(test_memcpy_1, (typeof(dest),typeof(src)))
+    mc = CP.jit(test_memcpy_1, (typeof(dest),typeof(src)))
     mc(dest,src)
     @test dest[] == (1,2,3)
 
     src  = Ref((4,5,6))
     test_memcpy_2(dest,src) = ccall(:memcpy, Ptr{Cvoid}, (Ref{Int}, Ref{Int}, Csize_t), dest, src, 3*sizeof(Int))
-    mc = jit(test_memcpy_2, (typeof(dest),typeof(src)))
+    mc = CP.jit(test_memcpy_2, (typeof(dest),typeof(src)))
     mc(dest,src)
     @test dest[] == (4,5,6)
 
     src  = (7,8,9)
     test_memcpy_3(dest,src) = ccall(:memcpy, Ptr{Cvoid}, (Ref{Int}, Ref{Int}, Csize_t), dest, src, 3*sizeof(Int))
-    mc = jit(test_memcpy_3, (typeof(dest),typeof(src)))
+    mc = CP.jit(test_memcpy_3, (typeof(dest),typeof(src)))
     mc(dest,src)
     @test dest[] == (7,8,9)
 end
@@ -1355,7 +1355,7 @@ end
 # call some c functions
 @testset "run @ccall with C standard library functions" begin
     test_at_ccall_1() = @ccall(sqrt(4.0::Cdouble)::Cdouble)
-    mc = jit(test_at_ccall_1, ())
+    mc = CP.jit(test_at_ccall_1, ())
     @test mc() == 2.0
 
     str = "hello"
@@ -1366,7 +1366,7 @@ end
     end
     buf = C_NULL
     try
-      mc = jit(test_at_ccall_2, (typeof(str),))
+      mc = CP.jit(test_at_ccall_2, (typeof(str),))
       buf = mc(str)
       @test unsafe_string(buf) == str
     finally
@@ -1376,13 +1376,13 @@ end
     # test pointer interpolation
     str_identity = @cfunction(identity, Cstring, (Cstring,))
     test_at_ccall_3() = @ccall $str_identity("foo"::Cstring)::Cstring
-    mc = jit(test_at_ccall_3, ())
+    mc = CP.jit(test_at_ccall_3, ())
     foo = mc()
     @test unsafe_string(foo) == "foo"
     # TODO Depends on interpolation of @cfunction
     # # test interpolation of an expression that returns a pointer.
     # test_at_ccall_4() = @ccall $(@cfunction(identity, Cstring, (Cstring,)))("foo"::Cstring)::Cstring
-    # mc = jit(test_at_ccall_4, ())
+    # mc = CP.jit(test_at_ccall_4, ())
     # foo = mc()
     # @test unsafe_string(foo) == "foo"
 
@@ -1399,7 +1399,7 @@ end
         1.1::Cfloat, 2.2::Cfloat, 3.3::Cfloat, 4.4::Cfloat, 5.5::Cfloat, 6.6::Cfloat, 7.7::Cfloat, 8.8::Cfloat, 9.9::Cfloat,
         )::Cint
     end
-    mc = jit(test_at_ccall_5, ())
+    mc = CP.jit(test_at_ccall_5, ())
     len = mc()
     str = unsafe_string(strp[], len)
     @ccall free(strp[]::Cstring)::Cvoid
@@ -1415,7 +1415,7 @@ end
             @ccall swprintf(buffer::Ptr{Cwchar_t}, length(buffer)::Csize_t, "α+%ls=%hhd"::Cwstring; "β"::Cwstring, 0xf::UInt8)::Cint
         end
     end
-    mc = jit(test_cwstring, (typeof(buffer),))
+    mc = CP.jit(test_cwstring, (typeof(buffer),))
     len = mc(buffer)
     Libc.systemerror("swprintf", len < 0)
     str = GC.@preserve buffer unsafe_string(pointer(buffer), len)
@@ -1431,11 +1431,11 @@ end
 # compute_lib_name() = "libcc" * "alltest"
 # let
 #     ccall_lazy_lib_name(x) = ccall((:testUcharX, compute_lib_name()), Int32, (UInt8,), x % UInt8)
-#     mc = jit(ccall_lazy_lib_name, (Int64,))
+#     mc = CP.jit(ccall_lazy_lib_name, (Int64,))
 #     @test mc(0) == 0
 #     @test mc(3) == 1
 #     ccall_with_undefined_lib() = ccall((:time, xx_nOt_DeFiNeD_xx), Cint, (Ptr{Cvoid},), C_NULL)
-#     mc = jit(ccall_with_undefined_lib, ())
+#     mc = CP.jit(ccall_with_undefined_lib, ())
 #     @test_throws UndefVarError(:xx_nOt_DeFiNeD_xx, @__MODULE__) mc()
 # end
 
@@ -1445,7 +1445,7 @@ end
         a16 = transcode(UInt16, a)
         a8  = transcode(UInt8, a16)
     end
-    mc = jit(test_transcode_1, (typeof(a),))
+    mc = CP.jit(test_transcode_1, (typeof(a),))
     a8 = mc(a)
     @test a8 == a
     b   = [UInt16(1), UInt16(2), UInt16(3)]
@@ -1453,7 +1453,7 @@ end
         b8  = transcode(UInt8, b)
         b16 = transcode(UInt16, b8)
     end
-    mc = jit(test_transcode_2, (typeof(b),))
+    mc = CP.jit(test_transcode_2, (typeof(b),))
     b16 = mc(b)
     @test b16 == b
 end
@@ -1461,7 +1461,7 @@ end
 @testset "transcode String to String" begin
     a = "Julia strings and things"
     test_transcode_3(a) = transcode(String, a)
-    mc = jit(test_transcode_3, (typeof(a),))
+    mc = CP.jit(test_transcode_3, (typeof(a),))
     aa = mc(a)
     @test aa === a
 end
@@ -1508,26 +1508,26 @@ fn45187() = nothing
     function cglobal45187fn()
         return cglobal((:fn, fn45187))
     end
-    mc = jit(cglobal33413_ptrvar, ())
+    mc = CP.jit(cglobal33413_ptrvar, ())
     @test unsafe_load(mc()) == 1
-    mc = jit(cglobal33413_ptrinline, ())
+    mc = CP.jit(cglobal33413_ptrinline, ())
     @test unsafe_load(mc()) == 1
     # TODO This depends on the resolution of Expr as Symbols for the cglobal call
-    # mc = jit(cglobal33413_tupleliteral, ())
+    # mc = CP.jit(cglobal33413_tupleliteral, ())
     # @test unsafe_load(mc()) == 1
     # TODO Segfault
-    # mc = jit(cglobal33413_ptrvar_notype, ())
+    # mc = CP.jit(cglobal33413_ptrvar_notype, ())
     # @test unsafe_load(convert(Ptr{Cint}, mc())) == 1
     # TODO Segfault
-    # mc = jit(cglobal33413_ptrinline_notype, ())
+    # mc = CP.jit(cglobal33413_ptrinline_notype, ())
     # @test unsafe_load(convert(Ptr{Cint}, mc())) == 1
     # TODO Segfault
-    # mc = jit(cglobal33413_tupleliteral_notype, ())
+    # mc = CP.jit(cglobal33413_tupleliteral_notype, ())
     # @test unsafe_load(convert(Ptr{Cint}, mc())) == 1
-    mc = jit(cglobal33413_literal, ())
+    mc = CP.jit(cglobal33413_literal, ())
     @test mc() != C_NULL
     # TODO Segfault
-    # mc = jit(cglobal33413_literal_notype, ())
+    # mc = CP.jit(cglobal33413_literal_notype, ())
     # @test mc() != C_NULL
     @test_throws(TypeError, cglobal49142_nothing())
     @test_throws(TypeError, cglobal45187fn())

@@ -1,11 +1,10 @@
 using Test
 
-using CopyAndPatch
-import CopyAndPatch: ByteVector, MachineCode, is_little_endian, jit
-using Libdl
-using Base.Libc
+import CopyAndPatch as CP
+import Base.Libc
+import Libdl
 import Random
-import InteractiveUtils: versioninfo
+import InteractiveUtils
 
 
 # from https://github.com/JuliaLang/julia/issues/12711#issuecomment-912740865
@@ -28,20 +27,20 @@ end
 
 @testset "ByteVector" begin
 
-    bvec = ByteVector(1)
-    bvec = ByteVector(0)
-    @test_throws ArgumentError ByteVector(-10)
+    bvec = CP.ByteVector(1)
+    bvec = CP.ByteVector(0)
+    @test_throws ArgumentError CP.ByteVector(-10)
 
-    bvec = ByteVector(UInt8[])
-    bvec = ByteVector(UInt8[1,2,3])
-    bvec = ByteVector(UInt64[1,2,3,4])
-    bvec = ByteVector(UInt32[1,2,3,4])
-    @test_throws MethodError ByteVector(Any[])
-    @test_throws MethodError ByteVector(Int64[-1,-2,3,4])
-    @test_throws MethodError ByteVector(Int64[1,2,3,4])
-    @test_throws MethodError ByteVector(Float64[1,2,3,4])
+    bvec = CP.ByteVector(UInt8[])
+    bvec = CP.ByteVector(UInt8[1,2,3])
+    bvec = CP.ByteVector(UInt64[1,2,3,4])
+    bvec = CP.ByteVector(UInt32[1,2,3,4])
+    @test_throws MethodError CP.ByteVector(Any[])
+    @test_throws MethodError CP.ByteVector(Int64[-1,-2,3,4])
+    @test_throws MethodError CP.ByteVector(Int64[1,2,3,4])
+    @test_throws MethodError CP.ByteVector(Float64[1,2,3,4])
 
-    bvec = ByteVector(123)
+    bvec = CP.ByteVector(123)
     @test size(bvec) == (123,)
 
     n = 10
@@ -53,7 +52,7 @@ end
         end
         expected = T.(collect(1:n))
         content = zeros(T, n)
-        @static if is_little_endian()
+        @static if CP.is_little_endian()
             for i in 1:n, s in 0:sz-1
                 content[i] |= T(bvec[sz*(i-1)+1+s])
             end
