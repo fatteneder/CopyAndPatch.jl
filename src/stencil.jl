@@ -1,9 +1,9 @@
 const HEXFMT = Printf.Format("%02x")
 
 baremodule HoleValues
-import Base: @enum
-@enum HoleValue CODE CONTINUE DATA EXECUTOR GOT OPARG OPERAND TARGET TOP ZERO
-export HoleValue
+    import Base: @enum
+    @enum HoleValue CODE CONTINUE DATA EXECUTOR GOT OPARG OPERAND TARGET TOP ZERO
+    export HoleValue
 end
 
 
@@ -84,7 +84,7 @@ function handle_section(section, group::StencilGroup)
             "SHT_STRTAB",
             "SHT_SYMTAB",
             # "SHT_NOBITS" # added by me; this a section header for section that does not contain actual data
-                         # # (e.g. uninitialized global and static vars) -- ref: gemini
+            # # (e.g. uninitialized global and static vars) -- ref: gemini
         ) section_type
     end
     return section
@@ -116,7 +116,7 @@ function pad!(s::Stencil, alignment::Int64)
     # TODO Is max-ing here ok?
     padding = max(-offset % alignment, 0)
     push!(s.disassembly, "$(UInt8(offset)): $(join(("00" for _ in 1:padding), ' '))")
-    if padding > 0
+    return if padding > 0
         push!(s.disassembly, repeat([UInt8(0)], padding))
     end
 end
@@ -138,6 +138,7 @@ function process_relocations(stencil::Stencil, group::StencilGroup)
         end
         push!(stencil.holes, hole)
     end
+    return
 end
 
 const HOLEKINDS = [
@@ -160,7 +161,7 @@ const HOLEKINDS = [
 
 function symbol_to_value(symbol)
     if startswith(symbol, "_JIT_")
-        s = replace(symbol, r"^_JIT_"=>"", count=1)
+        s = replace(symbol, r"^_JIT_" => "", count = 1)
         hs = instances(HoleValues.HoleValue)
         i = findfirst(==(s), string.(hs))
         if isnothing(i)
@@ -175,7 +176,7 @@ end
 
 function emit_global_offset_table!(group)
     global_offset_table = length(group.data.body)
-    for (s,offset) in group.global_offset_table
+    for (s, offset) in group.global_offset_table
         if s in group.code.symbols
             value, symbol = HoleValues.CODE, nothing
             addend = group.code.symbols[s]
@@ -186,7 +187,7 @@ function emit_global_offset_table!(group)
             value, symbol = symbol_to_value(s)
             addend = 0
         end
-        push!(group.data.holes, Hole(global_offset_table+offset, "R_X86_64_64", value, symbol, addend))
+        push!(group.data.holes, Hole(global_offset_table + offset, "R_X86_64_64", value, symbol, addend))
         value_part = value != HoleValues.ZERO ? value.name : ""
         if !isnothing(value_part) && isnothing(value) && isnothing(addend)
             addend_part = ""
@@ -202,6 +203,7 @@ function emit_global_offset_table!(group)
         push!(group.data.disassembly, "$(UInt8(length(group.data.body))): $(value_part)$(addend_part)")
         push!(group.data.body, repeat([UInt8(0)], padding))
     end
+    return
 end
 
 
@@ -241,18 +243,18 @@ function StencilGroup(json::Vector{Any})
 
     emit_global_offset_table!(group)
 
-    sort!(group.code.holes, by=h->h.offset)
-    sort!(group.data.holes, by=h->h.offset)
+    sort!(group.code.holes, by = h -> h.offset)
+    sort!(group.data.holes, by = h -> h.offset)
 
     return group
 end
 
 
-patch!(m::MachineCode, h::Hole, p::Ptr) = m.buf[h.offset+1] = p
-patch!(b::ByteVector,  h::Hole, val)    = patch!(b, 0, h, val)
+patch!(m::MachineCode, h::Hole, p::Ptr) = m.buf[h.offset + 1] = p
+patch!(b::ByteVector, h::Hole, val) = patch!(b, 0, h, val)
 
-patch!(b::ByteVector,    start::Integer, h::Hole,        val) = b[start #=1-based=# + h.offset] = val
-patch!(bvec::ByteVector, st::Stencil,    symbol::String, val) = patch!(bvec, 0, st, symbol, val)
+patch!(b::ByteVector, start::Integer, h::Hole, val) = b[start #=1-based=# + h.offset] = val
+patch!(bvec::ByteVector, st::Stencil, symbol::String, val) = patch!(bvec, 0, st, symbol, val)
 
 function patch!(bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, val)
     holes = st.relocations
@@ -270,8 +272,8 @@ function patch!(bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, 
         end
     end
     # TODO Use st.name for better error msg
-    !anyfound && error("No symbol $symbol found in stencil")
+    return !anyfound && error("No symbol $symbol found in stencil")
 end
 function patch!(vec::AbstractVector{<:UInt8}, offset::Integer, st::Stencil, symbol::String, val)
-    patch!(ByteVector(vec), offset, st, symbol, val)
+    return patch!(ByteVector(vec), offset, st, symbol, val)
 end
