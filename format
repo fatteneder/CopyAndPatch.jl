@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+# Redirect output to stderr.
+exec 1>&2
+
+# Run Runic on added and modified files
+git diff-index -z --name-only --diff-filter=AM main | \
+    grep -z '\.jl$' | \
+    xargs -0 --no-run-if-empty julia --startup-file=no --project=@runic -e 'import Runic; exit(Runic.main(vcat("--inplace", "--diff", ARGS)))'
+
+# commit diffs and add commit to .git-blame-ignore-revs
+if [ "$1" = "commit" ];
+then
+  if ! git diff --quiet --exit-code;
+  then
+    git add -u
+    git commit -m "run runic formatter"
+    hash=$(git rev-parse HEAD)
+    if ! grep -Fxq "$hash" ".git-blame-ignore-revs"
+    then
+      msg=$(git show --pretty="%s" -s "$hash")
+      printf "\n# %s\n%s\n" "$msg" "$hash" >> ".git-blame-ignore-revs"
+      git add ".git-blame-ignore-revs"
+      git commit -m "update .git-blame-ignore-revs"
+    fi
+  fi
+fi
