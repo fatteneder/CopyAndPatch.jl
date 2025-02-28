@@ -97,42 +97,6 @@ function patch_default_deps!(bvec::ByteVector, bvecs_data::Vector{ByteVector}, s
     end
 end
 
-function install_hooks()
-    if !isdefined(Base, :cpjit)
-        @eval Base function cpjit(ci::Core.CodeInstance, src::Core.CodeInfo)
-            rettype = getfield(ci, :rettype)
-            fn, argtypes... = ci.def.specTypes.parameters
-            try
-                # TODO Remove the try ... catch block from jl_cpjit_compile_codeinst_impl
-                @debug "cpjit: compiling $fn($(join("::" .* string.(argtypes), ",")))::$(rettype)"
-                mc = $(jit)(src, fn, rettype, Tuple(argtypes))
-                @atomic :monotonic ci.cpjit_mc = mc
-                return Cint(1)
-            catch e
-                @debug "cpjit: compilation of $fn($(join("::" .* string.(argtypes), ",")))::$(rettype) failed with" current_exceptions()
-                return Cint(0)
-            end
-        end
-    end
-    return if !isdefined(Base, :cpjit_call)
-        @eval Base function cpjit_call(mc::$(MachineCode), @nospecialize(args...))
-            try
-                @debug "cpjit_call: calling $(mc.fn)"
-                cif = $(Ffi_cif)(mc.rettype, Tuple(mc.argtypes))
-                return $(ffi_call)(cif, invoke_pointer(mc), [a for a in args])
-            catch e
-                @debug "cpjit_call: call of $(mc.fn)($(join("::" .* string.(mc.argtypes), ",")))::$(mc.rettype) failed with" current_exceptions()
-                return nothing
-            end
-        end
-    end
-end
-
-function enable(toggle::Bool)
-    install_hooks()
-    return @ccall jl_use_cpjit_set(toggle::Cint)::Cvoid
-end
-
 
 const LIBJULIAHELPERS_PATH = Ref{String}("")
 const LIBFFIHELPERS_PATH = Ref{String}("")
