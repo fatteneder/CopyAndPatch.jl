@@ -13,6 +13,12 @@ import Mmap
 import Printf
 import REPL
 import REPL.TerminalMenus
+if VERSION ≥ v"1.12.0-DEV.1581"
+    import Compiler
+    const CC = Compiler
+else
+    const CC = Core.Compiler
+end
 
 
 include("utils.jl")
@@ -22,6 +28,8 @@ include("machinecode.jl")
 include("stencil.jl")
 include("jit.jl")
 include("code_native.jl")
+include("extern_pkg_code.jl")
+include("julia_integration.jl")
 
 
 const STENCILS = Ref(Dict{String, Any}())
