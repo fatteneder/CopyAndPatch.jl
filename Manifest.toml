@@ -1,8 +1,8 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.0-DEV"
+julia_version = "1.13.0-DEV"
 manifest_format = "2.0"
-project_hash = "7a7434713a906094e0c5bc014ce1c75df8c9ea8e"
+project_hash = "41e6a1287c8cf863e241daab10b521e9f9ef85ec"
 
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
@@ -11,6 +11,17 @@ version = "1.11.0"
 [[deps.Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 version = "1.11.0"
+
+[[deps.Compiler]]
+path = "/home/florian/wd/julia2/Compiler/"
+uuid = "807dbc54-b67e-4c79-8afb-eafe4df6f2e1"
+version = "0.0.3"
+
+[[deps.CopyAndPatch]]
+deps = ["Compiler", "InteractiveUtils", "JSON", "Libdl", "Libffi_jll", "Logging", "Mmap", "Printf", "REPL"]
+path = "."
+uuid = "02537dc1-634c-4c89-8c69-618d836b5e10"
+version = "0.1.0"
 
 [[deps.Dates]]
 deps = ["Printf"]
@@ -34,6 +45,11 @@ git-tree-sha1 = "31e996f0a15c7b280ba9f76636b3ff9e2ae58c9a"
 uuid = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 version = "0.21.4"
 
+[[deps.JuliaSyntaxHighlighting]]
+deps = ["StyledStrings"]
+uuid = "ac6e5ff7-fb65-4e79-a425-ec3bc9c03011"
+version = "1.12.0"
+
 [[deps.Libdl]]
 uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
 version = "1.11.0"
@@ -45,12 +61,11 @@ uuid = "e9f186c6-92d2-5b65-8a66-fee21dc1b490"
 version = "3.4.6+0"
 
 [[deps.Logging]]
-deps = ["StyledStrings"]
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 version = "1.11.0"
 
 [[deps.Markdown]]
-deps = ["Base64"]
+deps = ["Base64", "JuliaSyntaxHighlighting", "StyledStrings"]
 uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
 version = "1.11.0"
 
@@ -82,7 +97,7 @@ uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 version = "1.11.0"
 
 [[deps.REPL]]
-deps = ["InteractiveUtils", "Markdown", "Sockets", "StyledStrings", "Unicode"]
+deps = ["InteractiveUtils", "JuliaSyntaxHighlighting", "Markdown", "Sockets", "StyledStrings", "Unicode"]
 uuid = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 version = "1.11.0"
 

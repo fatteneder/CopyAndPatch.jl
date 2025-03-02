@@ -1,9 +1,10 @@
 name = "CopyAndPatch"
 uuid = "02537dc1-634c-4c89-8c69-618d836b5e10"
-authors = ["Florian Atteneder"]
 version = "0.1.0"
+authors = ["Florian Atteneder"]
 
 [deps]
+Compiler = "807dbc54-b67e-4c79-8afb-eafe4df6f2e1"
 InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
@@ -14,6 +15,7 @@ Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 REPL = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 
 [compat]
+Compiler = "0.0.3"
 InteractiveUtils = "1.11.0"
 JSON = "0.21.4"
 Libdl = "1.11.0"
