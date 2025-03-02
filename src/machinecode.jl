@@ -13,8 +13,8 @@ mutable struct MachineCode
     phioffset::Base.RefValue{Cint}
 
     function MachineCode(
-            sz::Integer, @nospecialize(fn),
-            @nospecialize(rettype), @nospecialize(argtypes::Tuple),
+            sz::Integer, @nospecialize(fn::Any),
+            @nospecialize(rettype::Any), @nospecialize(argtypes::Tuple),
             codeinfo::Core.CodeInfo, stencil_starts::Vector{Int64},
             gc_roots::Vector{Any} = Any[]
         )
@@ -32,8 +32,8 @@ mutable struct MachineCode
         )
     end
     function MachineCode(
-            bvec::ByteVector, @nospecialize(fn),
-            @nospecialize(rettype), @nospecialize(argtypes::Tuple),
+            bvec::ByteVector, @nospecialize(fn::Any),
+            @nospecialize(rettype::Any), @nospecialize(argtypes::Tuple),
             codeinfo::Core.CodeInfo, stencil_starts::Vector{Int64},
             gc_roots::Vector{Any} = Any[]
         )
@@ -54,8 +54,10 @@ function (mc::MachineCode)(@nospecialize(args...))
     p = invoke_pointer(mc)
     fn = mc.fn
     nargs = length(args)
+    ci = C_NULL # unused by us, but required for ci->invoke abi
     return GC.@preserve mc args begin
-        @ccall $p(fn::Any, args::Ref{Any}, nargs::UInt32)::Any
+        @ccall $p(fn::Any, args::Any #= Any, because args isa Tuple =#,
+                  nargs::UInt32, ci::Ptr{Cvoid})::Any
     end
 end
 
