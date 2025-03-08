@@ -11,13 +11,21 @@ function code_native(
         print('\n', annotated_code_native(menu, 1), '\n')
         TerminalMenus.request(term, menu; cursor = 1)
     else
-        io = IOBuffer()
-        ioc = IOContext(io, stdout) # to keep the colors!!
-        for i in 1:length(mc.codeinfo.code)
-            cpjit_code_native!(ioc, mc, i; syntax, color, hex_for_imm)
-        end
-        println(stdout, String(take!(io)))
+        code_native(stdout, mc; syntax, interactive, color, hex_for_imm)
     end
+    return nothing
+end
+function code_native(
+        io::IO, mc::MachineCode;
+        syntax::Symbol = :intel, interactive::Bool = false, color::Bool = true,
+        hex_for_imm::Bool = true
+    )
+    tmp_io = IOBuffer()
+    ioc = IOContext(tmp_io, stdout) # to keep the colors!!
+    for i in 1:length(mc.codeinfo.code)
+        cpjit_code_native!(ioc, mc, i; syntax, color, hex_for_imm)
+    end
+    println(io, String(take!(tmp_io)))
     return nothing
 end
 function code_native(
