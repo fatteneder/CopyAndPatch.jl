@@ -19,7 +19,7 @@ $(shell mkdir -p bin/mwes)
 CFLAGS =
 
 .SECONDARY:
-all: $(BINJSON) $(BINSO) $(BINMWES)
+all: $(BINJSON) $(BINSO) $(BINMWES) clang_version.txt
 
 debug: CFLAGS+=-DJITDEBUG
 debug: all
@@ -62,6 +62,9 @@ bin/mwe_libffi: mwe_libffi.c
 			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
 			-std=gnu11 -fPIC -ljulia -ljulia-internal -lffi \
 			-o bin/mwe_libffi mwe_libffi.c
+
+clang_version.txt:
+	clang --version > clang_version.txt
 
 clean:
 	@rm -rf bin/
