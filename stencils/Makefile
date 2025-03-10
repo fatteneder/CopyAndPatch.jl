@@ -16,16 +16,26 @@ BINMWES=$(addprefix bin/,$(MWES))
 
 $(shell mkdir -p bin/mwes)
 
-CFLAGS =
+# makefile options
+CFLAGS=
+
+debug?=0
+ifeq ($(debug),1)
+CFLAGS+=-DJITDEBUG
+endif
+
+use_ghc_cc?=0
+ifeq ($(use_ghc_cc),1)
+CFLAGS+=-DUSE_GHC_CC
+endif
+
+# targets
 
 .SECONDARY:
-all: $(BINJSON) $(BINSO) $(BINMWES) clang_version.txt
-
-debug: CFLAGS+=-DJITDEBUG
-debug: all
+all: $(BINJSON) $(BINSO) $(BINMWES)
 
 bin/%.o: %.c compile common.h
-	./compile $(CFLAGS) $< bin/$*.o
+	./compile "$(CFLAGS)" $< bin/$*.o
 
 bin/%.json: bin/%.o readobj
 	./readobj $< > bin/$*.json
@@ -62,9 +72,6 @@ bin/mwe_libffi: mwe_libffi.c
 			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
 			-std=gnu11 -fPIC -ljulia -ljulia-internal -lffi \
 			-o bin/mwe_libffi mwe_libffi.c
-
-clang_version.txt:
-	clang --version > clang_version.txt
 
 clean:
 	@rm -rf bin/

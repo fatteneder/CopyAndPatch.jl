@@ -1,8 +1,7 @@
 #include "common.h"
 #include "julia_internal.h"
 
-void
-_JIT_ENTRY(int prev_ip)
+JIT_ENTRY(prev_ip)
 {
    PATCH_VALUE(jl_value_t ***, args,    _JIT_ARGS);
    PATCH_VALUE(int,            ip,      _JIT_IP);
