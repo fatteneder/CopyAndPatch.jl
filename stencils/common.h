@@ -38,8 +38,7 @@ do {                                              \
     #include <stdio.h>
     #define DEBUGSTMT(NAME, PREV_IP, IP) \
         printf(BOLD FG_YELLOW "[" FG_GREEN "JITDEBUG" FG_YELLOW "]" RESET_COLOR RESET_FORMAT \
-               " ip %d -> %d: " NAME "\n", (PREV_IP), (IP)); \
-        fflush(stdout)
+               " ip %d -> %d: " NAME "\n", (PREV_IP), (IP))
 #else
     #define DEBUGSTMT(NAME, PREV_IP, IP)
 #endif
