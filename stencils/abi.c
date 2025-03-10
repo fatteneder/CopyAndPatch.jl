@@ -27,7 +27,7 @@ _JIT_ENTRY(jl_value_t *F, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
                 jl_typeof_str((jl_value_t*)args));
    }
    *phioffset = 0;
-   extern int _JIT_STENCIL(int);
+   extern int (CALLING_CONV _JIT_STENCIL)(int);
    int ret_ip = _JIT_STENCIL(ip);
    jl_value_t *ret = ssas[ret_ip-1];
    return ret;

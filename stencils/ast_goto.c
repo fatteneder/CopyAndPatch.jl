@@ -1,7 +1,6 @@
 #include "common.h"
 
-void
-_JIT_ENTRY(int prev_ip)
+JIT_ENTRY(prev_ip)
 {
    PATCH_VALUE(int, ip, _JIT_IP);
    DEBUGSTMT("ast_goto", prev_ip, ip);

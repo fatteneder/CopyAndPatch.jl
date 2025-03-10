@@ -1,8 +1,7 @@
 #include "common.h"
-#include <julia_internal.h> // asan_unpoison_task_stack
+#include "julia_internal.h" // asan_unpoison_task_stack
 
-void
-_JIT_ENTRY(int prev_ip)
+JIT_ENTRY(prev_ip)
 {
    PATCH_VALUE(int,   ip,           _JIT_IP);
    PATCH_VALUE(int,   hand_n_leave, _JIT_HAND_N_LEAVE);

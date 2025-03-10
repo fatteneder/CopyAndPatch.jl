@@ -1,7 +1,7 @@
 #include "common.h"
 
-int
-_JIT_ENTRY(int prev_ip)
+CALLING_CONV
+int _JIT_ENTRY(int prev_ip)
 {
    PATCH_VALUE(int,           ip,  _JIT_IP);
    PATCH_VALUE(jl_value_t **, ret, _JIT_RET);

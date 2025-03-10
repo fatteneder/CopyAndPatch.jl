@@ -34,3 +34,10 @@ Test:
 $ julia --project=CopyAndPatch
 julia> include("test/runtests.jl")
 ```
+
+## Dev notes
+
+`make` options:
+- `debug=1`: enable stencil's DEBUGSTMT output
+- `use_ghc_cc=1`: compile stencils with the Glasgow Haskell compiler (GHC) calling convention,
+  requires `clang >= 19`
