@@ -24,6 +24,7 @@ end
 include("utils.jl")
 include("ffi.jl")
 include("bytevector.jl")
+include("lifetimes.jl")
 include("machinecode.jl")
 include("stencil.jl")
 include("jit.jl")
