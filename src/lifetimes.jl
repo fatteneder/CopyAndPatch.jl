@@ -286,89 +286,112 @@ function Base.show(io::IO, block::Compiler.BasicBlock)
     end
 end
 
-function show_lifetimes(cinfo::Core.CodeInfo)
-    lifetimes = compute_lifetimes(cinfo)
-    show_lifetimes(cinfo, lifetimes)
-end
-
-function show_lifetimes(cinfo::Core.CodeInfo, lifetimes::Dict)
-    io = IOBuffer()
-    ioc = IOContext(io, stdout)
-    show(ioc, cinfo)
-    str_cinfo = String(take!(io))
-    ioc = IOContext(io, :color=>false)
-    show(ioc, cinfo)
-    str_cinfo_nocolor = String(take!(io))
+function Base.show(io::IO, analysis::LifetimeAnalysis)
+    tmpio = IOBuffer()
+    tmpioc = IOContext(tmpio, stdout)
+    Base.show(tmpioc, analysis.cinfo)
+    str_cinfo = String(take!(tmpio))
+    tmpioc = IOContext(tmpio, :color=>false)
+    Base.show(tmpioc, analysis.cinfo)
+    str_cinfo_nocolor = String(take!(tmpio))
     max_w = maximum(length, eachline(IOBuffer(str_cinfo_nocolor)))
     nlines = count(==('\n'), str_cinfo_nocolor)
-    cfg = Compiler.compute_basic_blocks(cinfo.code)
-    # block_rngs = reduce(vcat, [ b.stmts.start, b.stmts.stop ] for b in cfg.blocks)
-    block_rngs = [ b.stmts.start for b in cfg.blocks ]
-    # unique!(block_rngs)
+    cfg = Compiler.compute_basic_blocks(analysis.cinfo.code)
+    block_rngs = [ b.stmts.start for b in analysis.cfg.blocks ]
     active = Set{VirtualReg}()
     inactive = Set{VirtualReg}()
     line_itr = eachline(IOBuffer(str_cinfo))
     line_itr_nocolor = eachline(IOBuffer(str_cinfo_nocolor))
-    fmt_head = Printf.Format("%-6s")
-    fmt_col = Printf.Format(" %s%4s")
-    ioc = IOContext(io, stdout)
-    slot_regs = [ k for k in keys(lifetimes) if k isa Core.Argument ]
+    slot_regs = [ k for k in keys(analysis.lifetimes) if k isa Core.Argument ]
     sort!(slot_regs, lt=(a,b) -> a.n < b.n)
-    ssa_regs = [ k for k in keys(lifetimes) if k isa Core.SSAValue ]
+    ssa_regs = [ k for k in keys(analysis.lifetimes) if k isa Core.SSAValue ]
     sort!(ssa_regs, lt=(a,b) -> a.id < b.id)
     regs = vcat(slot_regs, ssa_regs)
-    intervals = [ lifetimes[r] for r in regs ]
-    # TODO Recolor the first brackets in the cinfo that mark the blocks
+    sorted_lifetimes = [ analysis.lifetimes[r] for r in regs ]
+    ioc = IOContext(io, stdout)
+    is_loop_headers = mapreduce(vcat, analysis.loops) do l
+        bs = analysis.cfg.blocks[l.heads]
+        return [ b.stmts.start for b in bs ]
+    end
+    is_loop_backedges = mapreduce(vcat, analysis.loops) do l
+        bs = analysis.cfg.blocks[l.backedges]
+        return [ b.stmts.stop for b in bs ]
+    end
+    headers = [ reg isa Core.Argument ? string(analysis.cinfo.slotnames[reg.n]) : string(reg)
+                for reg in regs ]
+    colgap = 3
+    # draw output
     for (i,(line, nc_line)) in enumerate(zip(line_itr, line_itr_nocolor))
-        # ┓  ┛ ┫ │ ║ ╖   ╗ ╜   ╝ ╣  ╻ ╹   ╿ ╽
         w = length(nc_line)
         Δw = max_w - w
+
+        # print a line from cinfo
         print(ioc, line)
+
         if i == 1
-            print(ioc, " "^(Δw+3))
-            # for reg in keys(lifetimes)
-            for reg in regs
-                name = reg isa Core.Argument ? cinfo.slotnames[reg.n] : reg
-                print(ioc, Printf.format(fmt_head, string(name)))
+            print(ioc, " "^(Δw+colgap))
+            for h in headers
+                l = length(h)
+                l ≤ 2 && print(ioc, " ")
+                print(ioc, h, " "^((l≤1)+colgap))
             end
-        else
-            ii = i-1
-            if ii in block_rngs
-                printstyled(ioc, " ", "─"^(Δw+2), color=:light_black)
+            println(ioc)
+            continue
+        end
+
+        # append trailing dashes to cinfo line to fill space till lifetime diagram starts
+        ii = i-1
+        if ii in block_rngs
+            # print header
+            color = if ii in is_loop_headers
+                :yellow
+            elseif ii in is_loop_backedges
+                :magenta
             else
-                print(ioc, " "^(Δw+3))
+                :light_black
             end
-            # for (reg,intervals) in pairs(lifetimes)
-            for (reg,intervals) in zip(regs,intervals)
-                sym, color = "┃", :light_black
-                if length(intervals) > 0
-                    j = findfirst(intervals) do intrvl
-                        ii in intrvl
-                    end
-                    if j !== nothing
-                        intrvl = intervals[j]
-                        if ii == intrvl.start
-                            if intrvl.start == intrvl.stop
-                                sym, color = "┻", :light_green
-                            else
-                                sym, color = "┳", :light_red
-                            end
-                        elseif ii == intrvl.stop
-                            sym, color = "┻", :light_green
-                        else
-                            sym, color = "┃", :light_blue
-                        end
-                    end
-                    printstyled(ioc, " ", sym; color)
-                    if ii in block_rngs
-                        printstyled(ioc, " ", "─"^3, color=:light_black)
+            printstyled(ioc, " ", "─"^(Δw+colgap-1); color)
+        else
+            print(ioc, " "^(Δw+colgap))
+        end
+
+        # draw a horizontal slice of the lifetime diagram
+        for (col,(h,reg,lt)) in enumerate(zip(headers,regs,sorted_lifetimes))
+            vert_sym, vert_color = "┃", :light_black
+            horz_sym, horz_color = " ", :white
+            if length(lt.intervals) > 0
+                j = findfirst(lt.intervals) do intrvl
+                    ii in intrvl
+                end
+                if j !== nothing
+                    intrvl = lt.intervals[j]
+                    if ii == lt.def
+                        vert_sym, vert_color = "┳", :light_red
+                    elseif ii in lt.uses
+                        vert_sym, vert_color = "┻", :light_green
                     else
-                        print(ioc, " "^4)
+                        vert_sym, vert_color = "┃", :light_blue
                     end
                 end
+            end
+            if ii in block_rngs
+                horz_sym = "─"
+                if ii in is_loop_headers
+                    horz_color = :yellow
+                elseif ii in is_loop_backedges
+                    horz_color = :magenta
+                else
+                    horz_color = :light_black
+                end
+            end
+            l = length(h)
+            c = l÷2+isodd(l)
+            printstyled(ioc, horz_sym^(max(0,c-2)); color=horz_color)
+            printstyled(ioc, " ", vert_sym, " "; color=vert_color)
+            if col < length(regs)
+                printstyled(ioc, horz_sym^(max(0,l-c-1)+colgap); color=horz_color)
             end
         end
         println(ioc)
     end
-    print(String(take!(io)))
 end
