@@ -286,7 +286,28 @@ function Base.show(io::IO, block::Compiler.BasicBlock)
     end
 end
 
-function Base.show(io::IO, analysis::LifetimeAnalysis)
+
+mutable struct LifetimeAnalysisMenu <: TerminalMenus.AbstractMenu
+    analysis::LifetimeAnalysis
+    row_cursor::Int # cursor position of first line in code info output
+    col_cursor::Int # cursor position of first virtual registor in lifetime diagram
+    nlines::Int
+    max_w::Int # analysis.cinfo max width
+    col_gap::Int # min spacing between lifetime lines
+    regs::Vector{VirtualReg} # keys(analysis.lifetimes), but sorted (slots before ssa values)
+    lifetimes::Vector{Lifetime} # values(analysis.lifetimes), but sorted
+    headers::Vector{String} # string.(regs) and argument numbers translated to slot names
+    str_cinfo::String
+    str_cinfo_nocolor::String
+    block_rngs::Vector{Int}
+    is_loop_headers::Vector{Int64} # start index of loop header BasicBlock in analysis.stmts
+    is_loop_backedges::Vector{Int64} # end index of BasicBlocks that have a backedge to a loop header
+    # required for TerminalMenus interface
+    pagesize::Int
+    pageoffset::Int
+end
+
+function LifetimeAnalysisMenu(analysis::LifetimeAnalysis)
     tmpio = IOBuffer()
     tmpioc = IOContext(tmpio, stdout)
     Base.show(tmpioc, analysis.cinfo)
@@ -294,21 +315,20 @@ function Base.show(io::IO, analysis::LifetimeAnalysis)
     tmpioc = IOContext(tmpio, :color=>false)
     Base.show(tmpioc, analysis.cinfo)
     str_cinfo_nocolor = String(take!(tmpio))
-    max_w = maximum(length, eachline(IOBuffer(str_cinfo_nocolor)))
     nlines = count(==('\n'), str_cinfo_nocolor)
-    cfg = Compiler.compute_basic_blocks(analysis.cinfo.code)
+
+    max_w = maximum(length, eachline(IOBuffer(str_cinfo_nocolor)))
+
     block_rngs = [ b.stmts.start for b in analysis.cfg.blocks ]
-    active = Set{VirtualReg}()
-    inactive = Set{VirtualReg}()
-    line_itr = eachline(IOBuffer(str_cinfo))
-    line_itr_nocolor = eachline(IOBuffer(str_cinfo_nocolor))
-    slot_regs = [ k for k in keys(analysis.lifetimes) if k isa Core.Argument ]
-    sort!(slot_regs, lt=(a,b) -> a.n < b.n)
-    ssa_regs = [ k for k in keys(analysis.lifetimes) if k isa Core.SSAValue ]
-    sort!(ssa_regs, lt=(a,b) -> a.id < b.id)
-    regs = vcat(slot_regs, ssa_regs)
-    sorted_lifetimes = [ analysis.lifetimes[r] for r in regs ]
-    ioc = IOContext(io, stdout)
+    regs_slots = [ k for k in keys(analysis.lifetimes) if k isa Core.Argument ]
+    sort!(regs_slots, lt=(a,b) -> a.n < b.n)
+    regs_ssas = [ k for k in keys(analysis.lifetimes) if k isa Core.SSAValue ]
+    sort!(regs_ssas, lt=(a,b) -> a.id < b.id)
+    regs = vcat(regs_slots, regs_ssas)
+    lifetimes = [ analysis.lifetimes[r] for r in regs ]
+    headers = [ reg isa Core.Argument ? string(analysis.cinfo.slotnames[reg.n]) : string(reg)
+                for reg in regs ]
+
     is_loop_headers = mapreduce(vcat, analysis.loops) do l
         bs = analysis.cfg.blocks[l.heads]
         return [ b.stmts.start for b in bs ]
@@ -317,46 +337,147 @@ function Base.show(io::IO, analysis::LifetimeAnalysis)
         bs = analysis.cfg.blocks[l.backedges]
         return [ b.stmts.stop for b in bs ]
     end
-    headers = [ reg isa Core.Argument ? string(analysis.cinfo.slotnames[reg.n]) : string(reg)
-                for reg in regs ]
-    colgap = 3
+    col_gap = 3
+    row_cursor = 1
+    col_cursor = 1
+
+    menu = LifetimeAnalysisMenu(
+        analysis, row_cursor, col_cursor, nlines, max_w, col_gap,
+        regs, lifetimes, headers, str_cinfo, str_cinfo_nocolor,
+        block_rngs, is_loop_headers, is_loop_backedges,
+        0, 0
+    )
+    return menu
+end
+
+function inspect(analysis::LifetimeAnalysis)
+    menu = LifetimeAnalysisMenu(analysis)
+    term = default_terminal()
+    print('\n', _inspect(stdout, menu), '\n')
+    TerminalMenus.request(term, menu)
+    return nothing
+end
+
+TerminalMenus.numoptions(m::LifetimeAnalysisMenu) = 0
+TerminalMenus.cancel(m::LifetimeAnalysisMenu) = nothing
+TerminalMenus.selected(menu::LifetimeAnalysisMenu) = nothing
+TerminalMenus.writeline(buf::IOBuffer, menu::LifetimeAnalysisMenu, idx::Int, iscursor::Bool) = nothing
+TerminalMenus.pick(menu::LifetimeAnalysisMenu, cursor::Int) = false
+
+function TerminalMenus.header(menu::LifetimeAnalysisMenu)
+    io = IOBuffer(); ioc = IOContext(io, stdout)
+    printstyled(ioc, 'q', color = :light_red, bold = true)
+    q_str = String(take!(io))
+    printstyled(ioc, 'r', color = :light_blue, bold = true)
+    r_str = String(take!(io))
+    printstyled(ioc, 'R', color = :light_blue, bold = true)
+    R_str = String(take!(io))
+    printstyled(ioc, '←', bold = true, color=:yellow)
+    arrow_left_str = String(take!(io))
+    printstyled(ioc, '→', bold = true, color=:yellow)
+    arrow_right_str = String(take!(io))
+    printstyled(ioc, '↑', bold = true, color=:yellow)
+    arrow_up_str = String(take!(io))
+    printstyled(ioc, '↓', bold = true, color=:yellow)
+    arrow_down_str = String(take!(io))
+    return """
+    [$q_str]uit, [$r_str]edraw, [$R_str]reset, [$arrow_up_str/$arrow_down_str] scroll code, [$arrow_left_str/$arrow_right_str] scroll lifetimes
+    """
+end
+
+function TerminalMenus.keypress(menu::LifetimeAnalysisMenu, key::UInt32)
+    if key == UInt32(TerminalMenus.ARROW_LEFT)
+        menu.col_cursor = min(menu.col_cursor+1, length(menu.regs))
+        print('\n', _inspect(stdout, menu), '\n')
+    elseif key == UInt32(TerminalMenus.ARROW_RIGHT)
+        menu.col_cursor = max(menu.col_cursor-1, 1)
+        print('\n', _inspect(stdout, menu), '\n')
+    elseif key == UInt32('r')
+        print('\n', _inspect(stdout, menu), '\n')
+    elseif key == UInt32('R')
+        menu.col_cursor = 1
+        menu.row_cursor = 1
+        print('\n', _inspect(stdout, menu), '\n')
+    end
+    return false
+end
+# we are not really using the menu scrolling functionality,
+# but we need to use them to act on up/down arrow
+function TerminalMenus.move_down!(menu::LifetimeAnalysisMenu, cursor::Int64, lastoption::Int64)
+    menu.row_cursor = min(menu.row_cursor+1, menu.nlines)
+    print('\n', _inspect(stdout, menu), '\n')
+    return 1
+end
+function TerminalMenus.move_up!(menu::LifetimeAnalysisMenu, cursor::Int64, lastoption::Int64)
+    menu.row_cursor = max(menu.row_cursor-1, 1)
+    print('\n', _inspect(stdout, menu), '\n')
+    return 1
+end
+
+function _inspect(io::IO, M::LifetimeAnalysisMenu)
+    ioc = IOContext(io)
+    line_itr = eachline(IOBuffer(M.str_cinfo))
+    line_itr_nocolor = eachline(IOBuffer(M.str_cinfo_nocolor))
+    # compute number of registers that fit on screen
+    height, width = displaysize(ioc)
+    width -= M.max_w+M.col_gap
+    n_cols = 1
+    while M.col_cursor-1+n_cols < length(M.regs)
+        width -= length(M.headers[M.col_cursor+n_cols-1])+M.col_gap
+        if width ≤ 1
+            n_cols -= 1
+            break
+        else
+            n_cols += 1
+        end
+    end
+    n_cols = min(n_cols, length(M.regs))
+    col_rng = M.col_cursor:M.col_cursor-1+n_cols
+    # compute number of lines that fit on screen
+    n_rows = height-5
+    row_rng = M.row_cursor:M.row_cursor-1+n_rows
     # draw output
+    println(ioc)
     for (i,(line, nc_line)) in enumerate(zip(line_itr, line_itr_nocolor))
         w = length(nc_line)
-        Δw = max_w - w
-
-        # print a line from cinfo
-        print(ioc, line)
+        Δw = M.max_w - w
 
         if i == 1
-            print(ioc, " "^(Δw+colgap))
-            for h in headers
+            print(ioc, line)
+            print(ioc, " "^(Δw+M.col_gap))
+            for h in M.headers[col_rng]
                 l = length(h)
-                l ≤ 2 && print(ioc, " ")
-                print(ioc, h, " "^((l≤1)+colgap))
+                # l ≤ 2 && print(ioc, " ")
+                print(ioc, " "^(l≤2), h, " "^((l≤1)+M.col_gap))
             end
             println(ioc)
             continue
         end
 
+        # print a line from cinfo
+        i in row_rng || continue
+        print(ioc, line)
+
         # append trailing dashes to cinfo line to fill space till lifetime diagram starts
         ii = i-1
-        if ii in block_rngs
+        if ii in M.block_rngs
             # print header
-            color = if ii in is_loop_headers
+            color = if ii in M.is_loop_headers
                 :yellow
-            elseif ii in is_loop_backedges
+            elseif ii in M.is_loop_backedges
                 :magenta
             else
                 :light_black
             end
-            printstyled(ioc, " ", "─"^(Δw+colgap-1); color)
+            printstyled(ioc, " ", "─"^(Δw+M.col_gap-1); color)
         else
-            print(ioc, " "^(Δw+colgap))
+            print(ioc, " "^(Δw+M.col_gap))
         end
 
         # draw a horizontal slice of the lifetime diagram
-        for (col,(h,reg,lt)) in enumerate(zip(headers,regs,sorted_lifetimes))
+        for (col,(h,reg,lt)) in enumerate(zip(M.headers[col_rng],
+                                              M.regs[col_rng],
+                                              M.lifetimes[col_rng]))
             vert_sym, vert_color = "┃", :light_black
             horz_sym, horz_color = " ", :white
             if length(lt.intervals) > 0
@@ -374,11 +495,11 @@ function Base.show(io::IO, analysis::LifetimeAnalysis)
                     end
                 end
             end
-            if ii in block_rngs
+            if ii in M.block_rngs
                 horz_sym = "─"
-                if ii in is_loop_headers
+                if ii in M.is_loop_headers
                     horz_color = :yellow
-                elseif ii in is_loop_backedges
+                elseif ii in M.is_loop_backedges
                     horz_color = :magenta
                 else
                     horz_color = :light_black
@@ -388,10 +509,11 @@ function Base.show(io::IO, analysis::LifetimeAnalysis)
             c = l÷2+isodd(l)
             printstyled(ioc, horz_sym^(max(0,c-2)); color=horz_color)
             printstyled(ioc, " ", vert_sym, " "; color=vert_color)
-            if col < length(regs)
-                printstyled(ioc, horz_sym^(max(0,l-c-1)+colgap); color=horz_color)
+            if col < length(col_rng)
+                printstyled(ioc, horz_sym^(max(0,l-c-1)+M.col_gap); color=horz_color)
             end
         end
         println(ioc)
     end
+    # TODO take string here
 end
