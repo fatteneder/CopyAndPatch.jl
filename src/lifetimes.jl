@@ -7,17 +7,38 @@
 
 const VirtualReg = Union{Core.Argument,Core.SSAValue}
 const Interval = UnitRange{Int}
+mutable struct Lifetime
+    const intervals::Vector{Interval}
+    def::Int
+    const uses::Set{Int}
+end
+Lifetime() = Lifetime(Interval[], 0, Set{Int}())
 
-function compute_lifetimes(cinfo::Core.CodeInfo)
-    cfg = Compiler.compute_basic_blocks(cinfo.code)
-    block_order = 1:length(cfg.blocks)
-    return compute_lifetimes(cinfo.code, cfg, block_order)
+struct Loop
+    heads::Vector{Int}
+    backedges::Vector{Int}
+end
+Loop() = Loop(Vector{Int}[], Vector{Int}[])
+
+struct LifetimeAnalysis
+    cinfo::Core.CodeInfo
+    cfg::Compiler.CFG
+    block_order::Vector{Int}
+    lifetimes::Dict{VirtualReg,Lifetime}
+    loops::Vector{Loop}
 end
 
-function compute_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::AbstractVector)
-    inputs, outputs = get_virtual_regs(stmts)
+function analyze_lifetimes(cinfo::Core.CodeInfo)
+    cfg = Compiler.compute_basic_blocks(cinfo.code)
+    block_order = collect(1:length(cfg.blocks))
+    lifetimes, loops = _analyze_lifetimes(cinfo.code, cfg, block_order)
+    return LifetimeAnalysis(cinfo, cfg, block_order, lifetimes, loops)
+end
+
+function _analyze_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::Vector{Int})
     liveIns = [ Set{VirtualReg}() for i in 1:length(block_order) ]
-    lifetime_intervals = Dict{VirtualReg,Vector{Interval}}()
+    lifetimes = Dict{VirtualReg,Lifetime}()
+    loops = Loop[]
     for i_block in reverse(block_order)
         block = cfg.blocks[i_block]
 
@@ -67,8 +88,8 @@ function compute_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::A
 
         # initialize intervals for live operands in this block
         for operand in live
-            intervals = get!(lifetime_intervals, operand, Interval[])
-            push!(intervals, Interval(block.stmts))
+            lt = get!(lifetimes, operand, Lifetime())
+            push!(lt.intervals, block.stmts)
         end
 
         # scan statements of current block,
@@ -78,19 +99,21 @@ function compute_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::A
             outputs = get_outputs(stmts, i_stmt)
             # println("* processing $(stmts[i_stmt])"); @show outputs
             for operand in outputs
-                intervals = get!(lifetime_intervals, operand, Interval[])
-                if length(intervals) > 0
-                    intervals[end] = Interval(i_stmt, intervals[end].stop)
-                    delete!(live, operand)
+                lt = get!(lifetimes, operand, Lifetime())
+                if length(lt.intervals) > 0
+                    lt.intervals[end] = Interval(i_stmt, lt.intervals[end].stop)
                 end
+                lt.def = i_stmt
+                delete!(live, operand)
             end
             inputs = get_inputs(stmts, i_stmt)
             if stmts[i_stmt] isa Core.PhiNode
                 union!(phi_inputs, inputs)
             end
             for operand in inputs
-                intervals = get!(lifetime_intervals, operand, Interval[])
-                push!(intervals, Interval(block.stmts.start, i_stmt))
+                lt = get!(lifetimes, operand, Lifetime())
+                push!(lt.intervals, Interval(block.stmts.start, i_stmt))
+                push!(lt.uses, i_stmt)
                 push!(live, operand)
             end
         end
@@ -148,16 +171,39 @@ function compute_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::A
             for i_loop_end in preds_loop_ends
                 loop_end = cfg.blocks[i_loop_end]
                 for operand in filtered_live
-                    intervals = lifetime_intervals[operand]
-                    push!(intervals, Interval(block.stmts.start, loop_end.stmts.stop))
+                    lt = lifetimes[operand]
+                    push!(lt.intervals, Interval(block.stmts.start, loop_end.stmts.stop))
                 end
             end
+
+            loop = Loop([i_block],preds_loop_ends)
+            push!(loops, loop)
         end
 
         liveIns[i_block] = live
     end
 
-    sort!.(values(lifetime_intervals))
+    for lt in values(lifetimes)
+        sort!(lt.intervals)
+        # TODO Merge adjacent intervals
+        # sort!(lt.uses)
+    end
+    # merge loops with common heads
+    i = 1
+    while i < length(loops)
+        li = loops[i]
+        j = i+1
+        while j < length(loops)
+            lj = loops[j]
+            if only(lj.heads) in li.heads
+                loops[i] = Loop(li.heads, unique(vcat(li.ends, lj.ends)))
+                popat!(loops, j)
+            else
+                j += 1
+            end
+        end
+        i += 1
+    end
     # merge adjacent intervals
     # for intervals in values(lifetime_intervals)
     #     length(intervals) < 2 && continue
@@ -174,7 +220,7 @@ function compute_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::A
     # end
 
     # TODO lifetime_intervals is missing dead variables
-    return lifetime_intervals
+    return lifetimes, loops
 end
 
 @inline function get_inputs(stmts::Vector{Any}, i)
