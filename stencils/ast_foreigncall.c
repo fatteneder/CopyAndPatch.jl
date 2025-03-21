@@ -14,7 +14,7 @@
    converter_##ctype c; c.p = (void *)src;                \
    dest = (jl_box)(c.v)
 
-JIT_ENTRY(prev_ip)
+JIT_ENTRY()
 {
    PATCH_VALUE(int,          ip,          _JIT_IP);
    PATCH_VALUE(void ***,     args,        _JIT_ARGS);
