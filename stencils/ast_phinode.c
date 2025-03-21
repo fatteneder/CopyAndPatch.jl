@@ -1,6 +1,6 @@
 #include "common.h"
 
-JIT_ENTRY(prev_ip)
+JIT_ENTRY()
 {
    PATCH_VALUE(int *,          edges_from,  _JIT_EDGES_FROM);
    PATCH_VALUE(int *,          phioffset,   _JIT_PHIOFFSET);

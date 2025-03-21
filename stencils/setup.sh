@@ -12,8 +12,8 @@ if [[ $(hostname) == "voidy" ]]; then
 elif [[ $(hostname) == "fwork" ]]; then
   # JULIA_ROOT="$HOME/wd/julia3" # fa/prot_exec, v1.10 (I think)
   JULIA_ROOT="$HOME/wd/julia2" # fa/prot_exec_rebase, v1.13
-  # export PATH="$HOME/binaries/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/bin:$PATH"
-  export PATH="$HOME/binaries/llvm-project-19.1.1.src/build/bin:$PATH"
+  export PATH="$HOME/binaries/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/bin:$PATH"
+  # export PATH="$HOME/binaries/llvm-project-19.1.1.src/build/bin:$PATH"
   export PATH="$JULIA_ROOT/usr/bin:$PATH"
   export JULIA_INCLUDE="$JULIA_ROOT/usr/include"
   export JULIA_LIB="$JULIA_ROOT/usr/lib"

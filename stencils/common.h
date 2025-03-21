@@ -9,9 +9,9 @@
 #define CALLING_CONV
 #endif
 
-#define JIT_ENTRY(ip)              \
+#define JIT_ENTRY()                \
     CALLING_CONV                   \
-    void _JIT_ENTRY(int (ip))
+    void _JIT_ENTRY(int prev_ip)
 
 #define PATCH_VALUE(TYPE, NAME, ALIAS)  \
     extern void ALIAS;                  \
@@ -22,7 +22,7 @@ do {                                              \
     extern void (CALLING_CONV (ALIAS))(int);      \
     __attribute__((musttail))                     \
     return (ALIAS)(IP);                           \
-} while (0);
+} while (0)
 
 #define PATCH_CALL(ALIAS, IP)                     \
     extern void (CALLING_CONV (ALIAS))(int);      \

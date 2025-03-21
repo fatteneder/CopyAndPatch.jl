@@ -1,6 +1,6 @@
 #include "common.h"
 
-JIT_ENTRY(prev_ip)
+JIT_ENTRY()
 {
 
    PATCH_VALUE(int,           ip,  _JIT_IP);

@@ -1,6 +1,6 @@
 #include "common.h"
 
-JIT_ENTRY(prev_ip)
+JIT_ENTRY()
 {
    PATCH_VALUE(jl_value_t ***,  args,    _JIT_ARGS);
    PATCH_VALUE(jl_function_t *, fn,      _JIT_FN);
