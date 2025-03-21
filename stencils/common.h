@@ -34,6 +34,11 @@ do {                                              \
 #define RESET_FORMAT  "\033[0m"
 #define BOLD          "\033[1m"
 
+typedef struct {
+   jl_value_t **locals;
+   int ip;
+} frame;
+
 #ifdef JITDEBUG
     #include <stdio.h>
     #define DEBUGSTMT(NAME, PREV_IP, IP) \
