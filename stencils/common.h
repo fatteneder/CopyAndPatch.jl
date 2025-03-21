@@ -9,24 +9,24 @@
 #define CALLING_CONV
 #endif
 
-#define JIT_ENTRY()                \
-    CALLING_CONV                   \
+#define JIT_ENTRY()                               \
+    CALLING_CONV                                  \
     void _JIT_ENTRY(int prev_ip)
 
-#define PATCH_VALUE(TYPE, NAME, ALIAS)  \
-    extern void ALIAS;                  \
-    TYPE NAME = (TYPE)(uint64_t)&ALIAS;
+#define PATCH_VALUE(TYPE, NAME, ALIAS)            \
+    extern void (ALIAS);                          \
+    TYPE (NAME) = (TYPE)(uint64_t)&(ALIAS);
 
 #define PATCH_JUMP(ALIAS, IP)                     \
 do {                                              \
     extern void (CALLING_CONV (ALIAS))(int);      \
     __attribute__((musttail))                     \
-    return (ALIAS)(IP);                           \
+    return (ALIAS)((IP));                         \
 } while (0)
 
 #define PATCH_CALL(ALIAS, IP)                     \
     extern void (CALLING_CONV (ALIAS))(int);      \
-    (ALIAS)(IP)
+    (ALIAS)((IP))
 
 #define RESET_COLOR   "\033[39m"
 #define FG_GREEN      "\033[32m"
