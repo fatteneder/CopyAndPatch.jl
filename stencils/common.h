@@ -9,13 +9,13 @@
 #define CALLING_CONV
 #endif
 
-#define JIT_ENTRY()                \
-    CALLING_CONV                   \
+#define JIT_ENTRY()                               \
+    CALLING_CONV                                  \
     void _JIT_ENTRY(int prev_ip)
 
-#define PATCH_VALUE(TYPE, NAME, ALIAS)  \
-    extern void ALIAS;                  \
-    TYPE NAME = (TYPE)(uint64_t)&ALIAS;
+#define PATCH_VALUE(TYPE, NAME, ALIAS)            \
+    extern void (ALIAS);                          \
+    (TYPE) (NAME) = (TYPE)(uint64_t)&(ALIAS);
 
 #define PATCH_JUMP(ALIAS, IP)                     \
 do {                                              \
