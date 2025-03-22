@@ -46,7 +46,8 @@ function init_stencils()
     empty!(STENCILS[])
     for f in files
         try
-            s = StencilGroup(f)
+            name = first(splitext(basename(f)))
+            s = StencilGroup(f, name)
             bvec = ByteVector(UInt8.(only(s.code.body)))
             bvecs_data = if !isempty(s.data.body)
                 [ ByteVector(UInt8.(b)) for b in s.data.body ]
@@ -58,7 +59,6 @@ function init_stencils()
                 @assert h.kind == "R_X86_64_64"
                 bvec[h.offset + 1] = MAGICNR
             end
-            name = first(splitext(basename(f)))
             STENCILS[][name] = (s, bvec, bvecs_data)
         catch e
             println("Failure when processing $f")

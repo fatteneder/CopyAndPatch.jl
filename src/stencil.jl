@@ -16,19 +16,20 @@ mutable struct Hole
 end
 
 
-struct Stencil
-    # TODO Add field name!
-    body
-    holes
-    disassembly
-    symbols
-    offsets
-    relocations
+mutable struct Stencil
+    parent::Any # the StencilGroup the stencil is contained in
+    const body
+    const holes
+    const disassembly
+    const symbols
+    const offsets
+    const relocations
 end
-Stencil() = Stencil([], [], [], Dict(), Dict(), [])
+Stencil() = Stencil(nothing, [], [], [], Dict(), Dict(), [])
 
 
 struct StencilGroup
+    name::String
     code::Stencil # actual machine code (with holes)
     data::Stencil # needed to build a header file
     global_offset_table
@@ -207,9 +208,11 @@ function emit_global_offset_table!(group)
 end
 
 
-StencilGroup(path::AbstractString) = StencilGroup(JSON.parsefile(string(path)))
-function StencilGroup(json::Vector{Any})
-    group = StencilGroup(Stencil(), Stencil(), Dict())
+StencilGroup(path::AbstractString, name::String) = StencilGroup(JSON.parsefile(string(path)), name)
+function StencilGroup(json::Vector{Any}, name::String)
+    group = StencilGroup(name, Stencil(), Stencil(), Dict())
+    group.code.parent = group
+    group.data.parent = group
     for sec in json[1]["Sections"]
         handle_section(sec["Section"], group)
     end
@@ -271,8 +274,7 @@ function patch!(bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, 
             anyfound = true
         end
     end
-    # TODO Use st.name for better error msg
-    return !anyfound && error("No symbol $symbol found in stencil")
+    return !anyfound && error("No symbol $symbol found in stencil '$(st.parent.name)'")
 end
 function patch!(vec::AbstractVector{<:UInt8}, offset::Integer, st::Stencil, symbol::String, val)
     return patch!(ByteVector(vec), offset, st, symbol, val)
