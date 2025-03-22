@@ -3,9 +3,8 @@
 JIT_ENTRY()
 {
 
-   PATCH_VALUE(int,           ip,  _JIT_IP);
-   PATCH_VALUE(jl_value_t **, ret, _JIT_RET);
+   PATCH_VALUE(int, ip, _JIT_IP);
    DEBUGSTMT("ast_inbounds", F, ip);
-   *ret = jl_nothing;
+   F->ssas[ip] = jl_nothing;
    PATCH_JUMP(_JIT_CONT, F, ip);
 }

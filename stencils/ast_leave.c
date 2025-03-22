@@ -3,8 +3,8 @@
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int,   ip,           _JIT_IP);
-   PATCH_VALUE(int,   hand_n_leave, _JIT_HAND_N_LEAVE);
+   PATCH_VALUE(int, ip,           _JIT_IP);
+   PATCH_VALUE(int, hand_n_leave, _JIT_HAND_N_LEAVE);
    DEBUGSTMT("ast_leave", F, ip);
    jl_task_t *ct = jl_current_task;
    if (hand_n_leave > 0) {

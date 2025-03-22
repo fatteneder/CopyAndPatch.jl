@@ -30,7 +30,6 @@ JIT_ENTRY()
    PATCH_VALUE(jl_value_t *, rettype_ptr, _JIT_RETTYPEPTR);
    PATCH_VALUE(void *,       ffi_retval,  _JIT_FFIRETVAL);
    PATCH_VALUE(uint32_t,     nargs,       _JIT_NARGS);
-   PATCH_VALUE(void **,      ret,         _JIT_RET);
    DEBUGSTMT("ast_foreigncall", F, ip);
    jl_value_t **roots;
    JL_GC_PUSHARGS(roots, n_gc_roots);
@@ -66,6 +65,7 @@ JIT_ENTRY()
       ffi_call((ffi_cif *)cif, f, rc, (void **)cargs);
    else
       ffi_call((ffi_cif *)cif, **(void ***)f, rc, (void **)cargs);
+   void **ret = (void **)&F->ssas[ip];
    switch (rettype) {
       case -2: *ret = jlh_convert_to_jl_value(rettype_ptr, (void *)rc); break;
       case -1: *ret = (void *)*rc; break; // jl_value_t *

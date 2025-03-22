@@ -127,7 +127,7 @@ for line in split(signatures,'\n')
     fn_name == "jl_arraylen" && continue
     nargs = length(argtypes)
     @assert nargs <= 6
-    patch_args = join([ "PATCH_VALUE(jl_value_t **, a$i, _JIT_A$i);" for i = 1:nargs ], '\n')
+    patch_args = join([ "   PATCH_VALUE(jl_value_t **, a$i, _JIT_A$i);" for i = 1:nargs ], '\n')
     gc_push = "JL_GC_PUSH$(nargs)(" * join(["a$i" for i in 1:nargs],',') * ");"
     fn_args = join([ "*a$i" for i = 1:nargs ], ',')
     code = """
@@ -137,14 +137,13 @@ for line in split(signatures,'\n')
 
 JIT_ENTRY()
 {
-PATCH_VALUE(int, ip, _JIT_IP);
+   PATCH_VALUE(int, ip, _JIT_IP);
 $patch_args
-PATCH_VALUE(jl_value_t **, ret, _JIT_RET);
-DEBUGSTMT(\"$fn_name\", F, ip);
-$gc_push
-*ret = $fn_name($fn_args);
-JL_GC_POP();
-PATCH_JUMP(_JIT_CONT, F, ip);
+   DEBUGSTMT(\"$fn_name\", F, ip);
+   $gc_push
+   F->ssas[ip] = $fn_name($fn_args);
+   JL_GC_POP();
+   PATCH_JUMP(_JIT_CONT, F, ip);
 }"""
     println(code)
     filename = joinpath(@__DIR__, "$fn_name.c")

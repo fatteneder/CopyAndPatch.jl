@@ -3,10 +3,12 @@
 #include <ffi.h>
 
 typedef struct {
-   jl_value_t **locals;
    int ip;
    int phioffset;
    int exc_thrown;
+   int nslots;
+   jl_value_t **slots;
+   jl_value_t **ssas;
 } frame;
 
 #ifdef USE_GHC_CC

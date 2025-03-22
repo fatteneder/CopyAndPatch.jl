@@ -46,13 +46,17 @@ jl_value_t *
 _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t *ci)
 {
    frame *F; jl_value_t **locals;
-   PATCH_VALUE(jl_value_t **, slots,      _JIT_SLOTS);
-   PATCH_VALUE(jl_value_t **, ssas,       _JIT_SSAS);
-   JL_GC_PUSHFRAME(F, locals, 1 /*nroots*/);
+   PATCH_VALUE(int,           nssas, _JIT_NSSAS);
+   PATCH_VALUE(jl_value_t **, slots, _JIT_SLOTS);
+   int nroots = nargs + nssas;
+   assert(nroots > 0);
+   JL_GC_PUSHFRAME(F, locals, nroots);
    F->ip = -1;
-   F->locals = locals;
    F->phioffset = 0;
    F->exc_thrown = 0;
+   F->nslots = nargs;
+   F->slots = locals;
+   F->ssas = locals+nargs;
    int ip = 0;
    DEBUGSTMT("abi", F, ip);
    slots[0] = f;
@@ -76,7 +80,8 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
    extern void (CALLING_CONV _JIT_STENCIL)(frame *);
    _JIT_STENCIL(F);
    JL_GC_ENABLEFRAME(F);
-   jl_value_t *ret = ssas[F->ip-1];
+   int ret_ip = F->ip-1;
+   jl_value_t *ret = F->ssas[ret_ip];
    JL_GC_POP();
    return ret;
 }

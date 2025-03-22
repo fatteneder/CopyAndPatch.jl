@@ -6,7 +6,6 @@ JIT_ENTRY()
    PATCH_VALUE(int,            ip,          _JIT_IP);
    PATCH_VALUE(int,            ip_blockend, _JIT_IP_BLOCKEND);
    PATCH_VALUE(int,            nedges,      _JIT_NEDGES);
-   PATCH_VALUE(jl_value_t **,  ret,         _JIT_RET);
    PATCH_VALUE(jl_value_t ***, vals,        _JIT_VALS);
    DEBUGSTMT("ast_phinode", F, ip);
    int from = F->ip - 1; // 0-based
@@ -35,9 +34,9 @@ JIT_ENTRY()
       }
    }
    if (edge != -1)
-      *ret = *(vals[edge]);
+      F->ssas[ip] = *(vals[edge]);
    else
-      *ret = NULL;
+      F->ssas[ip] = NULL;
    int hit_implicit = closest != to;
    if (hit_implicit || ip == ip_blockend) {
       F->phioffset = 0;
