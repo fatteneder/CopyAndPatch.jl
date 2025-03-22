@@ -4,7 +4,6 @@
 JIT_ENTRY()
 {
    PATCH_VALUE(int,   ip,         _JIT_IP);
-   PATCH_VALUE(int *, exc_thrown, _JIT_EXC_THROWN);
    PATCH_VALUE(jl_value_t *,  scope, _JIT_SCOPE);
    PATCH_VALUE(jl_value_t **, ret,       _JIT_RET);
    DEBUGSTMT("ast_enternode", F, ip);
@@ -12,7 +11,7 @@ JIT_ENTRY()
    jl_task_t *ct = jl_current_task;
    jl_enter_handler(ct, &__eh);
    *ret = jl_box_ulong(jl_excstack_state(ct));
-   *exc_thrown = 1; // needs to be reset by a :leave
+   F->exc_thrown = 1; // needs to be reset by a :leave
    if (scope) {
       JL_GC_PUSH1(&scope);
       ct->scope = scope;
@@ -32,7 +31,7 @@ JIT_ENTRY()
       }
    }
    jl_eh_restore_state(ct, &__eh);
-   if (!(*exc_thrown)) {
+   if (!(F->exc_thrown)) {
       jl_eh_restore_state_noexcept(ct, &__eh);
       PATCH_JUMP(_JIT_CONT_LEAVE, F, ip);
    } else {

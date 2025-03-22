@@ -9,8 +9,6 @@ mutable struct MachineCode
     ssas::Vector{Ptr{UInt64}}
     static_prms::Vector{Any}
     gc_roots::Vector{Any}
-    exc_thrown::Base.RefValue{Cint}
-    phioffset::Base.RefValue{Cint}
 
     function MachineCode(
             sz::Integer, @nospecialize(fn::Any),
@@ -28,7 +26,7 @@ mutable struct MachineCode
         ssas = zeros(UInt64, nssas)
         return new(
             fn, rt, ats, buf, codeinfo, stencil_starts,
-            slots, ssas, Any[], gc_roots, Ref(Cint(0)), Ref(Cint(0))
+            slots, ssas, Any[], gc_roots
         )
     end
     function MachineCode(

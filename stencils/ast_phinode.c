@@ -3,7 +3,6 @@
 JIT_ENTRY()
 {
    PATCH_VALUE(int *,          edges_from,  _JIT_EDGES_FROM);
-   PATCH_VALUE(int *,          phioffset,   _JIT_PHIOFFSET);
    PATCH_VALUE(int,            ip,          _JIT_IP);
    PATCH_VALUE(int,            ip_blockend, _JIT_IP_BLOCKEND);
    PATCH_VALUE(int,            nedges,      _JIT_NEDGES);
@@ -11,7 +10,7 @@ JIT_ENTRY()
    PATCH_VALUE(jl_value_t ***, vals,        _JIT_VALS);
    DEBUGSTMT("ast_phinode", F, ip);
    int from = F->ip - 1; // 0-based
-   int to = ip - *phioffset - 1; // 0-based
+   int to = ip - F->phioffset - 1; // 0-based
    int edge = -1;
    int closest = to; // implicit edge has `to <= edge - 1 < to + i`
    // this is because we could see the following IR (all 1-indexed):
@@ -27,7 +26,7 @@ JIT_ENTRY()
       }
       // TODO We use a <= in the second test instead of <.
       // This might be a big in src/interpreter.c, but I fail to trigger this issue there.
-      else if (closest < edge_from && edge_from <= (to + *phioffset + 0)) {
+      else if (closest < edge_from && edge_from <= (to + F->phioffset + 0)) {
           // if we found a nearer implicit branch from fall-through,
           // that occurred since the last explicit branch,
           // we should use the value from that edge instead
@@ -41,10 +40,10 @@ JIT_ENTRY()
       *ret = NULL;
    int hit_implicit = closest != to;
    if (hit_implicit || ip == ip_blockend) {
-      *phioffset = 0;
+      F->phioffset = 0;
       PATCH_JUMP(_JIT_CONT, F, ip);
    } else {
-      *phioffset += 1;
+      F->phioffset += 1;
       PATCH_JUMP(_JIT_CONT, F, F->ip);
    }
 }

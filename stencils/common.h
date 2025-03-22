@@ -5,6 +5,8 @@
 typedef struct {
    jl_value_t **locals;
    int ip;
+   int phioffset;
+   int exc_thrown;
 } frame;
 
 #ifdef USE_GHC_CC
