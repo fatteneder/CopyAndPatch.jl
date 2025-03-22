@@ -6,7 +6,7 @@ JIT_ENTRY()
    PATCH_VALUE(int,   ip,           _JIT_IP);
    PATCH_VALUE(int,   hand_n_leave, _JIT_HAND_N_LEAVE);
    PATCH_VALUE(int *, exc_thrown,   _JIT_EXC_THROWN);
-   DEBUGSTMT("ast_leave", prev_ip, ip);
+   DEBUGSTMT("ast_leave", F, ip);
    jl_task_t *ct = jl_current_task;
    if (hand_n_leave > 0) {
       jl_handler_t *eh = ct->eh;
@@ -19,6 +19,6 @@ JIT_ENTRY()
       asan_unpoison_task_stack(ct, &eh->eh_ctx);
       jl_longjmp(eh->eh_ctx, 1);
    } else {
-      PATCH_JUMP(_JIT_CONT, ip);
+      PATCH_JUMP(_JIT_CONT, F, ip);
    }
 }

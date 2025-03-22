@@ -16,9 +16,10 @@ BINMWES=$(addprefix bin/,$(MWES))
 
 $(shell mkdir -p bin/mwes)
 
-# makefile options
 CFLAGS=
+CC=clang
 
+# makefile options
 debug?=0
 ifeq ($(debug),1)
 CFLAGS+=-DJITDEBUG
@@ -41,33 +42,33 @@ bin/%.json: bin/%.o readobj
 	./readobj $< > bin/$*.json
 
 bin/libjuliahelpers.so: libjuliahelpers.c
-	gcc -I'${JULIA_INCLUDE}' -I'${JULIA_INCLUDE}/julia' -I'${JULIA_INTERNAL_INCLUDE}' \
+	$(CC) -I'${JULIA_INCLUDE}' -I'${JULIA_INCLUDE}/julia' -I'${JULIA_INTERNAL_INCLUDE}' \
 			-L'${JULIA_LIB}' \
 			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
 			-std=gnu11 -fPIC -ljulia -ljulia-internal -shared \
 			-o bin/libjuliahelpers.so libjuliahelpers.c
 
 bin/libffihelpers.so: libffihelpers.c
-	gcc -I'${LIBFFI_INCLUDE}' \
+	$(CC) -I'${LIBFFI_INCLUDE}' \
 			-std=gnu11 -fPIC -lffi -shared \
 			-o bin/libffihelpers.so libffihelpers.c
 
 bin/libmwes.so: libmwes.c
-	gcc -I'${JULIA_INCLUDE}/julia' -I'${LIBFFI_INCLUDE}' \
+	$(CC) -I'${JULIA_INCLUDE}/julia' -I'${LIBFFI_INCLUDE}' \
 			-L'${JULIA_LIB}' \
 			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
 			-std=gnu11 -fPIC -ljulia -ljulia-internal -lffi -shared \
 			-o bin/libmwes.so libmwes.c
 
 bin/libccalltest.so: libccalltest.c
-	gcc -I'${JULIA_INCLUDE}/julia' \
+	$(CC) -I'${JULIA_INCLUDE}/julia' \
 			-L'${JULIA_LIB}' \
 			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
 			-std=gnu11 -fPIC -ljulia -ljulia-internal -shared \
 			-o bin/libccalltest.so libccalltest.c
 
 bin/mwe_libffi: mwe_libffi.c
-	gcc -I'${JULIA_INCLUDE}/julia' -I'${LIBFFI_INCLUDE}' \
+	$(CC) -I'${JULIA_INCLUDE}/julia' -I'${LIBFFI_INCLUDE}' \
 			-L'${JULIA_LIB}' \
 			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
 			-std=gnu11 -fPIC -ljulia -ljulia-internal -lffi \

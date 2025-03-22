@@ -31,7 +31,7 @@ JIT_ENTRY()
    PATCH_VALUE(void *,       ffi_retval,  _JIT_FFIRETVAL);
    PATCH_VALUE(uint32_t,     nargs,       _JIT_NARGS);
    PATCH_VALUE(void **,      ret,         _JIT_RET);
-   DEBUGSTMT("ast_foreigncall", prev_ip, ip);
+   DEBUGSTMT("ast_foreigncall", F, ip);
    jl_value_t **roots;
    JL_GC_PUSHARGS(roots, n_gc_roots);
    for (int i = 0; i < n_gc_roots; i++)
@@ -88,5 +88,5 @@ JIT_ENTRY()
       default: jl_error("ast_foreigncall: This should not have happened!");
    }
    JL_GC_POP();
-   PATCH_JUMP(_JIT_CONT, ip);
+   PATCH_JUMP(_JIT_CONT, F, ip);
 }

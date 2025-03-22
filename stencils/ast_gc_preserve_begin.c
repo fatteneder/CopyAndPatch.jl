@@ -5,7 +5,7 @@ JIT_ENTRY()
 
    PATCH_VALUE(int,           ip,  _JIT_IP);
    PATCH_VALUE(jl_value_t **, ret, _JIT_RET);
-   DEBUGSTMT("ast_gc_preserve_begin", prev_ip, ip);
+   DEBUGSTMT("ast_gc_preserve_begin", F, ip);
    *ret = jl_nothing;
-   PATCH_JUMP(_JIT_CONT, ip);
+   PATCH_JUMP(_JIT_CONT, F, ip);
 }
