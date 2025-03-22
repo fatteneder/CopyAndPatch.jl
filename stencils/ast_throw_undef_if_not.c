@@ -8,7 +8,7 @@ JIT_ENTRY()
    PATCH_VALUE(jl_value_t **, cond, _JIT_COND);
    PATCH_VALUE(jl_value_t **, ret,  _JIT_RET);
    PATCH_VALUE(jl_sym_t **,   var,  _JIT_VAR);
-   DEBUGSTMT("ast_throw_undef_if_not", prev_ip, ip);
+   DEBUGSTMT("ast_throw_undef_if_not", F, ip);
    assert(jl_is_bool(*cond));
    if (*cond == jl_false) {
       if (*var == jl_getfield_undefref_sym)
@@ -17,5 +17,5 @@ JIT_ENTRY()
          jl_undefined_var_error(*var, (jl_value_t*)jl_local_sym);
    }
    *ret = jl_nothing;
-   PATCH_JUMP(_JIT_CONT, ip);
+   PATCH_JUMP(_JIT_CONT, F, ip);
 }

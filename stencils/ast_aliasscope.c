@@ -4,7 +4,7 @@ JIT_ENTRY()
 {
    PATCH_VALUE(int,           ip,  _JIT_IP);
    PATCH_VALUE(jl_value_t **, ret, _JIT_RET);
-   DEBUGSTMT("ast_aliasscope", prev_ip, ip);
+   DEBUGSTMT("ast_aliasscope", F, ip);
    *ret = jl_nothing;
-   PATCH_JUMP(_JIT_CONT, ip);
+   PATCH_JUMP(_JIT_CONT, F, ip);
 }

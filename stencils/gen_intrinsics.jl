@@ -140,11 +140,11 @@ JIT_ENTRY()
 PATCH_VALUE(int, ip, _JIT_IP);
 $patch_args
 PATCH_VALUE(jl_value_t **, ret, _JIT_RET);
-DEBUGSTMT(\"$fn_name\", prev_ip, ip);
+DEBUGSTMT(\"$fn_name\", F, ip);
 $gc_push
 *ret = $fn_name($fn_args);
 JL_GC_POP();
-PATCH_JUMP(_JIT_CONT, ip);
+PATCH_JUMP(_JIT_CONT, F, ip);
 }"""
     println(code)
     filename = joinpath(@__DIR__, "$fn_name.c")

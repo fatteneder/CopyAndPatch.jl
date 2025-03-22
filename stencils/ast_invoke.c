@@ -7,7 +7,7 @@ JIT_ENTRY()
    PATCH_VALUE(int,            ip,      _JIT_IP);
    PATCH_VALUE(uint32_t,       nargs,   _JIT_NARGS);
    PATCH_VALUE(jl_value_t **,  ret,     _JIT_RET);
-   DEBUGSTMT("ast_invoke", prev_ip, ip);
+   DEBUGSTMT("ast_invoke", F, ip);
    jl_value_t *result = NULL;
    jl_value_t **argv;
    JL_GC_PUSHARGS(argv, nargs-1);
@@ -36,5 +36,5 @@ JIT_ENTRY()
       *ret = jl_invoke(argv[0], &argv[1], nargs-2, (jl_method_instance_t*)c);
    }
    JL_GC_POP();
-   PATCH_JUMP(_JIT_CONT, ip);
+   PATCH_JUMP(_JIT_CONT, F, ip);
 }

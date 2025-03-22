@@ -9,8 +9,8 @@ JIT_ENTRY()
    PATCH_VALUE(int,            nedges,      _JIT_NEDGES);
    PATCH_VALUE(jl_value_t **,  ret,         _JIT_RET);
    PATCH_VALUE(jl_value_t ***, vals,        _JIT_VALS);
-   DEBUGSTMT("ast_phinode", prev_ip, ip);
-   int from = prev_ip - 1; // 0-based
+   DEBUGSTMT("ast_phinode", F, ip);
+   int from = F->ip - 1; // 0-based
    int to = ip - *phioffset - 1; // 0-based
    int edge = -1;
    int closest = to; // implicit edge has `to <= edge - 1 < to + i`
@@ -42,9 +42,9 @@ JIT_ENTRY()
    int hit_implicit = closest != to;
    if (hit_implicit || ip == ip_blockend) {
       *phioffset = 0;
-      PATCH_JUMP(_JIT_CONT, ip);
+      PATCH_JUMP(_JIT_CONT, F, ip);
    } else {
       *phioffset += 1;
-      PATCH_JUMP(_JIT_CONT, prev_ip);
+      PATCH_JUMP(_JIT_CONT, F, F->ip);
    }
 }

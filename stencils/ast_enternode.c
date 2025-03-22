@@ -7,7 +7,7 @@ JIT_ENTRY()
    PATCH_VALUE(int *, exc_thrown, _JIT_EXC_THROWN);
    PATCH_VALUE(jl_value_t *,  scope, _JIT_SCOPE);
    PATCH_VALUE(jl_value_t **, ret,       _JIT_RET);
-   DEBUGSTMT("ast_enternode", prev_ip, ip);
+   DEBUGSTMT("ast_enternode", F, ip);
    jl_handler_t __eh;
    jl_task_t *ct = jl_current_task;
    jl_enter_handler(ct, &__eh);
@@ -19,7 +19,7 @@ JIT_ENTRY()
       if (!jl_setjmp(__eh.eh_ctx, 1)) {
          ct->eh = &__eh;
          // can't use PATCH_JUMP here, because it returns and makes subsequent longjmp calls UB
-         PATCH_CALL(_JIT_CALL, ip);
+         PATCH_CALL(_JIT_CALL, F, ip);
          jl_unreachable();
       }
       JL_GC_POP();
@@ -27,16 +27,16 @@ JIT_ENTRY()
    else {
       if (!jl_setjmp(__eh.eh_ctx, 1)) {
          // can't use PATCH_JUMP here, because it returns and makes subsequent longjmp calls UB
-         PATCH_CALL(_JIT_CALL, ip);
+         PATCH_CALL(_JIT_CALL, F, ip);
          jl_unreachable();
       }
    }
    jl_eh_restore_state(ct, &__eh);
    if (!(*exc_thrown)) {
       jl_eh_restore_state_noexcept(ct, &__eh);
-      PATCH_JUMP(_JIT_CONT_LEAVE, ip);
+      PATCH_JUMP(_JIT_CONT_LEAVE, F, ip);
    } else {
       jl_eh_restore_state(ct, &__eh);
-      PATCH_JUMP(_JIT_CONT_CATCH, ip);
+      PATCH_JUMP(_JIT_CONT_CATCH, F, ip);
    }
 }

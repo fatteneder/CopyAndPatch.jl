@@ -10,6 +10,7 @@ clang -O3 \
       -fno-jump-tables \
       -fno-pic \
       -fno-stack-protector \
+      -fno-omit-frame-pointer \
       -mcmodel=large \
       -std=gnu11 \
       $CFLAGS \
@@ -21,9 +22,12 @@ clang -O3 \
       -o $OBJNAME \
       $SRCNAME
 
-# comments from CPython/Tools/jit/build.py
-# # FA: remove SHT_X86_64_UNWIND sections (using -O3 alone does not remove them)
+# remove SHT_X86_64_UNWIND sections (using -O3 alone does not remove them)
 # "-fno-asynchronous-unwind-tables",
+# ensure each stack frame obtains a pointer
+# "-fno-omit-frame-pointer"
+
+# comments from CPython/Tools/jit/build.py
 # # SET_FUNCTION_ATTRIBUTE on 32-bit Windows debug builds:
 # "-fno-jump-tables",
 # # Position-independent code adds indirection to every load and jump:
