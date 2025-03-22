@@ -1,1 +1,3 @@
 bin
+clang_version.txt
+compile_flags.txt
