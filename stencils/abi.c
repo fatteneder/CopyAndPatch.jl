@@ -47,8 +47,9 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
 {
    frame *F; jl_value_t **locals;
    PATCH_VALUE(int,           nssas, _JIT_NSSAS);
+   PATCH_VALUE(int,           ntmps, _JIT_NTMPS);
    PATCH_VALUE(jl_value_t **, slots, _JIT_SLOTS);
-   int nroots = nargs + nssas;
+   int nroots = nargs + nssas + ntmps;
    assert(nroots > 0);
    JL_GC_PUSHFRAME(F, locals, nroots);
    F->ip = -1;
@@ -56,20 +57,21 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
    F->exc_thrown = 0;
    F->nslots = nargs;
    F->slots = locals;
-   F->ssas = locals+nargs;
+   F->ssas = &locals[nargs];
+   F->tmps = &locals[nargs+nssas];
    int ip = 0;
    DEBUGSTMT("abi", F, ip);
    slots[0] = f;
    // when called from julia's invoke then args is a genuine jl_value_t ** array
    if (!jl_is_datatype(jl_typeof((jl_value_t *)args))) {
       for (int i = 0; i < (int)nargs; i++) {
-         slots[i+1] = args[i];
+         F->slots[i+1] = args[i];
       }
    }
    // when called from src/machinecode.jl we just forward the tuple of vargs to here
    else if (jl_is_tuple((jl_value_t *)args)) {
       for (int i = 0; i < (int)nargs; i++) {
-         slots[i+1] = jl_fieldref(args, i);
+         F->slots[i+1] = jl_fieldref(args, i);
       }
    }
    else {

@@ -19,6 +19,7 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
     for (ip, ex) in enumerate(codeinfo.code)
         emitcode!(mc, ip, ex)
     end
+    finish_emitcode_abi!(mc)
     return mc
 end
 
@@ -165,10 +166,13 @@ end
 function emitcode_abi!(mc::MachineCode)
     st, bvec, _ = get_stencil("abi")
     copyto!(mc.buf, 1, bvec, 1, length(bvec))
-    patch!(mc.buf, 1, st.code, "_JIT_NSSAS", length(mc.ssas))
+    patch!(mc.buf, 1, st.code, "_JIT_NSSAS", length(mc.codeinfo.code))
     patch!(mc.buf, 1, st.code, "_JIT_SLOTS", pointer(mc.slots))
     patch!(mc.buf, 1, st.code, "_JIT_SSAS", pointer(mc.ssas))
     return patch!(mc.buf, 1, st.code, "_JIT_STENCIL", pointer(mc.buf, mc.stencil_starts[1]))
+end
+function finish_emitcode_abi!(mc::MachineCode)
+    patch!(mc.buf, 1, st.code, "_JIT_NTMPS", mc.ntmps)
 end
 
 
