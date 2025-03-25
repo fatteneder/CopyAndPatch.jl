@@ -1,6 +1,5 @@
 #include "common.h"
 #include "julia_internal.h" // for jl_getfield_undefref_sym, jl_local_sym
-#include "julia_threads.h"  // for julia_internal.h
 
 JIT_ENTRY()
 {

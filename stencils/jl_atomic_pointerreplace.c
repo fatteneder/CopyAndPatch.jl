@@ -1,18 +1,15 @@
 #include "common.h"
-#include "julia_internal.h"
-#include "julia_threads.h"
+#include "julia_internal.h" // for jl_atomic_pointerreplace
 
 JIT_ENTRY()
 {
    PATCH_VALUE(int, ip, _JIT_IP);
-   PATCH_VALUE(jl_value_t **, a1, _JIT_A1);
-   PATCH_VALUE(jl_value_t **, a2, _JIT_A2);
-   PATCH_VALUE(jl_value_t **, a3, _JIT_A3);
-   PATCH_VALUE(jl_value_t **, a4, _JIT_A4);
-   PATCH_VALUE(jl_value_t **, a5, _JIT_A5);
    DEBUGSTMT("jl_atomic_pointerreplace", F, ip);
-   JL_GC_PUSH5(a1,a2,a3,a4,a5);
-   F->ssas[ip] = jl_atomic_pointerreplace(*a1,*a2,*a3,*a4,*a5);
-   JL_GC_POP();
+   jl_value_t *a1 = F->tmps[0];
+   jl_value_t *a2 = F->tmps[1];
+   jl_value_t *a3 = F->tmps[2];
+   jl_value_t *a4 = F->tmps[3];
+   jl_value_t *a5 = F->tmps[4];
+   F->ssas[ip] = jl_atomic_pointerreplace(a1,a2,a3,a4,a5);
    PATCH_JUMP(_JIT_CONT, F, ip);
 }

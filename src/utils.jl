@@ -1,6 +1,8 @@
+@nospecialize
 TODO() = error("Not implemented yet")
-TODO(msg) = TODO("Not implemented yet", msg)
-TODO(prefix, msg) = error(prefix, " ", msg)
+TODO(msg) = TODO("Not implemented yet: ", msg)
+TODO(prefix, msg) = error(prefix, msg)
+@specialize
 
 
 is_little_endian() = ENDIAN_BOM == 0x04030201

@@ -1,25 +1,37 @@
 function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype), @nospecialize(argtypes))
     nstencils = length(codeinfo.code)
-    stencil_starts = zeros(Int64, nstencils)
-    code_size, data_size = 0, 0
+    ssa_stencil_starts = zeros(Int64, nstencils)
+    inputs_stencil = Vector{Vector{Any}}(undef, nstencils)
+    inputs_stencil_starts = Vector{Vector{Int64}}(undef, nstencils)
+    code_size = 0
 
     st, bvec, _ = get_stencil("abi")
     code_size = length(only(st.code.body))
-    data_size = sum(length(b) for b in st.code.body)
-    for (i, ex) in enumerate(codeinfo.code)
+    ntmps = 0
+    for (ip, ex) in enumerate(codeinfo.code)
+        inputs = Vector{Any}()
+        get_inputs!(inputs, codeinfo.code, ip)
+        ntmps = max(ntmps, length(inputs))
+        inputs_stencil[ip] = inputs
+        inputs_stencil_starts[ip] = zeros(Int64, length(inputs))
+        for (i, input) in enumerate(inputs)
+            st, bvec, _ = get_stencil(input)
+            inputs_stencil_starts[ip][i] = 1 + code_size
+            code_size += length(only(st.code.body))
+        end
         st, bvec, _ = get_stencil(ex)
-        stencil_starts[i] = 1 + code_size
+        ssa_stencil_starts[ip] = 1 + code_size
         code_size += length(only(st.code.body))
-        data_size += sum(length(b) for b in st.code.body)
     end
 
-    mc = MachineCode(code_size, fn, rettype, argtypes, codeinfo, stencil_starts)
+    mc = MachineCode(code_size, fn, rettype, argtypes, codeinfo,
+                     ssa_stencil_starts, inputs_stencil_starts)
 
-    emitcode_abi!(mc)
+    emitabi!(mc, ntmps)
     for (ip, ex) in enumerate(codeinfo.code)
+        emitpushs!(mc, ip, ex, inputs_stencil[ip])
         emitcode!(mc, ip, ex)
     end
-    finish_emitcode_abi!(mc)
     return mc
 end
 
@@ -91,6 +103,26 @@ get_stencil_name(ex::Core.ReturnNode) = "ast_returnnode"
 get_stencil_name(ex::Core.UpsilonNode) = "ast_upsilonnode"
 get_stencil_name(ex::Nothing) = "ast_goto"
 
+function get_stencil(@nospecialize(arg::Core.Argument))
+    return get_stencil("jl_push_slot")
+end
+function get_stencil(@nospecialize(arg::Core.Const))
+    return get_stencil(c.val)
+end
+function get_stencil(@nospecialize(arg::Boxable))
+    typename = lowercase(string(typeof(arg)))
+    name = "jl_box_and_push_$typename"
+    return get_stencil(name)
+end
+function get_stencil(@nospecialize(arg::GlobalRef))
+    return get_stencil("jl_eval_and_push_globalref")
+end
+function get_stencil(arg::Ptr{UInt8})
+    return get_stencil("jl_box_uint8pointer")
+end
+function get_stencil(@nospecialize(arg::Ptr))
+    return get_stencil("jl_box_and_push_voidpointer")
+end
 function get_stencil(name::String)
     if !haskey(STENCILS[], name)
         error("no stencil named '$name'")
@@ -163,16 +195,67 @@ function box_args(ex_args::AbstractVector, mc::MachineCode)
 end
 
 
-function emitcode_abi!(mc::MachineCode)
+function emitabi!(mc::MachineCode, ntmps::Integer)
     st, bvec, _ = get_stencil("abi")
     copyto!(mc.buf, 1, bvec, 1, length(bvec))
     patch!(mc.buf, 1, st.code, "_JIT_NSSAS", length(mc.codeinfo.code))
-    patch!(mc.buf, 1, st.code, "_JIT_SLOTS", pointer(mc.slots))
-    patch!(mc.buf, 1, st.code, "_JIT_SSAS", pointer(mc.ssas))
-    return patch!(mc.buf, 1, st.code, "_JIT_STENCIL", pointer(mc.buf, mc.stencil_starts[1]))
+    patch!(mc.buf, 1, st.code, "_JIT_NTMPS", ntmps)
+    next = if length(mc.inputs_stencil_starts) > 0 &&
+                length(first(mc.inputs_stencil_starts)) > 0
+        first(first(mc.inputs_stencil_starts))
+    else
+        first(mc.stencil_starts)
+    end
+    patch!(mc.buf, 1, st.code, "_JIT_STENCIL", pointer(mc.buf, next))
+    return
 end
-function finish_emitcode_abi!(mc::MachineCode)
-    patch!(mc.buf, 1, st.code, "_JIT_NTMPS", mc.ntmps)
+
+
+function emitpushs!(mc::MachineCode, ip::Integer, ex, inputs::Vector{Any})
+    for (i,input) in enumerate(inputs)
+        continuation = if i < length(inputs)
+            pointer(mc.buf, mc.inputs_stencil_starts[ip][i+1])
+        else
+            pointer(mc.buf, mc.stencil_starts[ip])
+        end
+        emitpush!(mc, ip, ex, i, continuation, input)
+    end
+end
+function emitpush!(mc::MachineCode, ip::Integer, ex, i::Integer, continuation::Ptr,
+        @nospecialize(input::T)) where T<:Boxable
+    st, bvec, _ = get_stencil(input)
+    stencil_start = mc.inputs_stencil_starts[ip][i]
+    copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_X", input)
+    patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+end
+function emitpush!(mc::MachineCode, ip::Integer, ex, i::Integer, continuation::Ptr,
+        input::Core.Argument)
+    st, bvec, _ = get_stencil(input)
+    stencil_start = mc.inputs_stencil_starts[ip][i]
+    copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_N", Cint(input.n))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+end
+function emitpush!(mc::MachineCode, ip::Integer, ex, i::Integer, continuation::Ptr,
+        @nospecialize(input::GlobalRef))
+    st, bvec, _ = get_stencil(input)
+    stencil_start = mc.inputs_stencil_starts[ip][i]
+    i_globalref = something(findfirst(a -> a===input, ex.args))
+    ptr_globalref = pointer(ex.args, i_globalref)
+    copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_G", ptr_globalref) # rooted in codeinfo.stmts
+    patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+end
+function emitpush!(mc::MachineCode, ip::Integer, i::Integer, continuation::Ptr,
+        @nospecialize(input))
+    TODO(input)
 end
 
 
@@ -326,9 +409,9 @@ function emitcode!(mc, ip, ex::Expr)
             end
             copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
             patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
-            for n in 1:nargs
-                patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_A$n", boxes[n])
-            end
+            # for n in 1:nargs
+            #     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_A$n", boxes[n])
+            # end
             patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", pointer(mc.buf, mc.stencil_starts[ip + 1]))
         elseif iscallable(fn) || g isa Core.SSAValue
             nargs = length(ex.args)

@@ -6,7 +6,7 @@ typedef struct {
    int ip;
    int phioffset;
    int exc_thrown;
-   int nslots;
+   jl_value_t **locals;
    jl_value_t **slots;
    jl_value_t **ssas;
    jl_value_t **tmps;

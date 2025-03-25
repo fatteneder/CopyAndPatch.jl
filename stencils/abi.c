@@ -46,22 +46,20 @@ jl_value_t *
 _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t *ci)
 {
    frame *F; jl_value_t **locals;
-   PATCH_VALUE(int,           nssas, _JIT_NSSAS);
-   PATCH_VALUE(int,           ntmps, _JIT_NTMPS);
-   PATCH_VALUE(jl_value_t **, slots, _JIT_SLOTS);
-   int nroots = nargs + nssas + ntmps;
-   assert(nroots > 0);
-   JL_GC_PUSHFRAME(F, locals, nroots);
+   PATCH_VALUE(int, nssas, _JIT_NSSAS);
+   PATCH_VALUE(int, ntmps, _JIT_NTMPS);
+   int n = nargs + nssas + ntmps;
+   assert(n > 0);
+   JL_GC_PUSHFRAME(F, locals, n);
    F->ip = -1;
    F->phioffset = 0;
    F->exc_thrown = 0;
-   F->nslots = nargs;
    F->slots = locals;
    F->ssas = &locals[nargs];
    F->tmps = &locals[nargs+nssas];
    int ip = 0;
    DEBUGSTMT("abi", F, ip);
-   slots[0] = f;
+   F->slots[0] = f;
    // when called from julia's invoke then args is a genuine jl_value_t ** array
    if (!jl_is_datatype(jl_typeof((jl_value_t *)args))) {
       for (int i = 0; i < (int)nargs; i++) {

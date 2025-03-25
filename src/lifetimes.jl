@@ -96,7 +96,8 @@ function _analyze_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::
         # shorten intervals for outputs and add intervals for inputs
         phi_inputs = Set{VirtualReg}() # used for loop header analysis below
         for i_stmt in reverse(block.stmts)
-            outputs = get_outputs(stmts, i_stmt)
+            outputs = Set{VirtualReg}
+            get_outputs!(outputs, stmts, i_stmt)
             # println("* processing $(stmts[i_stmt])"); @show outputs
             for operand in outputs
                 lt = get!(lifetimes, operand, Lifetime())
@@ -106,7 +107,8 @@ function _analyze_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::
                 lt.def = i_stmt
                 delete!(live, operand)
             end
-            inputs = get_inputs(stmts, i_stmt)
+            inputs = Set{VirtualReg}()
+            get_inputs!(inputs, stmts, i_stmt)
             if stmts[i_stmt] isa Core.PhiNode
                 union!(phi_inputs, inputs)
             end
@@ -223,12 +225,11 @@ function _analyze_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::
     return lifetimes, loops
 end
 
-@inline function get_inputs(stmts::Vector{Any}, i)
-    inputs = Set{VirtualReg}()
+@inline function get_inputs!(inputs::V, stmts::Vector{Any}, i::Integer) where {T,V<:Union{Vector{T},Set{T}}}
     stmt = stmts[i]
     if stmt isa Core.PhiNode
         for val in stmt.values
-            val isa VirtualReg && push!(inputs, val)
+            val isa T && push!(inputs, val)
         end
     elseif stmt isa Core.GotoNode
     elseif stmt isa Core.GotoIfNot
@@ -237,7 +238,7 @@ end
     elseif Base.isexpr(stmt, :call)
         for i in 2:length(stmt.args)
             arg = stmt.args[i]
-            arg isa VirtualReg && push!(inputs, arg)
+            arg isa T && push!(inputs, arg)
         end
     else
         TODO(stmt)
@@ -245,15 +246,14 @@ end
     return inputs
 end
 
-@inline function get_outputs(stmts::Vector{Any}, i)
-    outputs = Set{VirtualReg}()
+@inline function get_outputs!(outputs::V, stmts::Vector{Any}, i::Integer) where {T,V<:Union{Vector{T},Set{T}}}
     stmt = stmts[i]
     if stmt isa Core.PhiNode
         push!(outputs, Core.SSAValue(i))
     elseif stmt isa Core.GotoNode
     elseif stmt isa Core.GotoIfNot
     elseif stmt isa Core.ReturnNode
-        stmt.val isa VirtualReg && push!(outputs, stmt.val)
+        stmt.val isa T && push!(outputs, stmt.val)
     elseif Base.isexpr(stmt, :call)
         push!(outputs, Core.SSAValue(i))
     else
@@ -266,8 +266,8 @@ function get_virtual_regs(stmts)
     inputs = Set{VirtualReg}()
     outputs = Set{VirtualReg}()
     for (i,stmt) in enumerate(stmts)
-        union!(inputs, get_inputs(stmts, i))
-        union!(outputs, get_outputs(stmts, i))
+        union!(inputs, get_inputs!(inputs, stmts, i))
+        union!(outputs, get_outputs!(outputs, stmts, i))
     end
     return inputs, outputs
 end
