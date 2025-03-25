@@ -3,7 +3,7 @@
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int,           ip,   _JIT_IP);
+   PATCH_VALUE(int,           ip,   _JIT_IP); // 1-based
    PATCH_VALUE(jl_value_t **, cond, _JIT_COND);
    PATCH_VALUE(jl_sym_t **,   var,  _JIT_VAR);
    DEBUGSTMT("ast_throw_undef_if_not", F, ip);
@@ -14,6 +14,6 @@ JIT_ENTRY()
       else
          jl_undefined_var_error(*var, (jl_value_t*)jl_local_sym);
    }
-   F->ssas[ip] = jl_nothing;
+   F->ssas[ip-1] = jl_nothing;
    PATCH_JUMP(_JIT_CONT, F, ip);
 }

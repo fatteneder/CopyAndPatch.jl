@@ -3,13 +3,13 @@
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int,          ip,    _JIT_IP);
+   PATCH_VALUE(int,          ip,    _JIT_IP); // 1-based
    PATCH_VALUE(jl_value_t *, scope, _JIT_SCOPE);
    DEBUGSTMT("ast_enternode", F, ip);
    jl_handler_t __eh;
    jl_task_t *ct = jl_current_task;
    jl_enter_handler(ct, &__eh);
-   F->ssas[ip] = jl_box_ulong(jl_excstack_state(ct));
+   F->ssas[ip-1] = jl_box_ulong(jl_excstack_state(ct));
    F->exc_thrown = 1; // needs to be reset by a :leave
    if (scope) {
       JL_GC_PUSH1(&scope);

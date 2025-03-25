@@ -47,6 +47,15 @@ mutable struct MachineCode
 end
 
 
+function get_continuation(mc::MachineCode, ip::Integer)
+    return if length(mc.inputs_stencil_starts[ip]) > 0
+        pointer(mc.buf, mc.inputs_stencil_starts[ip][1])
+    else
+        pointer(mc.buf, mc.stencil_starts[ip])
+    end
+end
+
+
 invoke_pointer(code::MachineCode) = Base.unsafe_convert(Ptr{Cvoid}, pointer(code.buf))
 
 

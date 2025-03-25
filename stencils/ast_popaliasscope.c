@@ -2,8 +2,8 @@
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int, ip, _JIT_IP);
+   PATCH_VALUE(int, ip, _JIT_IP); // 1-based
    DEBUGSTMT("ast_popaliasscope", F, ip);
-   F->ssas[ip] = jl_nothing;
+   F->ssas[ip-1] = jl_nothing;
    PATCH_JUMP(_JIT_CONT, F, ip);
 }

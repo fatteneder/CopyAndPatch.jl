@@ -3,10 +3,10 @@
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int, ip, _JIT_IP);
+   PATCH_VALUE(int, ip, _JIT_IP); // 1-based
    DEBUGSTMT("jl_ule_int", F, ip);
    jl_value_t *a1 = F->tmps[0];
    jl_value_t *a2 = F->tmps[1];
-   F->ssas[ip] = jl_ule_int(a1,a2);
+   F->ssas[ip-1] = jl_ule_int(a1,a2);
    PATCH_JUMP(_JIT_CONT, F, ip);
 }

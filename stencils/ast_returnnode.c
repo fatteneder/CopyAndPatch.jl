@@ -2,10 +2,9 @@
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int,           ip,  _JIT_IP);
-   PATCH_VALUE(jl_value_t **, val, _JIT_VAL);
+   PATCH_VALUE(int, ip, _JIT_IP); // 1-based
    DEBUGSTMT("ast_returnnode", F, ip);
-   F->ssas[ip] = *val;
+   F->ssas[ip-1] = F->tmps[0];
    F->ip = ip;
    return;
 }

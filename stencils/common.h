@@ -3,10 +3,9 @@
 #include <ffi.h>
 
 typedef struct {
-   int ip;
+   int ip; // 1-based
    int phioffset;
    int exc_thrown;
-   jl_value_t **locals;
    jl_value_t **slots;
    jl_value_t **ssas;
    jl_value_t **tmps;
@@ -24,7 +23,7 @@ typedef struct {
 
 #define PATCH_VALUE(TYPE, NAME, ALIAS)            \
     extern void (ALIAS);                          \
-    TYPE (NAME) = (TYPE)(uint64_t)&(ALIAS);
+    TYPE (NAME) = (TYPE)(uint64_t)&(ALIAS)
 
 #define PATCH_JUMP(ALIAS, F, IP)                  \
 do {                                              \

@@ -2,7 +2,7 @@
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int,           ip,         _JIT_IP);
+   PATCH_VALUE(int,           ip,         _JIT_IP); // 1-based
    PATCH_VALUE(jl_value_t **, prev_state, _JIT_PREV_STATE);
    DEBUGSTMT("ast_pop_exception", F, ip);
    jl_task_t *ct = jl_current_task;

@@ -135,10 +135,10 @@ for line in split(signatures,'\n')
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int, ip, _JIT_IP);
+   PATCH_VALUE(int, ip, _JIT_IP); // 1-based
    DEBUGSTMT(\"$fn_name\", F, ip);
 $patch_args
-   F->ssas[ip] = $fn_name($fn_args);
+   F->ssas[ip-1] = $fn_name($fn_args);
    PATCH_JUMP(_JIT_CONT, F, ip);
 }"""
     println(code)

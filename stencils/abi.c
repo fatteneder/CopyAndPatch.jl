@@ -38,7 +38,6 @@
 
 
 #include "common.h"
-/** #include "julia_internal.h" */
 
 
 // JL_CALLABLE(_JIT_ENTRY)
@@ -48,15 +47,15 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
    frame *F; jl_value_t **locals;
    PATCH_VALUE(int, nssas, _JIT_NSSAS);
    PATCH_VALUE(int, ntmps, _JIT_NTMPS);
-   int n = nargs + nssas + ntmps;
-   assert(n > 0);
+   int nslots = nargs+1; // +1 for f
+   int n = nslots + nssas + ntmps;
    JL_GC_PUSHFRAME(F, locals, n);
    F->ip = -1;
    F->phioffset = 0;
    F->exc_thrown = 0;
    F->slots = locals;
-   F->ssas = &locals[nargs];
-   F->tmps = &locals[nargs+nssas];
+   F->ssas = &locals[nslots];
+   F->tmps = &locals[nslots+nssas];
    int ip = 0;
    DEBUGSTMT("abi", F, ip);
    F->slots[0] = f;
@@ -81,6 +80,7 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
    _JIT_STENCIL(F);
    JL_GC_ENABLEFRAME(F);
    int ret_ip = F->ip-1;
+   printf("ret_ip = %d\n", ret_ip);
    jl_value_t *ret = F->ssas[ret_ip];
    JL_GC_POP();
    return ret;

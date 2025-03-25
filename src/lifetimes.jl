@@ -235,6 +235,8 @@ end
     elseif stmt isa Core.GotoIfNot
         push!(inputs, stmt.cond)
     elseif stmt isa Core.ReturnNode
+        val = stmt.val
+        val isa T && push!(inputs, val)
     elseif Base.isexpr(stmt, :call)
         for i in 2:length(stmt.args)
             arg = stmt.args[i]

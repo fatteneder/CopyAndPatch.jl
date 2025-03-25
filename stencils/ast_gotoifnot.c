@@ -2,7 +2,7 @@
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int,           ip,   _JIT_IP);
+   PATCH_VALUE(int,           ip,   _JIT_IP); // 1-based
    PATCH_VALUE(jl_value_t **, test, _JIT_TEST);
    DEBUGSTMT("ast_gotoifnot", F, ip);
    if (*test == jl_false) {

@@ -3,9 +3,9 @@
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int, ip, _JIT_IP);
+   PATCH_VALUE(int, ip, _JIT_IP); // 1-based
    DEBUGSTMT("jl_bswap_int", F, ip);
    jl_value_t *a1 = F->tmps[0];
-   F->ssas[ip] = jl_bswap_int(a1);
+   F->ssas[ip-1] = jl_bswap_int(a1);
    PATCH_JUMP(_JIT_CONT, F, ip);
 }

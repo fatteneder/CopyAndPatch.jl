@@ -15,7 +15,7 @@
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int,          ip,          _JIT_IP);
+   PATCH_VALUE(int,          ip,          _JIT_IP); // 1-based
    PATCH_VALUE(void ***,     args,        _JIT_ARGS);
    PATCH_VALUE(int *,        argtypes,    _JIT_ARGTYPES);
    PATCH_VALUE(int *,        sz_argtypes, _JIT_SZARGTYPES);
@@ -64,7 +64,7 @@ JIT_ENTRY()
       ffi_call((ffi_cif *)cif, f, rc, (void **)cargs);
    else
       ffi_call((ffi_cif *)cif, **(void ***)f, rc, (void **)cargs);
-   void **ret = (void **)&F->ssas[ip];
+   void **ret = (void **)&F->ssas[ip-1];
    switch (rettype) {
       case -2: *ret = jlh_convert_to_jl_value(rettype_ptr, (void *)rc); break;
       case -1: *ret = (void *)*rc; break; // jl_value_t *

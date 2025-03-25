@@ -3,9 +3,9 @@
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int, ip, _JIT_IP);
+   PATCH_VALUE(int, ip, _JIT_IP); // 1-based
    DEBUGSTMT("jl_atomic_fence", F, ip);
    jl_value_t *a1 = F->tmps[0];
-   F->ssas[ip] = jl_atomic_fence(a1);
+   F->ssas[ip-1] = jl_atomic_fence(a1);
    PATCH_JUMP(_JIT_CONT, F, ip);
 }
