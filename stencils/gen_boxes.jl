@@ -11,8 +11,8 @@ JL_DLLEXPORT jl_value_t *jl_box_int64(int64_t x);
 JL_DLLEXPORT jl_value_t *jl_box_uint64(uint64_t x);
 JL_DLLEXPORT jl_value_t *jl_box_float32(float x);
 JL_DLLEXPORT jl_value_t *jl_box_float64(double x);
-# JL_DLLEXPORT jl_value_t *jl_box_voidpointer(void *x);
-# JL_DLLEXPORT jl_value_t *jl_box_uint8pointer(uint8_t *x);
+# JL_DLLEXPORT jl_value_t *jl_box_voidpointer(void *x); # implemented by hand
+# JL_DLLEXPORT jl_value_t *jl_box_uint8pointer(uint8_t *x); # implemented by hand
 # JL_DLLEXPORT jl_value_t *jl_box_ssavalue(size_t x);
 # JL_DLLEXPORT jl_value_t *jl_box_slotnumber(size_t x);
 """
@@ -41,6 +41,7 @@ JIT_ENTRY()
    PATCH_VALUE(int, ip, _JIT_IP);
    PATCH_VALUE(int, i, _JIT_I); // 1-based
    PATCH_VALUE(void *, x, _JIT_X);
+   # TODO fn_name -> stencil_name
    DEBUGSTMT(\"$fn_name\", F, ip);
    converter_$ctype c;
    c.p = x;

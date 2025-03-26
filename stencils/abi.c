@@ -80,8 +80,14 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
    _JIT_STENCIL(F);
    JL_GC_ENABLEFRAME(F);
    int ret_ip = F->ip-1;
-   printf("ret_ip = %d\n", ret_ip);
+   /** printf("ret_ip = %d\n", ret_ip); */
    jl_value_t *ret = F->ssas[ret_ip];
+   /** printf("SERS\n"); */
+   /** printf("ret = %p\n", ret); */
+   /** printf("ret = %s\n", jl_typeof_str(ret)); */
    JL_GC_POP();
+   /** printf("OIDA\n"); */
+   /** printf("ret = %p\n", ret); */
+   /** printf("ret = %s\n", jl_typeof_str(ret)); */
    return ret;
 }

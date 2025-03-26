@@ -231,22 +231,57 @@ end
         for val in stmt.values
             val isa T && push!(inputs, val)
         end
+    elseif stmt isa Core.PhiCNode
     elseif stmt isa Core.GotoNode
     elseif stmt isa Core.GotoIfNot
         push!(inputs, stmt.cond)
     elseif stmt isa Core.ReturnNode
-        val = stmt.val
-        val isa T && push!(inputs, val)
+        stmt.val isa T && push!(inputs, stmt.val)
+    elseif stmt isa Core.EnterNode
+        # TODO Weird edge case -- THIS IS WRONG!!!
+        if isdefined(stmt, :scope)
+            stmt.scope isa T && push!(inputs, stmt.scope)
+        else
+            push!(inputs, C_NULL)
+        end
     elseif stmt isa Nothing
+    elseif stmt isa Core.UpsilonNode
+        # TODO Weird edge case
+        if isdefined(stmt, :val)
+            stmt.val isa T && push!(inputs, stmt.val)
+        else
+            push!(inputs, C_NULL)
+        end
     elseif Base.isexpr(stmt, :call)
-        # TODO What about 1st arg?
-        for i in 2:length(stmt.args)
+        for i in 1:length(stmt.args)
             arg = stmt.args[i]
             arg isa T && push!(inputs, arg)
         end
     elseif Base.isexpr(stmt, :invoke)
         for i in 1:length(stmt.args)
             arg = stmt.args[i]
+            arg isa T && push!(inputs, arg)
+        end
+    elseif Base.isexpr(stmt, :new)
+        for i in 1:length(stmt.args)
+            arg = stmt.args[i]
+            arg isa T && push!(inputs, arg)
+        end
+    elseif Base.isexpr(stmt, :foreigncall)
+        # TODO ex.args[1]?
+        # call arguments
+        for i in 6:(5+length(stmt.args[3]))
+            arg = stmt.args[i]
+            arg isa T && push!(inputs, arg)
+        end
+        # gc roots
+        for i in (6+length(stmt.args[3])+1):length(stmt.args)
+            arg = stmt.args[i]
+            arg isa T && push!(inputs, arg)
+        end
+    elseif Base.isexpr(stmt, :leave)
+    elseif Base.isexpr(stmt, :pop_exception)
+        for i in 2:length(stmt.args)
             arg isa T && push!(inputs, arg)
         end
     else

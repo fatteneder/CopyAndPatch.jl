@@ -8,6 +8,7 @@ JIT_ENTRY()
    PATCH_VALUE(jl_globalref_t *, gr, _JIT_GR);
    DEBUGSTMT("jl_eval_and_push_globalref", F, ip);
    jl_value_t *v = jl_get_globalref_value(gr);
+   printf("v = %s\n", jl_typeof_str(v));
    if (v == NULL)
        jl_undefined_var_error(gr->name, (jl_value_t*)gr->mod);
    F->tmps[i-1] = v;
