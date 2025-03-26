@@ -237,8 +237,15 @@ end
     elseif stmt isa Core.ReturnNode
         val = stmt.val
         val isa T && push!(inputs, val)
+    elseif stmt isa Nothing
     elseif Base.isexpr(stmt, :call)
+        # TODO What about 1st arg?
         for i in 2:length(stmt.args)
+            arg = stmt.args[i]
+            arg isa T && push!(inputs, arg)
+        end
+    elseif Base.isexpr(stmt, :invoke)
+        for i in 1:length(stmt.args)
             arg = stmt.args[i]
             arg isa T && push!(inputs, arg)
         end

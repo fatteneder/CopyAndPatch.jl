@@ -8,5 +8,6 @@ JIT_ENTRY()
    jl_task_t *ct = jl_current_task;
    size_t _prev_state = jl_unbox_ulong(*prev_state);
    jl_restore_excstack(ct, _prev_state);
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   SET_IP(F, ip);
+   PATCH_JUMP(_JIT_CONT, F);
 }

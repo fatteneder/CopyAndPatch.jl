@@ -8,5 +8,6 @@ JIT_ENTRY()
    jl_value_t *a1 = F->tmps[0];
    jl_value_t *a2 = F->tmps[1];
    F->ssas[ip-1] = jl_checked_sdiv_int(a1,a2);
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   SET_IP(F, ip);
+   PATCH_JUMP(_JIT_CONT, F);
 }

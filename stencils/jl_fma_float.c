@@ -9,5 +9,6 @@ JIT_ENTRY()
    jl_value_t *a2 = F->tmps[1];
    jl_value_t *a3 = F->tmps[2];
    F->ssas[ip-1] = jl_fma_float(a1,a2,a3);
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   SET_IP(F, ip);
+   PATCH_JUMP(_JIT_CONT, F);
 }

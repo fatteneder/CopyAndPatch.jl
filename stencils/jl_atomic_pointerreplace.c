@@ -11,5 +11,6 @@ JIT_ENTRY()
    jl_value_t *a4 = F->tmps[3];
    jl_value_t *a5 = F->tmps[4];
    F->ssas[ip-1] = jl_atomic_pointerreplace(a1,a2,a3,a4,a5);
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   SET_IP(F, ip);
+   PATCH_JUMP(_JIT_CONT, F);
 }

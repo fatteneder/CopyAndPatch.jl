@@ -6,5 +6,6 @@ JIT_ENTRY()
    PATCH_VALUE(jl_value_t **, val, _JIT_VAL);
    DEBUGSTMT("ast_assign", F, ip);
    F->ssas[ip-1] = *val;
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   SET_IP(F, ip);
+   PATCH_JUMP(_JIT_CONT, F);
 }

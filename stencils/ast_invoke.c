@@ -3,15 +3,11 @@
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int,            ip,    _JIT_IP); // 1-based
-   PATCH_VALUE(jl_value_t ***, args,  _JIT_ARGS);
-   PATCH_VALUE(uint32_t,       nargs, _JIT_NARGS);
+   PATCH_VALUE(int,      ip,    _JIT_IP); // 1-based
+   PATCH_VALUE(uint32_t, nargs, _JIT_NARGS);
    DEBUGSTMT("ast_invoke", F, ip);
-   jl_value_t **argv;
-   JL_GC_PUSHARGS(argv, nargs-1);
-   for (size_t i = 1; i < nargs; i++)
-      argv[i-1] = *args[i];
-   jl_value_t *c = *args[0];
+   jl_value_t **argv = &F->tmps[1];
+   jl_value_t *c = F->tmps[0];
    assert(jl_is_code_instance(c) || jl_is_method_instance(c));
    if (jl_is_code_instance(c)) {
       jl_code_instance_t *codeinst = (jl_code_instance_t*)c;
@@ -33,6 +29,6 @@ JIT_ENTRY()
    } else {
       F->ssas[ip-1] = jl_invoke(argv[0], &argv[1], nargs-2, (jl_method_instance_t*)c);
    }
-   JL_GC_POP();
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   SET_IP(F, ip);
+   PATCH_JUMP(_JIT_CONT, F);
 }

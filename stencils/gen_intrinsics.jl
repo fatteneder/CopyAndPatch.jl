@@ -139,7 +139,8 @@ JIT_ENTRY()
    DEBUGSTMT(\"$fn_name\", F, ip);
 $patch_args
    F->ssas[ip-1] = $fn_name($fn_args);
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   NEXT_IP(F, ip);
+   PATCH_JUMP(_JIT_CONT, F);
 }"""
     println(code)
     filename = joinpath(@__DIR__, "$fn_name.c")

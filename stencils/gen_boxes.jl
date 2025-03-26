@@ -46,7 +46,8 @@ JIT_ENTRY()
    c.p = x;
    $ctype v = c.v;
    F->tmps[i-1] = $fn_name(v);
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   // push operations don't increment ip
+   PATCH_JUMP(_JIT_CONT, F);
 }"""
     println(code)
     stencil_name = "jl_box_and_push_$(suffix)"

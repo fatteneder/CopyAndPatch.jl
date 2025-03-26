@@ -17,7 +17,8 @@ JIT_ENTRY()
       if (!jl_setjmp(__eh.eh_ctx, 1)) {
          ct->eh = &__eh;
          // can't use PATCH_JUMP here, because it returns and makes subsequent longjmp calls UB
-         PATCH_CALL(_JIT_CALL, F, ip);
+         SET_IP(F, ip);
+         PATCH_JUMP(_JIT_CALL, F);
          jl_unreachable();
       }
       JL_GC_POP();
@@ -25,16 +26,19 @@ JIT_ENTRY()
    else {
       if (!jl_setjmp(__eh.eh_ctx, 1)) {
          // can't use PATCH_JUMP here, because it returns and makes subsequent longjmp calls UB
-         PATCH_CALL(_JIT_CALL, F, ip);
+         SET_IP(F, ip);
+         PATCH_JUMP(_JIT_CALL, F);
          jl_unreachable();
       }
    }
    jl_eh_restore_state(ct, &__eh);
    if (!(F->exc_thrown)) {
       jl_eh_restore_state_noexcept(ct, &__eh);
-      PATCH_JUMP(_JIT_CONT_LEAVE, F, ip);
+      SET_IP(F, ip);
+      PATCH_JUMP(_JIT_CONT_LEAVE, F);
    } else {
       jl_eh_restore_state(ct, &__eh);
-      PATCH_JUMP(_JIT_CONT_CATCH, F, ip);
+      SET_IP(F, ip);
+      PATCH_JUMP(_JIT_CONT_CATCH, F);
    }
 }

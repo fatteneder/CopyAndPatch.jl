@@ -2,15 +2,16 @@
 
 JIT_ENTRY()
 {
-   PATCH_VALUE(int *,          edges_from,  _JIT_EDGES_FROM);
-   PATCH_VALUE(int,            ip,          _JIT_IP); // 1-based
-   PATCH_VALUE(int,            ip_blockend, _JIT_IP_BLOCKEND); // 1-based
-   PATCH_VALUE(int,            nedges,      _JIT_NEDGES);
-   PATCH_VALUE(jl_value_t ***, vals,        _JIT_VALS);
+   PATCH_VALUE(int *, edges_from,  _JIT_EDGES_FROM);
+   PATCH_VALUE(int,   ip,          _JIT_IP); // 1-based
+   PATCH_VALUE(int,   ip_blockend, _JIT_IP_BLOCKEND); // 1-based
+   PATCH_VALUE(int,   nedges,      _JIT_NEDGES);
    DEBUGSTMT("ast_phinode", F, ip);
-   int from = F->ip - 1; // 0-based
+   jl_value_t **vals = F->tmps;
+   int prev_ip = F->ip;
+   int from = prev_ip - 1; // 0-based
    int to = ip - F->phioffset - 1; // 0-based
-   int edge = -1;
+   int edge = -1; // 0-based
    int closest = to; // implicit edge has `to <= edge - 1 < to + i`
    // this is because we could see the following IR (all 1-indexed):
    //   goto %3 unless %cond
@@ -24,7 +25,7 @@ JIT_ENTRY()
               edge = j;
       }
       // TODO We use a <= in the second test instead of <.
-      // This might be a big in src/interpreter.c, but I fail to trigger this issue there.
+      // This might be a bug in src/interpreter.c, but I fail to trigger this issue there.
       else if (closest < edge_from && edge_from <= (to + F->phioffset + 0)) {
           // if we found a nearer implicit branch from fall-through,
           // that occurred since the last explicit branch,
@@ -33,16 +34,17 @@ JIT_ENTRY()
           closest = edge_from;
       }
    }
-   if (edge != -1)
-      F->ssas[ip-1] = *(vals[edge]);
+   if (edge > -1)
+      F->ssas[ip-1] = vals[edge];
    else
       F->ssas[ip-1] = NULL;
    int hit_implicit = closest != to;
    if (hit_implicit || ip == ip_blockend) {
       F->phioffset = 0;
-      PATCH_JUMP(_JIT_CONT, F, ip);
+      SET_IP(F, ip);
    } else {
       F->phioffset += 1;
-      PATCH_JUMP(_JIT_CONT, F, F->ip);
+      SET_IP(F, prev_ip);
    }
+   PATCH_JUMP(_JIT_CONT, F);
 }

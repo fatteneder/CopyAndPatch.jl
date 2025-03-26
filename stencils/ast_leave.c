@@ -18,6 +18,7 @@ JIT_ENTRY()
       asan_unpoison_task_stack(ct, &eh->eh_ctx);
       jl_longjmp(eh->eh_ctx, 1);
    } else {
-      PATCH_JUMP(_JIT_CONT, F, ip);
+      SET_IP(F, ip);
+      PATCH_JUMP(_JIT_CONT, F);
    }
 }

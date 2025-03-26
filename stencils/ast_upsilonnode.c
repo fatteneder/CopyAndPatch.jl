@@ -9,5 +9,6 @@ JIT_ENTRY()
       F->ssas[ip-1] = *val;
    else
       F->ssas[ip-1] = NULL;
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   SET_IP(F, ip);
+   PATCH_JUMP(_JIT_CONT, F);
 }

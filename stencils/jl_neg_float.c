@@ -7,5 +7,6 @@ JIT_ENTRY()
    DEBUGSTMT("jl_neg_float", F, ip);
    jl_value_t *a1 = F->tmps[0];
    F->ssas[ip-1] = jl_neg_float(a1);
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   SET_IP(F, ip);
+   PATCH_JUMP(_JIT_CONT, F);
 }

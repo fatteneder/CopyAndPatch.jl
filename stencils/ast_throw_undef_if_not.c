@@ -15,5 +15,6 @@ JIT_ENTRY()
          jl_undefined_var_error(*var, (jl_value_t*)jl_local_sym);
    }
    F->ssas[ip-1] = jl_nothing;
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   SET_IP(F, ip);
+   PATCH_JUMP(_JIT_CONT, F);
 }

@@ -87,5 +87,6 @@ JIT_ENTRY()
       default: jl_error("ast_foreigncall: This should not have happened!");
    }
    JL_GC_POP();
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   SET_IP(F, ip);
+   PATCH_JUMP(_JIT_CONT, F);
 }

@@ -15,5 +15,6 @@ JIT_ENTRY()
    c.p = x;
    float v = c.v;
    F->tmps[i-1] = jl_box_float32(v);
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   // push operations don't increment ip
+   PATCH_JUMP(_JIT_CONT, F);
 }

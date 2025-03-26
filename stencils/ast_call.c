@@ -12,5 +12,6 @@ JIT_ENTRY()
       argv[i] = *args[i];
    F->ssas[ip-1] = jl_apply(argv, nargs);
    JL_GC_POP();
-   PATCH_JUMP(_JIT_CONT, F, ip);
+   SET_IP(F, ip);
+   PATCH_JUMP(_JIT_CONT, F);
 }
