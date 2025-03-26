@@ -1,11 +1,19 @@
 #include "common.h"
 
+typedef union {
+   void *p;
+   uint16_t v;
+} converter_uint16_t;
+
 JIT_ENTRY()
 {
    PATCH_VALUE(int, ip, _JIT_IP);
    PATCH_VALUE(int, i, _JIT_I); // 1-based
-   PATCH_VALUE(uint16_t , x, _JIT_X);
+   PATCH_VALUE(void *, x, _JIT_X);
    DEBUGSTMT("jl_box_uint16", F, ip);
-   F->tmps[i-1] = jl_box_uint16(x);
+   converter_uint16_t c;
+   c.p = x;
+   uint16_t v = c.v;
+   F->tmps[i-1] = jl_box_uint16(v);
    PATCH_JUMP(_JIT_CONT, F, ip);
 }

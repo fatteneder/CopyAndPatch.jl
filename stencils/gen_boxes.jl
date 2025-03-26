@@ -11,8 +11,8 @@ JL_DLLEXPORT jl_value_t *jl_box_int64(int64_t x);
 JL_DLLEXPORT jl_value_t *jl_box_uint64(uint64_t x);
 JL_DLLEXPORT jl_value_t *jl_box_float32(float x);
 JL_DLLEXPORT jl_value_t *jl_box_float64(double x);
-JL_DLLEXPORT jl_value_t *jl_box_voidpointer(void *x);
-JL_DLLEXPORT jl_value_t *jl_box_uint8pointer(uint8_t *x);
+# JL_DLLEXPORT jl_value_t *jl_box_voidpointer(void *x);
+# JL_DLLEXPORT jl_value_t *jl_box_uint8pointer(uint8_t *x);
 # JL_DLLEXPORT jl_value_t *jl_box_ssavalue(size_t x);
 # JL_DLLEXPORT jl_value_t *jl_box_slotnumber(size_t x);
 """
@@ -24,20 +24,28 @@ for line in split(box_signatures,'\n')
     isempty(line) && continue
     m = match(rgx_sig, line)
     isnothing(m) && continue
-    rettype, fn_name, argtype = m[1], m[2], m[3]
+    rettype, fn_name, ctype = m[1], m[2], strip(m[3])
     m = something(match(r"jl_box_(.*)", fn_name))
     suffix = m[1]
     rettype != "jl_value_t *" && continue
     code = """
 #include "common.h"
 
+typedef union {
+   void *p;
+   $ctype v;
+} converter_$ctype;
+
 JIT_ENTRY()
 {
    PATCH_VALUE(int, ip, _JIT_IP);
    PATCH_VALUE(int, i, _JIT_I); // 1-based
-   PATCH_VALUE($argtype, x, _JIT_X);
+   PATCH_VALUE(void *, x, _JIT_X);
    DEBUGSTMT(\"$fn_name\", F, ip);
-   F->tmps[i-1] = $fn_name(x);
+   converter_$ctype c;
+   c.p = x;
+   $ctype v = c.v;
+   F->tmps[i-1] = $fn_name(v);
    PATCH_JUMP(_JIT_CONT, F, ip);
 }"""
     println(code)

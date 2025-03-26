@@ -109,6 +109,9 @@ end
 function get_stencil(@nospecialize(arg::Core.SSAValue))
     return get_stencil("jl_push_ssa")
 end
+function get_stencil(@nospecialize(arg::Type))
+    return get_stencil("jl_push_type")
+end
 function get_stencil(@nospecialize(arg::Core.Const))
     return get_stencil(c.val)
 end
@@ -255,6 +258,18 @@ function emitpush!(mc::MachineCode, ip::Integer, ex, i::Integer, continuation::P
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
 end
 function emitpush!(mc::MachineCode, ip::Integer, ex, i::Integer, continuation::Ptr,
+        @nospecialize(input::Type))
+    st, bvec, _ = get_stencil(input)
+    stencil_start = mc.inputs_stencil_starts[ip][i]
+    i_type = something(findfirst(a -> a===input, ex.args))
+    ptr_type = pointer(ex.args, i_type)
+    copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_TY", ptr_type)
+    patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+end
+function emitpush!(mc::MachineCode, ip::Integer, ex, i::Integer, continuation::Ptr,
         @nospecialize(input::GlobalRef))
     st, bvec, _ = get_stencil(input)
     stencil_start = mc.inputs_stencil_starts[ip][i]
@@ -266,7 +281,7 @@ function emitpush!(mc::MachineCode, ip::Integer, ex, i::Integer, continuation::P
     patch!(mc.buf, stencil_start, st.code, "_JIT_G", ptr_globalref) # rooted in codeinfo.stmts
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
 end
-function emitpush!(mc::MachineCode, ip::Integer, i::Integer, continuation::Ptr,
+function emitpush!(mc::MachineCode, ip::Integer, ex, i::Integer, continuation::Ptr,
         @nospecialize(input))
     TODO(input)
 end
