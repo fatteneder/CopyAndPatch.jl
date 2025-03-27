@@ -254,6 +254,28 @@ function emitpush!(mc::MachineCode, ip::Integer, ex, i::Integer, continuation::P
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
 end
 function emitpush!(mc::MachineCode, ip::Integer, ex, i::Integer, continuation::Ptr,
+        input::UndefInput)
+    st, bvec, _ = get_push_stencil(input)
+    stencil_start = mc.inputs_stencil_starts[ip][i]
+    copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_P", Ptr{Cvoid}(C_NULL))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+end
+function emitpush!(mc::MachineCode, ip::Integer, ex, i::Integer, continuation::Ptr,
+        input::ExprOf)
+    st, bvec, _ = get_push_stencil(input)
+    id = input.ssa.id
+    ptr = value_pointer(mc.codeinfo.code[id])
+    stencil_start = mc.inputs_stencil_starts[ip][i]
+    copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_P", ptr)
+    patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+end
+function emitpush!(mc::MachineCode, ip::Integer, ex, i::Integer, continuation::Ptr,
         input::Core.Argument)
     st, bvec, _ = get_push_stencil(input)
     stencil_start = mc.inputs_stencil_starts[ip][i]
@@ -329,10 +351,12 @@ function emitcode!(mc, ip, ex::Core.EnterNode)
     st, bvec, _ = get_stencil(ex)
     catch_ip = ex.catch_dest
     leave_ip = catch_ip - 1
+    call = get_continuation(mc, ip+1)
     continuation_leave = get_continuation(mc, leave_ip)
     continuation_catch = get_continuation(mc, catch_ip)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
+    patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CALL", call)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT_LEAVE", continuation_leave)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT_CATCH", continuation_catch)
     return
@@ -417,13 +441,17 @@ function emitcode!(mc, ip, ex::Core.PiNode)
 end
 function emitcode!(mc, ip, ex::Core.UpsilonNode)
     st, bvec, _ = get_stencil(ex)
-    # jl_get_nth_field_checked identifiese NULLs as undefined
     ssa_ip = Core.SSAValue(ip)
-    ret_ip = something(
-        findfirst(mc.codeinfo.code[(ip + 1):end]) do e
-            e isa Core.PhiCNode && ssa_ip in e.values
-        end
-    ) + ip
+    ret_ip = findfirst(mc.codeinfo.code[(ip + 1):end]) do e
+        e isa Core.PhiCNode && ssa_ip in e.values
+    end
+    if ret_ip === nothing
+        # no use of this store, so it is safe to delete/ignore it
+        # cf. https://docs.julialang.org/en/v1/devdocs/ssair/#PhiC-nodes-and-Upsilon-nodes
+        ret_ip = 0
+    else
+        ret_ip += ip
+    end
     continuation = get_continuation(mc, ip+1)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
@@ -607,14 +635,9 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :throw_undef_if_not)
-        var = box_arg(ex.args[1], mc)
-        cond = box_arg(ex.args[2], mc)
-        ret = pointer(mc.ssas, ip)
         continuation = get_continuation(mc, ip+1)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
-        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_COND", cond)
-        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_VAR", var)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
     elseif any(
             s -> Base.isexpr(ex, s),

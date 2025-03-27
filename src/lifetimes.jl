@@ -225,6 +225,11 @@ function _analyze_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::
     return lifetimes, loops
 end
 
+struct UndefInput end
+struct ExprOf
+    ssa::Core.SSAValue
+end
+
 @inline function get_inputs!(inputs::V, stmts::Vector{Any}, i::Integer) where {T,V<:Union{Vector{T},Set{T}}}
     stmt = stmts[i]
     if stmt isa Core.PhiNode
@@ -236,13 +241,16 @@ end
     elseif stmt isa Core.GotoIfNot
         push!(inputs, stmt.cond)
     elseif stmt isa Core.ReturnNode
-        stmt.val isa T && push!(inputs, stmt.val)
+        # !isdefined(stmt, :val) =^= jl_unreachable
+        if isdefined(stmt, :val)
+            stmt.val isa T && push!(inputs, stmt.val)
+        end
     elseif stmt isa Core.EnterNode
-        # TODO Weird edge case -- THIS IS WRONG!!!
+        # TODO Weird edge case
         if isdefined(stmt, :scope)
             stmt.scope isa T && push!(inputs, stmt.scope)
         else
-            push!(inputs, C_NULL)
+            push!(inputs, UndefInput())
         end
     elseif stmt isa Nothing
     elseif stmt isa Core.UpsilonNode
@@ -250,21 +258,18 @@ end
         if isdefined(stmt, :val)
             stmt.val isa T && push!(inputs, stmt.val)
         else
-            push!(inputs, C_NULL)
+            push!(inputs, UndefInput())
         end
     elseif Base.isexpr(stmt, :call)
-        for i in 1:length(stmt.args)
-            arg = stmt.args[i]
+        for arg in stmt.args
             arg isa T && push!(inputs, arg)
         end
     elseif Base.isexpr(stmt, :invoke)
-        for i in 1:length(stmt.args)
-            arg = stmt.args[i]
+        for arg in stmt.args
             arg isa T && push!(inputs, arg)
         end
     elseif Base.isexpr(stmt, :new)
-        for i in 1:length(stmt.args)
-            arg = stmt.args[i]
+        for arg in stmt.args
             arg isa T && push!(inputs, arg)
         end
     elseif Base.isexpr(stmt, :foreigncall)
@@ -280,8 +285,15 @@ end
             arg isa T && push!(inputs, arg)
         end
     elseif Base.isexpr(stmt, :leave)
+        for arg in stmt.args
+            arg isa T && push!(inputs, ExprOf(arg))
+        end
     elseif Base.isexpr(stmt, :pop_exception)
-        for i in 2:length(stmt.args)
+        for arg in stmt.args
+            arg isa T && push!(inputs, arg)
+        end
+    elseif Base.isexpr(stmt, :throw_undef_if_not)
+        for arg in stmt.args
             arg isa T && push!(inputs, arg)
         end
     else
