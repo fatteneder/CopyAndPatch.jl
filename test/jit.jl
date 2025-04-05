@@ -43,8 +43,6 @@ function f(x)
     return (x + 2) / 3
 end
 @testset "multiple calls" begin
-    xx = 1.0
-    expected = f(xx)
     for T in (Int64, Int32)
         expected = f(one(T))
         try

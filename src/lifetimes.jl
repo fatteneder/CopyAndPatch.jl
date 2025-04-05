@@ -35,6 +35,8 @@ function analyze_lifetimes(cinfo::Core.CodeInfo)
     return LifetimeAnalysis(cinfo, cfg, block_order, lifetimes, loops)
 end
 
+# TODO
+# - Adapt to handle Upsilon, PhiC, Pi nodes.
 function _analyze_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::Vector{Int})
     liveIns = [ Set{VirtualReg}() for i in 1:length(block_order) ]
     lifetimes = Dict{VirtualReg,Lifetime}()
@@ -232,27 +234,31 @@ end
 
 @inline function get_inputs!(inputs::V, stmts::Vector{Any}, i::Integer) where {T,V<:Union{Vector{T},Set{T}}}
     stmt = stmts[i]
-    if stmt isa Core.PhiNode
-        for val in stmt.values
-            val isa T && push!(inputs, val)
-        end
-    elseif stmt isa Core.PhiCNode
-    elseif stmt isa Core.GotoNode
-    elseif stmt isa Core.GotoIfNot
-        push!(inputs, stmt.cond)
-    elseif stmt isa Core.ReturnNode
-        # !isdefined(stmt, :val) =^= jl_unreachable
-        if isdefined(stmt, :val)
-            stmt.val isa T && push!(inputs, stmt.val)
-        end
-    elseif stmt isa Core.EnterNode
+    if stmt isa Core.EnterNode
         # TODO Weird edge case
         if isdefined(stmt, :scope)
             stmt.scope isa T && push!(inputs, stmt.scope)
         else
             push!(inputs, UndefInput())
         end
+    elseif stmt isa Core.GlobalRef
+        stmt isa T && push!(inputs, stmt)
+    elseif stmt isa Core.GotoIfNot
+        push!(inputs, stmt.cond)
+    elseif stmt isa Core.GotoNode
     elseif stmt isa Nothing
+    elseif stmt isa Core.PhiNode
+        for val in stmt.values
+            val isa T && push!(inputs, val)
+        end
+    elseif stmt isa Core.PhiCNode
+    elseif stmt isa Core.PiNode
+        stmt.val isa T && push!(inputs, stmt.val)
+    elseif stmt isa Core.ReturnNode
+        # !isdefined(stmt, :val) =^= jl_unreachable
+        if isdefined(stmt, :val)
+            stmt.val isa T && push!(inputs, stmt.val)
+        end
     elseif stmt isa Core.UpsilonNode
         # TODO Weird edge case
         if isdefined(stmt, :val)
@@ -279,20 +285,37 @@ end
             arg = stmt.args[i]
             arg isa T && push!(inputs, arg)
         end
-        # gc roots
-        for i in (6+length(stmt.args[3])+1):length(stmt.args)
-            arg = stmt.args[i]
-            arg isa T && push!(inputs, arg)
-        end
+        # # gc roots
+        # for i in (6+length(stmt.args[3])+1):length(stmt.args)
+        #     arg = stmt.args[i]
+        #     arg isa T && push!(inputs, arg)
+        # end
+        fname = stmt.args[1]
+        fname isa T && push!(inputs, fname)
     elseif Base.isexpr(stmt, :leave)
         for arg in stmt.args
             arg isa T && push!(inputs, ExprOf(arg))
         end
+    elseif Base.isexpr(stmt, :the_exception)
     elseif Base.isexpr(stmt, :pop_exception)
         for arg in stmt.args
             arg isa T && push!(inputs, arg)
         end
     elseif Base.isexpr(stmt, :throw_undef_if_not)
+        for arg in stmt.args
+            arg isa T && push!(inputs, arg)
+        end
+    elseif Base.isexpr(stmt, :boundscheck)
+        for arg in stmt.args
+            arg isa T && push!(inputs, arg)
+        end
+    elseif any(
+            s -> Base.isexpr(stmt, s),
+            (
+                :meta, :coverageeffect, :inbounds, :loopinfo, :aliasscope, :popaliasscope,
+                :inline, :noinline, :gc_preserve_begin, :gc_preserve_end,
+            )
+        )
         for arg in stmt.args
             arg isa T && push!(inputs, arg)
         end

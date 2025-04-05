@@ -4,18 +4,25 @@ const libccalltest = joinpath(@__DIR__, "..", "stencils", "bin", "libccalltest.s
 
 function mimic_test(x)
     a1 = Ref(x)
-    a2 = @ccall jl_value_ptr(a1::Any)::Ptr{Cvoid}
-    a11 = Base.bitcast(Ptr{Int64}, a2)
-    a14 = @ccall libccalltest.test_echo_p(a11::Ptr{Int64})::Ptr{Int64}
-    a15 = Base.pointerref(a14, 1, 1)
+    # XXX: Without GC.@preserve the value of a15 from the LLVM backend depends on which @show is active below
+    GC.@preserve a1 begin
+        # @show a1
+        a2 = @ccall jl_value_ptr(a1::Any)::Ptr{Cvoid}
+        # @show a2
+        a11 = Base.bitcast(Ptr{Int64}, a2)
+        # @show a11
+        a14 = @ccall libccalltest.test_echo_p(a11::Ptr{Int64})::Ptr{Int64}
+        # @show a14
+        a15 = Base.pointerref(a14, 1, 1)
+        # @show a15
+    end
     return a15
 end
 @testset "mimic ccall test" begin
     mc = CP.jit(mimic_test, (Int64,))
-    result = CP.call(mc, 132)
+    result = CP.call(mc,132)
     expected = mimic_test(132)
-    # not sure if really broken, and where the initial test came from
-    @test_broken result == expected
+    @test result == expected
 end
 
 function f_ccall_array_int(v::Vector{Int32})

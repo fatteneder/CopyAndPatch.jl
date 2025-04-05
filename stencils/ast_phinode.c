@@ -34,8 +34,9 @@ JIT_ENTRY()
           closest = edge_from;
       }
    }
-   if (edge > -1)
+   if (edge > -1) {
       F->ssas[ip-1] = vals[edge];
+   }
    else
       F->ssas[ip-1] = NULL;
    int hit_implicit = closest != to;

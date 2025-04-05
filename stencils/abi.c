@@ -21,7 +21,7 @@
 
 #define JL_GC_ENCODE_PUSHFRAME(n)  ((((size_t)(n))<<2)|2)
 
-#define JL_GC_PUSHFRAME(frame,locals,n)                                             \
+#define JL_GC_PUSHFRAME(frame,locals,n)                                               \
     JL_CPPALLOCA(frame, sizeof(*frame)+(n)*sizeof(void*)+3*sizeof(jl_value_t*));      \
     ((void**)&frame[1])[0] = NULL;                                                    \
     ((void**)&frame[1])[1] = (void*)JL_GC_ENCODE_PUSHFRAME(n);                        \
@@ -45,8 +45,10 @@ jl_value_t *
 _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t *ci)
 {
    frame *F; jl_value_t **locals;
+   PATCH_VALUE(volatile int, _nargs, _JIT_NARGS);
    PATCH_VALUE(int, nssas, _JIT_NSSAS);
    PATCH_VALUE(int, ntmps, _JIT_NTMPS);
+   assert(nargs == _nargs);
    int nslots = nargs+1; // +1 for f
    int n = nslots + nssas + ntmps;
    JL_GC_PUSHFRAME(F, locals, n);
@@ -79,15 +81,8 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
    extern void (CALLING_CONV _JIT_STENCIL)(frame *);
    _JIT_STENCIL(F);
    JL_GC_ENABLEFRAME(F);
-   int ret_ip = F->ip-1;
-   /** printf("ret_ip = %d\n", ret_ip); */
-   jl_value_t *ret = F->ssas[ret_ip];
-   /** printf("SERS\n"); */
-   /** printf("ret = %p\n", ret); */
-   /** printf("ret = %s\n", jl_typeof_str(ret)); */
+   int ret_ip = F->ip; // 1-based
+   jl_value_t *ret = F->ssas[ret_ip-1];
    JL_GC_POP();
-   /** printf("OIDA\n"); */
-   /** printf("ret = %p\n", ret); */
-   /** printf("ret = %s\n", jl_typeof_str(ret)); */
    return ret;
 }
