@@ -9,6 +9,7 @@ typedef struct {
    jl_value_t **slots;
    jl_value_t **ssas;
    jl_value_t **tmps;
+   jl_value_t **gcroots;
 } frame;
 
 #ifdef USE_GHC_CC

@@ -22,8 +22,6 @@ JIT_ENTRY()
    PATCH_VALUE(int *,        argtypes,    _JIT_ARGTYPES);
    PATCH_VALUE(int *,        sz_argtypes, _JIT_SZARGTYPES);
    PATCH_VALUE(void *,       cif,         _JIT_CIF);
-   PATCH_VALUE(void *,       f,           _JIT_F);
-   PATCH_VALUE(int,          static_f,    _JIT_STATICF);
    PATCH_VALUE(int,          rettype,     _JIT_RETTYPE);
    PATCH_VALUE(jl_value_t *, rettype_ptr, _JIT_RETTYPEPTR);
    PATCH_VALUE(void *,       ffi_retval,  _JIT_FFIRETVAL);
@@ -57,9 +55,8 @@ JIT_ENTRY()
          default: jl_error("ast_foreigncall: This should not have happened!");
       }
    }
+   void *f = F->tmps[nargs];
    ffi_arg *rc = (ffi_arg*)ffi_retval;
-   if (!static_f)
-      f = *(void **)F->tmps[nargs];
    ffi_call((ffi_cif *)cif, f, rc, cargs);
    jl_value_t **ret = &F->ssas[ip-1];
    switch (rettype) {

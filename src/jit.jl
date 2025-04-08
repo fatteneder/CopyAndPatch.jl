@@ -13,6 +13,7 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
     st, bvec, _ = get_stencil("abi")
     code_size = length(only(st.code.body))
     ntmps = 0
+    ngcroots = 0
     for (ip, ex) in enumerate(codeinfo.code)
         inputs = Vector{Any}()
         get_inputs!(inputs, codeinfo.code, ip)
@@ -20,22 +21,32 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
         inputs_stencil[ip] = inputs
         inputs_stencil_starts[ip] = zeros(Int64, length(inputs))
         for (i, input) in enumerate(inputs)
-            if references_ast(input)
-                if input isa Expr
-                    @show input.head
+            # some inputs require value_pointers referencing codeinfo.code
+            # TODO Move this stuff into separate function
+            # input = maybe_requires_value_pointer(input, ex, codeinfo)
+            if Base.isexpr(ex, :foreigncall) && i == length(inputs)
+                input = interpret_func_symbol(input, codeinfo)
+                if input.jl_ptr === nothing && input.fptr === C_NULL && isempty(input.f_name)
+                    if input.gcroot === nothing
+                        error("ccall: first argument not a pointer or valid constant expression")
+                    else
+                        error("ccall: null function pointer")
+                    end
                 end
-                @show input, typeof(input)
+                input.lib_expr !== C_NULL && (ngcroots += 1)
+            elseif requires_value_pointer(input)
                 if input isa ExprOf
                     id = input.ssa.id
-                    stmt = mc.codeinfo.code[id]
+                    stmt = codeinfo.code[id]
                     input = WithValuePtr{ExprOf}(value_pointer(stmt), input, stmt)
                 elseif ex isa GlobalRef
-                    input = WithValuePtr{GlobalRef}(value_pointer(mc.codeinfo.code[ip]), input, ex)
+                    input = WithValuePtr{GlobalRef}(value_pointer(codeinfo.code[ip]), input, ex)
                 else
+                    # TODO Remove WithValuePtr constructor
                     input = WithValuePtr(input, ex)
                 end
-                inputs[i] = input
             end
+            inputs[i] = input
             st, bvec, _ = get_push_stencil(input)
             inputs_stencil_starts[ip][i] = 1 + code_size
             code_size += length(only(st.code.body))
@@ -48,13 +59,233 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
     mc = MachineCode(code_size, fn, rettype, argtypes, codeinfo,
                      ssa_stencil_starts, inputs_stencil_starts)
 
-    emitabi!(mc, ntmps)
-    for (ip, ex) in enumerate(codeinfo.code)
-        emitpushs!(mc, ip, ex, inputs_stencil[ip])
-        emitcode!(mc, ip, ex)
+    emitabi!(mc, ntmps, ngcroots)
+    ctx = Context()
+    for ex in codeinfo.code
+        ctx.ip += 1
+        emitpushes!(mc, ctx, ex, inputs_stencil[ctx.ip])
+        emitcode!(mc, ctx.ip, ex)
     end
     return mc
 end
+
+
+mutable struct Context
+    ip::Int64 # current instruction pointer (F->ssa), 1-based
+    i::Int64 # current push instruction pointer (F->tmps), 1-based
+    i_gc::Int64 # current gc root pointer (F->gcroots), 1-based
+end
+Context() = Context(0, 0, 0)
+
+
+function convert_cconv(lhd::Symbol)
+    if lhd === :stdcall
+        return :x86_stdcall, false
+    elseif lhd === :cdecl || lhd === :ccall
+        # `ccall` calling convention is a placeholder for when there isn't one provided
+        # it is not by itself a valid calling convention name to be specified in the surface
+        # syntax.
+        return :cconv_c, false
+    elseif lhd === :fastcall
+        return :x86_fastcall, false
+    elseif lhd === :thiscall
+        return :x86_thiscall, false
+    elseif lhd === :llvmcall
+        error("ccall: CopyAndPatch can't perform llvm calls")
+        return :cconv_c, true
+    end
+    error("ccall: invalid calling convetion $lhd")
+end
+
+
+Base.@kwdef mutable struct NativeSymArg
+    jl_ptr::Any = nothing
+    fptr::Ptr = C_NULL
+    f_name::String = "" # if the symbol name is known
+    f_lib::String = "" # if a library name is specified
+    lib_expr::Ptr = C_NULL # expression to compute library path lazily
+    gcroot::Any = nothing
+end
+
+
+# based on julia/src/{codegen,ccall}.cpp
+function interpret_func_symbol(ex, cinfo::Core.CodeInfo)
+    symarg = NativeSymArg()
+    ptr = static_eval(ex, cinfo)
+    if ptr === nothing
+        if ex isa Expr && Base.isexpr(ex, :call) && length(ex.args) == 3 &&
+                ex.args[1] isa GlobalRef && ex.args[1].mod == Core && ex.args[1].name == :tuple
+            # attempt to interpret a non-constant 2-tuple expression as (func_name, lib_name()), where
+            # `lib_name()` will be executed when first used.
+            name_val = static_eval(ex.args[2], cinfo)
+            if name_val isa Symbol
+                symarg.f_name = string(name_val)
+                symarg.lib_expr = value_pointer(ex.args[3])
+                return symarg
+            elseif name_val isa String
+                symarg.f_name = string(name_val)
+                symarg.gcroot = [name_val]
+                symarg.lib_expr = value_pointer(ex.args[3])
+                return symarg
+            end
+        end
+        if ex isa Core.SSAValue || ex isa Core.Argument
+            symarg.jl_ptr = ex
+        else
+            TODO(ex)
+        end
+    else
+        symarg.gcroot = ptr
+        if ptr isa Tuple && length(ptr) == 1
+            ptr = ptr[1]
+        end
+        if ptr isa Symbol
+            symarg.f_name = string(ptr)
+        elseif ptr isa String
+            symarg.f_name = ptr
+        end
+        if !isempty(symarg.f_name)
+            # @assert !llvmcall
+            iname = string("i", symarg.f_name)
+            if Libdl.dlsym(LIBJULIAINTERNAL[], iname, throw_error=false) !== nothing
+                symarg.f_lib = Libdl.dlpath("libjulia-internal.so")
+                symarg.f_name = iname
+            else
+                symarg.f_lib = Libdl.find_library(iname)
+            end
+        elseif ptr isa Ptr
+            TODO()
+            symarg.f = value_pointer(ptr)
+            # else if (jl_is_cpointer_type(jl_typeof(ptr))) {
+            #     fptr = *(void(**)(void))jl_data_ptr(ptr);
+            # }
+        elseif ptr isa Tuple && length(ptr) > 1
+            t1 = ptr[1]
+            if t1 isa Symbol
+                symarg.f_name = string(t1)
+            elseif t1 isa String
+                symarg.f_name = t1
+            end
+            t2 = ptr[2]
+            if t2 isa Symbol
+                symarg.f_lib = string(t2)
+            elseif t2 isa String
+                symarg.f_lib = t2
+            else
+                TODO()
+                symarg.lib_expr = t2
+            end
+        end
+    end
+    return symarg
+end
+
+function walk_binding_partitions_all(bpart::Union{Nothing,Core.BindingPartition},
+        min_world::UInt64, max_world::UInt64)
+    while true
+        if bpart === nothing
+            return bpart
+        end
+        bkind = Base.binding_kind(bpart)
+        if !Base.is_some_imported(bkind)
+            return bpart
+        end
+        bnd = bpart.restriction
+        bpart = bnd.partitions
+    end
+end
+
+static_eval(arg::Any, cinfo::Core.CodeInfo) = arg
+static_eval(arg::Union{Core.Argument,Core.SlotNumber,Core.MethodInstance}, cinfo::Core.CodeInfo) = nothing
+static_eval(arg::QuoteNode, cinfo::Core.CodeInfo) = getfield(arg, 1)
+function static_eval(arg::Symbol, cinfo::Core.CodeInfo)
+    TODO()
+    method = cinfo.parent.def
+    mod = method.var"module"
+    bnd, bpart, bkind = get_binding_and_partition_and_kind(mod, arg, cinfo.min_world, cinfo.max_world)
+    bkind_is_const = @ccall jl_bkind_is_some_constant(bkind::UInt8)::Cint
+    if bpart != C_NULL && Bool(bkind_is_const)
+        return bpart[].restriction
+    end
+    return nothing
+end
+function static_eval(arg::Core.SSAValue, cinfo::Core.CodeInfo)
+    # TODO What to do here?
+    return nothing
+    # ssize_t idx = ((jl_ssavalue_t*)ex)->id - 1;
+    # assert(idx >= 0);
+    # if (ctx.ssavalue_assigned[idx]) {
+    #     return ctx.SAvalues[idx].constant;
+    # }
+    # return NULL;
+end
+function static_eval(arg::GlobalRef, cinfo::Core.CodeInfo)
+    mod, name = arg.mod, arg.name
+    bnd = convert(Core.Binding, arg)
+    bpart = walk_binding_partitions_all(bnd.partitions, cinfo.min_world, cinfo.max_world)
+    bkind = bpart.kind
+    bkind = Base.binding_kind(bpart)
+    bkind_is_const = Base.is_some_const_binding(bkind)
+    if bpart !== nothing && bkind_is_const
+        v = bpart.restriction
+        # TODO Deprecation warning
+        return v
+    end
+    return nothing
+end
+function static_eval(ex::Expr, cinfo::Core.CodeInfo)
+    min_world, max_world = cinfo.min_world, cinfo.max_world
+    if Base.isexpr(ex, :call)
+        f = static_eval(ex.args[1], cinfo)
+        if f != nothing
+            if length(ex.args) == 3 && (f == Core.getfield || f == Core.getglobal)
+                m = static_eval(ex.args[2], cinfo)
+                if m != nothing || !(m isa Module)
+                    return nothing
+                end
+                s = static_eval(ex.args[3], cinfo)
+                if s != nothing && s isa Symbol
+                    bnd, bpart, bkind = get_binding_and_partition_and_kind(m, s, min_world, max_world)
+                end
+                if bpart != C_NULL && Bool(bkind_is_const)
+                    v = bpart[].restriction
+                    if v != nothing
+                        @ccall jl_binding_deprecation_warning(mod::Ref{Module}, name::Symbol, bnd::Ref{Core.Binding})::Cvoid
+                        println(stderr)
+                    end
+                    return v
+                end
+            elseif f == Core.Tuple || f == Core.apply_type
+                n = length(ex.args)-1
+                if n == 0 && f == Core.Tuple
+                    return ()
+                end
+                v = Vector{Any}(undef, n+1)
+                v[1] = f
+                for i in 1:n
+                    v[i+1] = static_eval(ex.args[i+1])
+                    if v[i+1] == nothing
+                        return nothing
+                    end
+                end
+            end
+            return try
+                Base.invoke_in_world(1, v, n+1)
+            catch
+                nothing
+            end
+        end
+    elseif Base.isexpr(ex, :static_parameter)
+        idx = ex.args[1]
+        mi = cinfo.parent
+        if idx <= length(mi.sparam_vals)
+            e = mi.sparam_vals[idx]
+            return e isa TypeVar ? nothing : e
+        end
+    end
+    return nothing
+end
+
 
 struct WithValuePtr{T}
     ptr::Ptr{Cvoid}
@@ -167,6 +398,20 @@ get_push_stencil_name(arg::QuoteNode) = "jl_push_quotenode_value"
 get_push_stencil_name(arg::Ptr{UInt8}) = "jl_box_uint8pointer"
 get_push_stencil_name(@nospecialize(arg::Ptr)) = "jl_box_and_push_voidpointer"
 get_push_stencil_name(@nospecialize(arg::WithValuePtr)) = get_push_stencil_name(arg.val)
+function get_push_stencil_name(arg::NativeSymArg)
+    if arg.jl_ptr isa Core.SSAValue
+        return "jl_push_deref_ssa"
+    elseif arg.jl_ptr isa Core.Argument
+        return "jl_push_deref_slot"
+    elseif arg.jl_ptr !== nothing
+        TOOD(arg.jl_ptr)
+    end
+    arg.fptr !== C_NULL && return "jl_push_literal_voidpointer"
+    @assert !isempty(arg.f_name)
+    arg.lib_expr !== C_NULL && return "jl_push_runtime_sym_lookup"
+    # TODO Vararg?
+    return "jl_push_plt_voidpointer"
+end
 
 function get_push_stencil(ex)
     name = get_push_stencil_name(ex)
@@ -234,12 +479,13 @@ function box_args(ex_args::AbstractVector, mc::MachineCode)
 end
 
 
-function emitabi!(mc::MachineCode, ntmps::Integer)
+function emitabi!(mc::MachineCode, ntmps::Int64, ngcroots::Int64)
     st, bvec, _ = get_stencil("abi")
     copyto!(mc.buf, 1, bvec, 1, length(bvec))
     patch!(mc.buf, 1, st.code, "_JIT_NARGS", Cint(length(mc.argtypes)))
     patch!(mc.buf, 1, st.code, "_JIT_NSSAS", Cint(length(mc.codeinfo.code)))
     patch!(mc.buf, 1, st.code, "_JIT_NTMPS", Cint(ntmps))
+    patch!(mc.buf, 1, st.code, "_JIT_NGCROOTS", Cint(ngcroots))
     next = if length(mc.inputs_stencil_starts) > 0 &&
                 length(first(mc.inputs_stencil_starts)) > 0
         first(first(mc.inputs_stencil_starts))
@@ -251,128 +497,163 @@ function emitabi!(mc::MachineCode, ntmps::Integer)
 end
 
 
-references_ast(::Any) = true
+requires_value_pointer(::Any) = true
 # We can address inputs of these kinds without value_pointer shenanigans
-references_ast(::Boxable) = false
-references_ast(::UndefInput) = false
-references_ast(::Core.Argument) = false
-references_ast(::Core.SSAValue) = false
+requires_value_pointer(::Boxable) = false
+requires_value_pointer(::UndefInput) = false
+requires_value_pointer(::Core.Argument) = false
+requires_value_pointer(::Core.SSAValue) = false
 
 
-function emitpushs!(mc::MachineCode, ip::Integer, ex, inputs::Vector{Any})
-    for (i,input) in enumerate(inputs)
-        continuation = if i < length(inputs)
-            pointer(mc.buf, mc.inputs_stencil_starts[ip][i+1])
+function emitpushes!(mc::MachineCode, ctx::Context, ex, inputs::Vector{Any})
+    ctx.i = 0
+    for input in inputs
+        ctx.i += 1
+        continuation = if ctx.i < length(inputs)
+            pointer(mc.buf, mc.inputs_stencil_starts[ctx.ip][ctx.i+1])
         else
-            pointer(mc.buf, mc.stencil_starts[ip])
+            pointer(mc.buf, mc.stencil_starts[ctx.ip])
         end
-        emitpush!(mc, ip, i, continuation, input)
+        emitpush!(mc, ctx, continuation, input)
     end
 end
 
 
-function emitpush!(mc::MachineCode, ip::Integer, i::Integer, continuation::Ptr,
+function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
         input::Boxable)
     st, bvec, _ = get_push_stencil(input)
-    stencil_start = mc.inputs_stencil_starts[ip][i]
+    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_X", input)
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
 end
-function emitpush!(mc::MachineCode, ip::Integer, i::Integer, continuation::Ptr,
+function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
         input::Ptr{UInt8})
     # special case jl_box_and_push_uint8pointer
     st, bvec, _ = get_push_stencil(input)
-    stencil_start = mc.inputs_stencil_starts[ip][i]
+    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_P", input)
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
 end
-function emitpush!(mc::MachineCode, ip::Integer, i::Integer, continuation::Ptr,
+function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
         @nospecialize(input::Ptr))
     # special case for jl_box_and_push_voidpointer
     st, bvec, _ = get_push_stencil(input)
-    stencil_start = mc.inputs_stencil_starts[ip][i]
+    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_P", Ptr{Cvoid}(input))
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
 end
-function emitpush!(mc::MachineCode, ip::Integer, i::Integer, continuation::Ptr,
+function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
         input::UndefInput)
     # C_NULL != jl_box_voidpointer(NULL)
     st, bvec, _ = get_push_stencil(input)
-    stencil_start = mc.inputs_stencil_starts[ip][i]
+    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_P", Ptr{Cvoid}(C_NULL))
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
 end
-function emitpush!(mc::MachineCode, ip::Integer, i::Integer, continuation::Ptr,
+function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
         input::Core.Argument)
     st, bvec, _ = get_push_stencil(input)
-    stencil_start = mc.inputs_stencil_starts[ip][i]
+    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_N", Cint(input.n))
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
 end
-function emitpush!(mc::MachineCode, ip::Integer, i::Integer, continuation::Ptr,
+function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
         input::Core.SSAValue)
     st, bvec, _ = get_push_stencil(input)
-    stencil_start = mc.inputs_stencil_starts[ip][i]
+    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_ID", Cint(input.id))
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
 end
-function emitpush!(mc::MachineCode, ip::Integer, i::Integer, continuation::Ptr,
+function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
         input::WithValuePtr{ExprOf})
     st, bvec, _ = get_push_stencil(input)
-    stencil_start = mc.inputs_stencil_starts[ip][i]
+    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_P", input.ptr)
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
 end
-function emitpush!(mc::MachineCode, ip::Integer, i::Integer, continuation::Ptr,
+function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
         @nospecialize(input::WithValuePtr{<:Any}))
     st, bvec, _ = get_push_stencil(input)
-    stencil_start = mc.inputs_stencil_starts[ip][i]
+    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_P", input.ptr)
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
 end
-function emitpush!(mc::MachineCode, ip::Integer, i::Integer, continuation::Ptr,
+function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
         input::WithValuePtr{GlobalRef})
     st, bvec, _ = get_push_stencil(input)
-    stencil_start = mc.inputs_stencil_starts[ip][i]
+    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_GR", input.ptr)
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
 end
-function emitpush!(mc::MachineCode, ip::Integer, i::Integer, continuation::Ptr,
+function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
         input::WithValuePtr{QuoteNode})
     st, bvec, _ = get_push_stencil(input)
-    stencil_start = mc.inputs_stencil_starts[ip][i]
+    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ip))
-    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_Q", input.ptr)
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+end
+function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
+        input::NativeSymArg)
+    st, bvec, _ = get_push_stencil(input)
+    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
+    copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
+    patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+    if input.jl_ptr isa Core.SSAValue
+        # TODO emit cpointer check
+        patch!(mc.buf, stencil_start, st.code, "_JIT_ID", Cint(input.jl_ptr.id))
+    elseif input.jl_ptr isa Core.Argument
+        # TODO emit cpointer check
+        patch!(mc.buf, stencil_start, st.code, "_JIT_N", Cint(input.jl_ptr.n))
+    elseif input.jl_ptr !== nothing
+        TOOD(input.jl_ptr)
+    elseif input.fptr !== C_NULL
+        TODO()
+    elseif input.lib_expr !== C_NULL
+        ctx.i_gc += 1
+        mi = mc.codeinfo.parent
+        ptr_mod = mi.def isa Method ? value_pointer(mi.def.module) : value_pointer(mi.def)
+        patch!(mc.buf, stencil_start, st.code, "_JIT_I_GC", Cint(ctx.i_gc))
+        patch!(mc.buf, stencil_start, st.code, "_JIT_MOD", ptr_mod)
+        patch!(mc.buf, stencil_start, st.code, "_JIT_LIB_EXPR", input.lib_expr)
+        patch!(mc.buf, stencil_start, st.code, "_JIT_F_NAME", pointer(input.f_name))
+    else
+        # TODO Vararg?
+        h = Libdl.dlopen(input.f_lib)
+        p = Libdl.dlsym(h, input.f_name)
+        patch!(mc.buf, stencil_start, st.code, "_JIT_P", p)
+    end
 end
 
 
@@ -551,23 +832,6 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NARGS", UInt32(nargs))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :foreigncall)
-        fname, libname = if ex.args[1] isa QuoteNode
-            ex.args[1].value, nothing
-        elseif ex.args[1] isa Expr
-            @assert Base.Base.isexpr(ex.args[1], :call)
-            @assert ex.args[1].args[2] isa QuoteNode
-            ex.args[1].args[2].value, ex.args[1].args[3]
-        elseif ex.args[1] isa Core.SSAValue || ex.args[1] isa Core.Argument
-            ex.args[1], nothing
-        else
-            fname = ex.args[1].args[2].value
-            libname = if ex.args[1].args[3] isa GlobalRef
-                unwrap(ex.args[1].args[3])
-            else
-                unwrap(ex.args[1].args[3].args[2])
-            end
-            fname, libname
-        end
         rettype = ex.args[2]
         argtypes = ex.args[3]
         nreq = ex.args[4]
@@ -576,13 +840,12 @@ function emitcode!(mc, ip, ex::Expr)
         @assert conv isa QuoteNode
         @assert conv.value === :ccall || first(conv.value) === :ccall
         args = ex.args[6:(5 + length(ex.args[3]))]
+        nargs = length(args)
         gc_roots = ex.args[(6 + length(ex.args[3]) + 1):end]
         boxes = box_args(args, mc)
         boxed_gc_roots = box_args(gc_roots, mc)
         push!(mc.gc_roots, boxes)
         push!(mc.gc_roots, boxed_gc_roots)
-        nargs = length(boxes)
-        retbox = pointer(mc.ssas, ip)
         ffi_argtypes = [ Cint(ffi_ctype_id(at)) for at in argtypes ]
         push!(mc.gc_roots, ffi_argtypes)
         ffi_rettype = Cint(ffi_ctype_id(rettype, return_type = true))
@@ -596,57 +859,29 @@ function emitcode!(mc, ip, ex::Expr)
         # set up storage for cargs array
         # - the first nargs elements hold pointers to the values
         # - the remaning elements are storage for pass-by-value arguments
-        sz_cboxes = sizeof(Ptr{UInt64}) * nargs
-        for (i, ffi_at) in enumerate(ffi_argtypes)
-            if 0 ≤ ffi_at ≤ 10 || ffi_at == -2
-                at = argtypes[i]
-                @assert sizeof(at) > 0
-                sz_cboxes += sizeof(at)
-            end
-        end
-        cboxes = ByteVector(sz_cboxes)
-        push!(mc.gc_roots, cboxes)
-        offset = sizeof(Ptr{UInt64}) * nargs + 1
-        for (i, ffi_at) in enumerate(ffi_argtypes)
-            if 0 ≤ ffi_at ≤ 10 || ffi_at == -2
-                at = argtypes[i]
-                cboxes[UInt64, i] = pointer(cboxes, UInt8, offset)
-                offset += sizeof(at)
-            end
-        end
+        # sz_cboxes = sizeof(Ptr{UInt64}) * nargs
+        # for (i, ffi_at) in enumerate(ffi_argtypes)
+        #     if 0 ≤ ffi_at ≤ 10 || ffi_at == -2
+        #         at = argtypes[i]
+        #         @assert sizeof(at) > 0
+        #         sz_cboxes += sizeof(at)
+        #     end
+        # end
+        # cboxes = ByteVector(sz_cboxes)
+        # push!(mc.gc_roots, cboxes)
+        # offset = sizeof(Ptr{UInt64}) * nargs + 1
+        # for (i, ffi_at) in enumerate(ffi_argtypes)
+        #     if 0 ≤ ffi_at ≤ 10 || ffi_at == -2
+        #         at = argtypes[i]
+        #         cboxes[UInt64, i] = pointer(cboxes, UInt8, offset)
+        #         offset += sizeof(at)
+        #     end
+        # end
         sz_argtypes = Cint[ ffi_argtypes[i] == -2 ? sizeof(argtypes[i]) : 0 for i in 1:nargs ]
         push!(mc.gc_roots, sz_argtypes)
-        static_f = true
-        fptr = if isnothing(libname)
-            if fname isa Symbol
-                h = Libdl.dlopen(Libdl.dlpath("libjulia.so"))
-                p = Libdl.dlsym(h, fname, throw_error = false)
-                if isnothing(p)
-                    h = Libdl.dlopen(Libdl.dlpath("libjulia-internal.so"))
-                    p = Libdl.dlsym(h, fname)
-                end
-                p
-            else
-                static_f = false
-                box_arg(fname, mc)
-            end
-        else
-            if libname isa GlobalRef
-                TODO()
-                libname = unwrap(libname)
-            elseif libname isa Expr
-                @assert Base.isexpr(libname, :call)
-                # TODO: This is ugly and wrong. @ccall allows for non-constant library names,
-                # cf. issue #36458, also see TODOs in test/ccall.jl
-                libname = (@eval Main, $libname)[2]
-            end
-            Libdl.dlsym(Libdl.dlopen(libname isa Ref ? libname[] : libname), fname)
-        end
-        # TODO()
         continuation = get_continuation(mc, ip+1)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CIF", pointer(cif))
-        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_STATICF", Cint(static_f))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_ARGTYPES", pointer(ffi_argtypes))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_SZARGTYPES", pointer(sz_argtypes))
@@ -693,8 +928,8 @@ function emitcode!(mc, ip, ex::Expr)
             )
         )
         if Base.isexpr(ex, :gc_preserve_begin)
-            # :gc_preserve_begin is a no-op if everything is pushed to F->ssas (which is GC rooted)
-            @assert all(s -> s isa Core.SSAValue, ex.args)
+            # :gc_preserve_begin is a no-op if everything is pushed to frame *F (which is GC rooted)
+            @assert all(s -> s isa Union{Core.SSAValue,Core.Argument}, ex.args)
         end
         continuation = get_continuation(mc, ip+1)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))

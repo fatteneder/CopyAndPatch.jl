@@ -48,9 +48,10 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
    PATCH_VALUE(volatile int, _nargs, _JIT_NARGS);
    PATCH_VALUE(int, nssas, _JIT_NSSAS);
    PATCH_VALUE(int, ntmps, _JIT_NTMPS);
+   PATCH_VALUE(int, ngcroots, _JIT_NGCROOTS);
    assert(nargs == _nargs);
    int nslots = nargs+1; // +1 for f
-   int n = nslots + nssas + ntmps;
+   int n = nslots + nssas + ntmps + ngcroots;
    JL_GC_PUSHFRAME(F, locals, n);
    F->ip = -1;
    F->phioffset = 0;
@@ -58,6 +59,7 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
    F->slots = locals;
    F->ssas = &locals[nslots];
    F->tmps = &locals[nslots+nssas];
+   F->gcroots = &locals[nslots+nssas+ntmps];
    int ip = 0;
    DEBUGSTMT("abi", F, ip);
    F->slots[0] = f;
@@ -77,7 +79,7 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
       jl_errorf("abi stencil: encountered %s when converting args to slots",
                 jl_typeof_str((jl_value_t*)args));
    }
-   F->ip = ip;
+   SET_IP(F, ip);
    extern void (CALLING_CONV _JIT_STENCIL)(frame *);
    _JIT_STENCIL(F);
    JL_GC_ENABLEFRAME(F);
