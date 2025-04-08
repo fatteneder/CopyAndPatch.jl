@@ -8,23 +8,23 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
     ssa_stencil_starts = zeros(Int64, nstencils)
     inputs_stencil = Vector{Vector{Any}}(undef, nstencils)
     inputs_stencil_starts = Vector{Vector{Int64}}(undef, nstencils)
-    code_size = 0
 
     st, bvec, _ = get_stencil("abi")
     code_size = length(only(st.code.body))
     ntmps = 0
-    ngcroots = 0
+    nroots = 0
     for (ip, ex) in enumerate(codeinfo.code)
         inputs = Vector{Any}()
         get_inputs!(inputs, codeinfo.code, ip)
-        ntmps = max(ntmps, length(inputs))
+        ntmps = max(ntmps, length(inputs)-ngcroots(ex))
+        nroots = max(nroots, ngcroots(ex))
         inputs_stencil[ip] = inputs
         inputs_stencil_starts[ip] = zeros(Int64, length(inputs))
         for (i, input) in enumerate(inputs)
             # some inputs require value_pointers referencing codeinfo.code
             # TODO Move this stuff into separate function
             # input = maybe_requires_value_pointer(input, ex, codeinfo)
-            if Base.isexpr(ex, :foreigncall) && i == length(inputs)
+            if Base.isexpr(ex, :foreigncall) && i == 1
                 input = interpret_func_symbol(input, codeinfo)
                 if input.jl_ptr === nothing && input.fptr === C_NULL && isempty(input.f_name)
                     if input.gcroot === nothing
@@ -33,7 +33,9 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
                         error("ccall: null function pointer")
                     end
                 end
-                input.lib_expr !== C_NULL && (ngcroots += 1)
+                if input.lib_expr !== C_NULL
+                    nroots = max(nroots, ngcroots(ex)+1)
+                end
             elseif requires_value_pointer(input)
                 if input isa ExprOf
                     id = input.ssa.id
@@ -59,8 +61,8 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
     mc = MachineCode(code_size, fn, rettype, argtypes, codeinfo,
                      ssa_stencil_starts, inputs_stencil_starts)
 
-    emitabi!(mc, ntmps, ngcroots)
-    ctx = Context()
+    ctx = Context(ntmps, nroots)
+    emitabi!(mc, ctx)
     for ex in codeinfo.code
         ctx.ip += 1
         emitpushes!(mc, ctx, ex, inputs_stencil[ctx.ip])
@@ -70,12 +72,19 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
 end
 
 
+ngcroots(ex::Any) = 0
+function ngcroots(ex::Expr)
+    Base.isexpr(ex, :foreigncall) || return 0
+    return length(ex.args)-(6+length(ex.args[3]))+1
+end
+
 mutable struct Context
     ip::Int64 # current instruction pointer (F->ssa), 1-based
     i::Int64 # current push instruction pointer (F->tmps), 1-based
-    i_gc::Int64 # current gc root pointer (F->gcroots), 1-based
+    ntmps::Int64 # max number of tmps needed
+    nroots::Int64 # max nunmber of gcroots needed
 end
-Context() = Context(0, 0, 0)
+Context(ntmps::Int64, nroots::Int64) = Context(0, 0, ntmps, nroots)
 
 
 function convert_cconv(lhd::Symbol)
@@ -422,70 +431,13 @@ function get_push_stencil(ex)
 end
 
 
-# TODO About box: From https://docs.julialang.org/en/v1/devdocs/object/
-#   > A value may be stored "unboxed" in many circumstances
-#     (just the data, without the metadata, and possibly not even stored but
-#     just kept in registers), so it is unsafe to assume that the address of
-#     a box is a unique identifier.
-#     ...
-#   > Note that modification of a jl_value_t pointer in memory is permitted
-#     only if the object is mutable. Otherwise, modification of the value may
-#     corrupt the program and the result will be undefined.
-# TODO https://docs.julialang.org/en/v1/manual/embedding/#Memory-Management
-#   > f the variable is immutable, then it needs to be wrapped in an equivalent mutable
-#     container or, preferably, in a RefValue{Any} before it is pushed to IdDict.
-#     ...
-function box_arg(@nospecialize(a), mc)
-    slots, ssas, static_prms = mc.slots, mc.ssas, mc.static_prms
-    if a isa Core.Argument
-        return pointer(slots, a.n)
-    elseif a isa Core.SSAValue
-        return pointer(ssas, a.id)
-    else
-        if a isa Boxable
-            push!(static_prms, [value_pointer(a)])
-        elseif a isa Nothing
-            push!(static_prms, [value_pointer(nothing)])
-        elseif a isa QuoteNode
-            push!(static_prms, [value_pointer(a.value)])
-        elseif a isa Tuple
-            push!(static_prms, [value_pointer(a)])
-        elseif a isa GlobalRef
-            # do it similar to src/interpreter.c:jl_eval_globalref
-            p = @ccall jl_get_globalref_value(a::Any)::Ptr{Cvoid}
-            p === C_NULL && throw(UndefVarError(a.name, a.mod))
-            push!(static_prms, [p])
-        elseif a isa Core.Builtin
-            push!(static_prms, [value_pointer(a)])
-        elseif isbits(a)
-            push!(static_prms, [value_pointer(a)])
-        elseif a isa Union
-            push!(static_prms, [value_pointer(a)])
-        elseif a isa Type
-            push!(static_prms, [value_pointer(a)])
-        else
-            try
-                push!(static_prms, [pointer_from_objref(a)])
-            catch e
-                @error "boxing of $a failed"
-                rethrow(e)
-            end
-        end
-        return pointer(static_prms[end])
-    end
-end
-function box_args(ex_args::AbstractVector, mc::MachineCode)
-    return Ptr{Any}[ box_arg(a, mc) for a in ex_args ] # =^= jl_value_t ***
-end
-
-
-function emitabi!(mc::MachineCode, ntmps::Int64, ngcroots::Int64)
+function emitabi!(mc::MachineCode, ctx::Context)
     st, bvec, _ = get_stencil("abi")
     copyto!(mc.buf, 1, bvec, 1, length(bvec))
     patch!(mc.buf, 1, st.code, "_JIT_NARGS", Cint(length(mc.argtypes)))
     patch!(mc.buf, 1, st.code, "_JIT_NSSAS", Cint(length(mc.codeinfo.code)))
-    patch!(mc.buf, 1, st.code, "_JIT_NTMPS", Cint(ntmps))
-    patch!(mc.buf, 1, st.code, "_JIT_NGCROOTS", Cint(ngcroots))
+    patch!(mc.buf, 1, st.code, "_JIT_NTMPS", Cint(ctx.ntmps))
+    patch!(mc.buf, 1, st.code, "_JIT_NGCROOTS", Cint(ctx.nroots))
     next = if length(mc.inputs_stencil_starts) > 0 &&
                 length(first(mc.inputs_stencil_starts)) > 0
         first(first(mc.inputs_stencil_starts))
@@ -506,6 +458,9 @@ requires_value_pointer(::Core.SSAValue) = false
 
 
 function emitpushes!(mc::MachineCode, ctx::Context, ex, inputs::Vector{Any})
+    nroots = ngcroots(ex)
+    ninputs = length(inputs)
+    ntmps = ninputs-nroots
     ctx.i = 0
     for input in inputs
         ctx.i += 1
@@ -641,10 +596,10 @@ function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
     elseif input.fptr !== C_NULL
         TODO()
     elseif input.lib_expr !== C_NULL
-        ctx.i_gc += 1
+        i_gc = ctx.nroots # root lib_expr result at the end of F->gcroots
         mi = mc.codeinfo.parent
         ptr_mod = mi.def isa Method ? value_pointer(mi.def.module) : value_pointer(mi.def)
-        patch!(mc.buf, stencil_start, st.code, "_JIT_I_GC", Cint(ctx.i_gc))
+        patch!(mc.buf, stencil_start, st.code, "_JIT_I_GC", Cint(i_gc))
         patch!(mc.buf, stencil_start, st.code, "_JIT_MOD", ptr_mod)
         patch!(mc.buf, stencil_start, st.code, "_JIT_LIB_EXPR", input.lib_expr)
         patch!(mc.buf, stencil_start, st.code, "_JIT_F_NAME", pointer(input.f_name))
@@ -841,11 +796,6 @@ function emitcode!(mc, ip, ex::Expr)
         @assert conv.value === :ccall || first(conv.value) === :ccall
         args = ex.args[6:(5 + length(ex.args[3]))]
         nargs = length(args)
-        gc_roots = ex.args[(6 + length(ex.args[3]) + 1):end]
-        boxes = box_args(args, mc)
-        boxed_gc_roots = box_args(gc_roots, mc)
-        push!(mc.gc_roots, boxes)
-        push!(mc.gc_roots, boxed_gc_roots)
         ffi_argtypes = [ Cint(ffi_ctype_id(at)) for at in argtypes ]
         push!(mc.gc_roots, ffi_argtypes)
         ffi_rettype = Cint(ffi_ctype_id(rettype, return_type = true))
@@ -856,27 +806,6 @@ function emitcode!(mc, ip, ex::Expr)
         rettype_ptr = pointer_from_objref(rettype)
         cif = Ffi_cif(rettype, tuple(argtypes...))
         push!(mc.gc_roots, cif)
-        # set up storage for cargs array
-        # - the first nargs elements hold pointers to the values
-        # - the remaning elements are storage for pass-by-value arguments
-        # sz_cboxes = sizeof(Ptr{UInt64}) * nargs
-        # for (i, ffi_at) in enumerate(ffi_argtypes)
-        #     if 0 ≤ ffi_at ≤ 10 || ffi_at == -2
-        #         at = argtypes[i]
-        #         @assert sizeof(at) > 0
-        #         sz_cboxes += sizeof(at)
-        #     end
-        # end
-        # cboxes = ByteVector(sz_cboxes)
-        # push!(mc.gc_roots, cboxes)
-        # offset = sizeof(Ptr{UInt64}) * nargs + 1
-        # for (i, ffi_at) in enumerate(ffi_argtypes)
-        #     if 0 ≤ ffi_at ≤ 10 || ffi_at == -2
-        #         at = argtypes[i]
-        #         cboxes[UInt64, i] = pointer(cboxes, UInt8, offset)
-        #         offset += sizeof(at)
-        #     end
-        # end
         sz_argtypes = Cint[ ffi_argtypes[i] == -2 ? sizeof(argtypes[i]) : 0 for i in 1:nargs ]
         push!(mc.gc_roots, sz_argtypes)
         continuation = get_continuation(mc, ip+1)

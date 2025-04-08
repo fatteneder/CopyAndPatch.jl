@@ -27,7 +27,8 @@ JIT_ENTRY()
    PATCH_VALUE(void *,       ffi_retval,  _JIT_FFIRETVAL);
    PATCH_VALUE(uint32_t,     nargs,       _JIT_NARGS);
    DEBUGSTMT("ast_foreigncall", F, ip);
-   jl_value_t **args = F->tmps;
+   void *f = (void *)F->tmps[0];
+   jl_value_t **args = &F->tmps[1];
    void *cargs[nargs];
    for (int i = 0; i < nargs; i++) {
       // Atm we store both isbits and non-isbits types in boxed forms,
@@ -55,7 +56,6 @@ JIT_ENTRY()
          default: jl_error("ast_foreigncall: This should not have happened!");
       }
    }
-   void *f = F->tmps[nargs];
    ffi_arg *rc = (ffi_arg*)ffi_retval;
    ffi_call((ffi_cif *)cif, f, rc, cargs);
    jl_value_t **ret = &F->ssas[ip-1];

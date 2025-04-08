@@ -279,19 +279,18 @@ end
             arg isa T && push!(inputs, arg)
         end
     elseif Base.isexpr(stmt, :foreigncall)
-        # TODO ex.args[1]?
+        fname = stmt.args[1]
+        fname isa T && push!(inputs, fname)
         # call arguments
         for i in 6:(5+length(stmt.args[3]))
             arg = stmt.args[i]
             arg isa T && push!(inputs, arg)
         end
-        # # gc roots
-        # for i in (6+length(stmt.args[3])+1):length(stmt.args)
-        #     arg = stmt.args[i]
-        #     arg isa T && push!(inputs, arg)
-        # end
-        fname = stmt.args[1]
-        fname isa T && push!(inputs, fname)
+        # gc roots
+        for i in (6+length(stmt.args[3])):length(stmt.args)
+            arg = stmt.args[i]
+            arg isa T && push!(inputs, arg)
+        end
     elseif Base.isexpr(stmt, :leave)
         for arg in stmt.args
             arg isa T && push!(inputs, ExprOf(arg))
