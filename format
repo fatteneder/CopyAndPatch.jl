@@ -4,9 +4,8 @@
 exec 1>&2
 
 # Run Runic on added and modified files
-git diff-index -z --name-only --diff-filter=AM main | \
-    grep -z '\.jl$' | \
-    xargs -0 --no-run-if-empty julia --startup-file=no --project=@runic -e 'import Runic; exit(Runic.main(vcat("--inplace", "--diff", ARGS)))'
+julia --startup-file=no --project=@runic -e 'import Runic; exit(Runic.main(vcat("--inplace", "--diff", ARGS)))' src
+
 
 # commit diffs and add commit to .git-blame-ignore-revs
 if [ "$1" = "commit" ];

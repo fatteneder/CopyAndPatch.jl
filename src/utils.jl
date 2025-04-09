@@ -103,7 +103,7 @@ unbox(T::Type, ptr::Integer) = unbox(T, Ptr{Cvoid}(UInt64(ptr)))
 ngcroots(ex::Any) = 0
 function ngcroots(ex::Expr)
     Base.isexpr(ex, :foreigncall) || return 0
-    return length(ex.args)-(6+length(ex.args[3]))+1
+    return length(ex.args) - (6 + length(ex.args[3])) + 1
 end
 
 
@@ -131,7 +131,7 @@ end
 # static evaluation for ccall fptr interpreter
 # based on julia/src/{codegen,ccall}.cpp
 static_eval(arg::Any, cinfo::Core.CodeInfo) = arg
-static_eval(arg::Union{Core.Argument,Core.SlotNumber,Core.MethodInstance}, cinfo::Core.CodeInfo) = nothing
+static_eval(arg::Union{Core.Argument, Core.SlotNumber, Core.MethodInstance}, cinfo::Core.CodeInfo) = nothing
 static_eval(arg::QuoteNode, cinfo::Core.CodeInfo) = getfield(arg, 1)
 function static_eval(arg::Symbol, cinfo::Core.CodeInfo)
     TODO()
@@ -191,21 +191,21 @@ function static_eval(ex::Expr, cinfo::Core.CodeInfo)
                     return v
                 end
             elseif f == Core.Tuple || f == Core.apply_type
-                n = length(ex.args)-1
+                n = length(ex.args) - 1
                 if n == 0 && f == Core.Tuple
                     return ()
                 end
-                v = Vector{Any}(undef, n+1)
+                v = Vector{Any}(undef, n + 1)
                 v[1] = f
                 for i in 1:n
-                    v[i+1] = static_eval(ex.args[i+1])
-                    if v[i+1] == nothing
+                    v[i + 1] = static_eval(ex.args[i + 1])
+                    if v[i + 1] == nothing
                         return nothing
                     end
                 end
             end
             return try
-                Base.invoke_in_world(1, v, n+1)
+                Base.invoke_in_world(1, v, n + 1)
             catch
                 nothing
             end
@@ -221,8 +221,10 @@ function static_eval(ex::Expr, cinfo::Core.CodeInfo)
     return nothing
 end
 
-function walk_binding_partitions_all(bpart::Union{Nothing,Core.BindingPartition},
-        min_world::UInt64, max_world::UInt64)
+function walk_binding_partitions_all(
+        bpart::Union{Nothing, Core.BindingPartition},
+        min_world::UInt64, max_world::UInt64
+    )
     while true
         if bpart === nothing
             return bpart
@@ -234,6 +236,7 @@ function walk_binding_partitions_all(bpart::Union{Nothing,Core.BindingPartition}
         bnd = bpart.restriction
         bpart = bnd.partitions
     end
+    return
 end
 
 
@@ -285,7 +288,7 @@ function interpret_func_symbol(ex, cinfo::Core.CodeInfo)
         if !isempty(symarg.f_name)
             # @assert !llvmcall
             iname = string("i", symarg.f_name)
-            if Libdl.dlsym(LIBJULIAINTERNAL[], iname, throw_error=false) !== nothing
+            if Libdl.dlsym(LIBJULIAINTERNAL[], iname, throw_error = false) !== nothing
                 symarg.f_lib = Libdl.dlpath("libjulia-internal.so")
                 symarg.f_name = iname
             else

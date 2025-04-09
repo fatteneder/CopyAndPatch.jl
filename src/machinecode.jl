@@ -39,8 +39,10 @@ mutable struct MachineCode
             inputs_stencil_starts::Vector{Vector{Int64}},
             gc_roots::Vector{Any} = Any[]
         )
-        mc = MachineCode(length(bvec), fn, rettype, argtypes, codeinfo,
-                         stencil_starts, inputs_stencil_starts; gc_roots)
+        mc = MachineCode(
+            length(bvec), fn, rettype, argtypes, codeinfo,
+            stencil_starts, inputs_stencil_starts; gc_roots
+        )
         copyto!(mc.bvec, 1, bvec, 1, length(bvec))
         return mc
     end
@@ -68,8 +70,10 @@ function (mc::MachineCode)(@nospecialize(args...))
     nargs = length(args)
     ci = C_NULL # unused by us, but required for ci->invoke abi
     return GC.@preserve mc args begin
-        @ccall $p(fn::Any, args::Any #= Any, because args isa Tuple =#,
-                  nargs::UInt32, ci::Ptr{Cvoid})::Any
+        @ccall $p(
+            fn::Any, args::Any #= Any, because args isa Tuple =#,
+            nargs::UInt32, ci::Ptr{Cvoid}
+        )::Any
     end
 end
 

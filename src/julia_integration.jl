@@ -10,12 +10,14 @@ struct Interpreter <: CC.AbstractInterpreter
     inf_cache::Vector{CC.InferenceResult}
     codegen_cache::CodegenDict
 
-    function Interpreter( ;
+    function Interpreter(
+            ;
             world::UInt = Base.get_world_counter(),
             inf_prms::CC.InferenceParams = CC.InferenceParams(),
             opt_prms::CC.OptimizationParams = CC.OptimizationParams(),
-            inf_cache::Vector{CC.InferenceResult} = CC.InferenceResult[])
-        new(world, inf_prms, opt_prms, inf_cache, CodegenDict())
+            inf_cache::Vector{CC.InferenceResult} = CC.InferenceResult[]
+        )
+        return new(world, inf_prms, opt_prms, inf_cache, CodegenDict())
     end
 end
 
@@ -109,26 +111,32 @@ end
 import Core.OptimizedGenerics.CompilerPlugins
 @eval @noinline function CompilerPlugins.typeinf(::CacheOwner, mi::Core.MethodInstance, source_mode::UInt8)
     world = which(CompilerPlugins.typeinf, Tuple{CacheOwner, Core.MethodInstance, UInt8}).primary_world
-    return Base.invoke_in_world(world, CC.typeinf_ext_toplevel,
-                                Interpreter(; world=Base.tls_world_age()),
-                                mi, source_mode)
+    return Base.invoke_in_world(
+        world, CC.typeinf_ext_toplevel,
+        Interpreter(; world = Base.tls_world_age()),
+        mi, source_mode
+    )
 end
 
 
-@eval @noinline function CompilerPlugins.typeinf_edge(::CacheOwner, mi::Core.MethodInstance,
-        parent_frame::CC.InferenceState, world::UInt, source_mode::UInt8)
+@eval @noinline function CompilerPlugins.typeinf_edge(
+        ::CacheOwner, mi::Core.MethodInstance,
+        parent_frame::CC.InferenceState, world::UInt, source_mode::UInt8
+    )
     # TODO: This isn't quite right, we're just sketching things for now
     interp = Interpreter(; world)
-    CC.typeinf_edge(interp, mi.def, mi.specTypes, Core.svec(), parent_frame, false, false)
+    return CC.typeinf_edge(interp, mi.def, mi.specTypes, Core.svec(), parent_frame, false, false)
 end
 
 
 function with_compiler(f, args...)
-    mi = @ccall jl_method_lookup(Any[f, args...]::Ptr{Any}, (1+length(args))::Csize_t,
-                                 Base.tls_world_age()::Csize_t)::Ref{Core.MethodInstance}
+    mi = @ccall jl_method_lookup(
+        Any[f, args...]::Ptr{Any}, (1 + length(args))::Csize_t,
+        Base.tls_world_age()::Csize_t
+    )::Ref{Core.MethodInstance}
     world = Base.tls_world_age()
     new_compiler_ci = Core.OptimizedGenerics.CompilerPlugins.typeinf(
         CopyAndPatch.CacheOwner(), mi, Compiler.SOURCE_MODE_ABI
     )
-    invoke(f, new_compiler_ci, args...)
+    return invoke(f, new_compiler_ci, args...)
 end

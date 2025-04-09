@@ -16,7 +16,7 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
     for (ip, ex) in enumerate(codeinfo.code)
         inputs = Vector{Any}()
         get_inputs!(inputs, codeinfo.code, ip)
-        ntmps = max(ntmps, length(inputs)-ngcroots(ex))
+        ntmps = max(ntmps, length(inputs) - ngcroots(ex))
         nroots = max(nroots, ngcroots(ex))
         inputs_stencil[ip] = inputs
         inputs_stencil_starts[ip] = zeros(Int64, length(inputs))
@@ -32,7 +32,7 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
                     end
                 end
                 if input.lib_expr !== C_NULL
-                    nroots = max(nroots, ngcroots(ex)+1)
+                    nroots = max(nroots, ngcroots(ex) + 1)
                 end
             elseif requires_value_pointer(input)
                 if input isa ExprOf
@@ -55,8 +55,10 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
         code_size += length(only(st.code.body))
     end
 
-    mc = MachineCode(code_size, fn, rettype, argtypes, codeinfo,
-                     ssa_stencil_starts, inputs_stencil_starts)
+    mc = MachineCode(
+        code_size, fn, rettype, argtypes, codeinfo,
+        ssa_stencil_starts, inputs_stencil_starts
+    )
 
     ctx = Context(ntmps, nroots)
     emitabi!(mc, ctx)
@@ -95,17 +97,17 @@ struct WithValuePtr{T}
 end
 
 function WithValuePtr(val, ex)
-    TODO((val,ex))
+    return TODO((val, ex))
 end
 function WithValuePtr(val, ex::Expr)
-    i = something(findfirst(a -> a===val, ex.args))
+    i = something(findfirst(a -> a === val, ex.args))
     return WithValuePtr(value_pointer(ex.args[i]), val, ex)
 end
 function WithValuePtr(val, ex::Core.PhiNode)
-    i = something(findfirst(a -> a===val, ex.values))
+    i = something(findfirst(a -> a === val, ex.values))
     return WithValuePtr(value_pointer(ex.values[i]), val, ex)
 end
-function WithValuePtr(val, ex::Union{Core.UpsilonNode,Core.PiNode,Core.ReturnNode})
+function WithValuePtr(val, ex::Union{Core.UpsilonNode, Core.PiNode, Core.ReturnNode})
     return WithValuePtr(value_pointer(ex.val), val, ex)
 end
 
@@ -222,7 +224,7 @@ function emitabi!(mc::MachineCode, ctx::Context)
     patch!(mc.buf, 1, st.code, "_JIT_NTMPS", Cint(ctx.ntmps))
     patch!(mc.buf, 1, st.code, "_JIT_NGCROOTS", Cint(ctx.nroots))
     next = if length(mc.inputs_stencil_starts) > 0 &&
-                length(first(mc.inputs_stencil_starts)) > 0
+            length(first(mc.inputs_stencil_starts)) > 0
         first(first(mc.inputs_stencil_starts))
     else
         first(mc.stencil_starts)
@@ -233,22 +235,22 @@ end
 
 
 function emitpushes!(mc::MachineCode, ctx::Context, ex, inputs::Vector{Any})
-    nroots = ngcroots(ex)
-    ninputs = length(inputs)
-    ntmps = ninputs-nroots
     ctx.i = 0
     for input in inputs
         ctx.i += 1
         continuation = if ctx.i < length(inputs)
-            pointer(mc.buf, mc.inputs_stencil_starts[ctx.ip][ctx.i+1])
+            pointer(mc.buf, mc.inputs_stencil_starts[ctx.ip][ctx.i + 1])
         else
             pointer(mc.buf, mc.stencil_starts[ctx.ip])
         end
         emitpush!(mc, ctx, continuation, input)
     end
+    return
 end
-function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
-        input::Boxable)
+function emitpush!(
+        mc::MachineCode, ctx::Context, continuation::Ptr,
+        input::Boxable
+    )
     st, bvec, _ = get_push_stencil(input)
     stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
@@ -256,9 +258,12 @@ function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
     patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_X", input)
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+    return
 end
-function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
-        input::Ptr{UInt8})
+function emitpush!(
+        mc::MachineCode, ctx::Context, continuation::Ptr,
+        input::Ptr{UInt8}
+    )
     # special case jl_box_and_push_uint8pointer
     st, bvec, _ = get_push_stencil(input)
     stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
@@ -267,9 +272,12 @@ function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
     patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_P", input)
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+    return
 end
-function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
-        @nospecialize(input::Ptr))
+function emitpush!(
+        mc::MachineCode, ctx::Context, continuation::Ptr,
+        @nospecialize(input::Ptr)
+    )
     # special case for jl_box_and_push_voidpointer
     st, bvec, _ = get_push_stencil(input)
     stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
@@ -278,9 +286,12 @@ function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
     patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_P", Ptr{Cvoid}(input))
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+    return
 end
-function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
-        input::UndefInput)
+function emitpush!(
+        mc::MachineCode, ctx::Context, continuation::Ptr,
+        input::UndefInput
+    )
     # C_NULL != jl_box_voidpointer(NULL)
     st, bvec, _ = get_push_stencil(input)
     stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
@@ -289,9 +300,12 @@ function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
     patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_P", Ptr{Cvoid}(C_NULL))
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+    return
 end
-function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
-        input::Core.Argument)
+function emitpush!(
+        mc::MachineCode, ctx::Context, continuation::Ptr,
+        input::Core.Argument
+    )
     st, bvec, _ = get_push_stencil(input)
     stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
@@ -299,9 +313,12 @@ function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
     patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_N", Cint(input.n))
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+    return
 end
-function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
-        input::Core.SSAValue)
+function emitpush!(
+        mc::MachineCode, ctx::Context, continuation::Ptr,
+        input::Core.SSAValue
+    )
     st, bvec, _ = get_push_stencil(input)
     stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
@@ -309,9 +326,12 @@ function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
     patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_ID", Cint(input.id))
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+    return
 end
-function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
-        input::WithValuePtr{ExprOf})
+function emitpush!(
+        mc::MachineCode, ctx::Context, continuation::Ptr,
+        input::WithValuePtr{ExprOf}
+    )
     st, bvec, _ = get_push_stencil(input)
     stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
@@ -319,9 +339,12 @@ function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
     patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_P", input.ptr)
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+    return
 end
-function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
-        @nospecialize(input::WithValuePtr{<:Any}))
+function emitpush!(
+        mc::MachineCode, ctx::Context, continuation::Ptr,
+        @nospecialize(input::WithValuePtr{<:Any})
+    )
     st, bvec, _ = get_push_stencil(input)
     stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
@@ -329,9 +352,12 @@ function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
     patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_P", input.ptr)
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+    return
 end
-function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
-        input::WithValuePtr{GlobalRef})
+function emitpush!(
+        mc::MachineCode, ctx::Context, continuation::Ptr,
+        input::WithValuePtr{GlobalRef}
+    )
     st, bvec, _ = get_push_stencil(input)
     stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
@@ -339,9 +365,12 @@ function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
     patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_GR", input.ptr)
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+    return
 end
-function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
-        input::WithValuePtr{QuoteNode})
+function emitpush!(
+        mc::MachineCode, ctx::Context, continuation::Ptr,
+        input::WithValuePtr{QuoteNode}
+    )
     st, bvec, _ = get_push_stencil(input)
     stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
@@ -349,9 +378,12 @@ function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
     patch!(mc.buf, stencil_start, st.code, "_JIT_I", Cint(ctx.i))
     patch!(mc.buf, stencil_start, st.code, "_JIT_Q", input.ptr)
     patch!(mc.buf, stencil_start, st.code, "_JIT_CONT", continuation)
+    return
 end
-function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
-        input::NativeSymArg)
+function emitpush!(
+        mc::MachineCode, ctx::Context, continuation::Ptr,
+        input::NativeSymArg
+    )
     st, bvec, _ = get_push_stencil(input)
     stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, bvec, 1, length(bvec))
@@ -382,13 +414,14 @@ function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
         p = Libdl.dlsym(h, input.f_name)
         patch!(mc.buf, stencil_start, st.code, "_JIT_P", p)
     end
+    return
 end
 
 
 emitcode!(mc, ip, ex) = TODO(typeof(ex))
 function emitcode!(mc, ip, ex::Nothing)
     st, bvec, _ = get_stencil(ex)
-    continuation = get_continuation(mc, ip+1)
+    continuation = get_continuation(mc, ip + 1)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
@@ -396,7 +429,7 @@ function emitcode!(mc, ip, ex::Nothing)
 end
 function emitcode!(mc, ip, ex::GlobalRef)
     st, bvec, _ = get_stencil(ex)
-    continuation = get_continuation(mc, ip+1)
+    continuation = get_continuation(mc, ip + 1)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
@@ -406,7 +439,7 @@ function emitcode!(mc, ip, ex::Core.EnterNode)
     st, bvec, _ = get_stencil(ex)
     catch_ip = ex.catch_dest
     leave_ip = catch_ip - 1
-    call = get_continuation(mc, ip+1)
+    call = get_continuation(mc, ip + 1)
     continuation_leave = get_continuation(mc, leave_ip)
     continuation_catch = get_continuation(mc, catch_ip)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
@@ -435,7 +468,7 @@ function emitcode!(mc, ip, ex::Core.GotoIfNot)
     st, bvec, _ = get_stencil(ex)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     continuation1 = get_continuation(mc, ex.dest)
-    continuation2 = get_continuation(mc, ip+1)
+    continuation2 = get_continuation(mc, ip + 1)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT1", continuation1)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT2", continuation2)
@@ -465,7 +498,7 @@ function emitcode!(mc, ip, ex::Core.PhiNode)
         end
     end
     ip_blockend = ip + nphis - 1
-    continuation = get_continuation(mc, ip+1)
+    continuation = get_continuation(mc, ip + 1)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_EDGES_FROM", pointer(ex.edges))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP_BLOCKEND", Cint(ip_blockend))
@@ -475,7 +508,7 @@ function emitcode!(mc, ip, ex::Core.PhiNode)
 end
 function emitcode!(mc, ip, ex::Core.PhiCNode)
     st, bvec, _ = get_stencil(ex)
-    continuation = get_continuation(mc, ip+1)
+    continuation = get_continuation(mc, ip + 1)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
@@ -486,7 +519,7 @@ function emitcode!(mc, ip, ex::Core.PiNode)
     # PiNodes are ignored in the interpreter, so ours also only copy values into ssas[ip]
     st, bvec, _ = get_stencil(ex)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
-    continuation = get_continuation(mc, ip+1)
+    continuation = get_continuation(mc, ip + 1)
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
     return
@@ -504,7 +537,7 @@ function emitcode!(mc, ip, ex::Core.UpsilonNode)
     else
         ret_ip += ip
     end
-    continuation = get_continuation(mc, ip+1)
+    continuation = get_continuation(mc, ip + 1)
     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_RET_IP", Cint(ret_ip))
@@ -515,7 +548,7 @@ function emitcode!(mc, ip, ex::Expr)
     st, bvec, _ = get_stencil(ex)
     if Base.isexpr(ex, :call)
         nargs = length(ex.args)
-        continuation = get_continuation(mc, ip+1)
+        continuation = get_continuation(mc, ip + 1)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NARGS", UInt32(nargs))
@@ -524,14 +557,14 @@ function emitcode!(mc, ip, ex::Expr)
         mi, g = ex.args[1], ex.args[2]
         @assert mi isa Core.MethodInstance || mi isa Base.CodeInstance
         nargs = length(ex.args)
-        continuation = get_continuation(mc, ip+1)
+        continuation = get_continuation(mc, ip + 1)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NARGS", UInt32(nargs))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :new)
         nargs = length(ex.args)
-        continuation = get_continuation(mc, ip+1)
+        continuation = get_continuation(mc, ip + 1)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NARGS", UInt32(nargs))
@@ -558,7 +591,7 @@ function emitcode!(mc, ip, ex::Expr)
         push!(mc.gc_roots, cif)
         sz_argtypes = Cint[ ffi_argtypes[i] == -2 ? sizeof(argtypes[i]) : 0 for i in 1:nargs ]
         push!(mc.gc_roots, sz_argtypes)
-        continuation = get_continuation(mc, ip+1)
+        continuation = get_continuation(mc, ip + 1)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CIF", pointer(cif))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
@@ -570,7 +603,7 @@ function emitcode!(mc, ip, ex::Expr)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NARGS", nargs)
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :boundscheck)
-        continuation = get_continuation(mc, ip+1)
+        continuation = get_continuation(mc, ip + 1)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
@@ -578,24 +611,24 @@ function emitcode!(mc, ip, ex::Expr)
         hand_n_leave = count(ex.args) do a
             a !== nothing && mc.codeinfo.code[a.id] !== nothing
         end
-        continuation = get_continuation(mc, ip+1)
+        continuation = get_continuation(mc, ip + 1)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_HAND_N_LEAVE", Cint(hand_n_leave))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :pop_exception)
-        continuation = get_continuation(mc, ip+1)
+        continuation = get_continuation(mc, ip + 1)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :the_exception)
         ret = pointer(mc.ssas, ip)
-        continuation = get_continuation(mc, ip+1)
+        continuation = get_continuation(mc, ip + 1)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :throw_undef_if_not)
-        continuation = get_continuation(mc, ip+1)
+        continuation = get_continuation(mc, ip + 1)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
@@ -608,9 +641,9 @@ function emitcode!(mc, ip, ex::Expr)
         )
         if Base.isexpr(ex, :gc_preserve_begin)
             # :gc_preserve_begin is a no-op if everything is pushed to frame *F (which is GC rooted)
-            @assert all(s -> s isa Union{Core.SSAValue,Core.Argument}, ex.args)
+            @assert all(s -> s isa Union{Core.SSAValue, Core.Argument}, ex.args)
         end
-        continuation = get_continuation(mc, ip+1)
+        continuation = get_continuation(mc, ip + 1)
         copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
         patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)

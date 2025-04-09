@@ -5,7 +5,7 @@
 #    Proceedings of the 8th annual IEEE/ACM international symposium
 #    on Code generation and optimization. 2010
 
-const VirtualReg = Union{Core.Argument,Core.SSAValue}
+const VirtualReg = Union{Core.Argument, Core.SSAValue}
 const Interval = UnitRange{Int}
 mutable struct Lifetime
     const intervals::Vector{Interval}
@@ -24,7 +24,7 @@ struct LifetimeAnalysis
     cinfo::Core.CodeInfo
     cfg::Compiler.CFG
     block_order::Vector{Int}
-    lifetimes::Dict{VirtualReg,Lifetime}
+    lifetimes::Dict{VirtualReg, Lifetime}
     loops::Vector{Loop}
 end
 
@@ -39,7 +39,7 @@ end
 # - Adapt to handle Upsilon, PhiC, Pi nodes.
 function _analyze_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::Vector{Int})
     liveIns = [ Set{VirtualReg}() for i in 1:length(block_order) ]
-    lifetimes = Dict{VirtualReg,Lifetime}()
+    lifetimes = Dict{VirtualReg, Lifetime}()
     loops = Loop[]
     for i_block in reverse(block_order)
         block = cfg.blocks[i_block]
@@ -56,7 +56,7 @@ function _analyze_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::
             for i_stmt in succ.stmts
                 stmt = stmts[i_stmt]
                 stmt isa Core.PhiNode || break
-                for (i,e) in enumerate(stmt.edges)
+                for (i, e) in enumerate(stmt.edges)
                     if e in block.stmts
                         val = stmt.values[i]
                         val isa VirtualReg && push!(live, val)
@@ -77,7 +77,7 @@ function _analyze_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::
                 for i_stmt in succ.stmts
                     stmt = stmts[i_stmt]
                     stmt isa Core.PhiNode || break
-                    for (i,e) in enumerate(stmt.edges)
+                    for (i, e) in enumerate(stmt.edges)
                         if e != i_block
                             val = stmt.values[i]
                             val isa VirtualReg && delete!(live, val)
@@ -157,7 +157,7 @@ function _analyze_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::
                 for i_stmt in block.stmts
                     stmt = stmts[i_stmt]
                     stmt isa Core.PhiNode || break
-                    for (e,v) in zip(stmt.edges,stmt.values)
+                    for (e, v) in zip(stmt.edges, stmt.values)
                         v == operand || continue
                         for i_pred in block.preds
                             pred = cfg.blocks[i_pred]
@@ -180,7 +180,7 @@ function _analyze_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::
                 end
             end
 
-            loop = Loop([i_block],preds_loop_ends)
+            loop = Loop([i_block], preds_loop_ends)
             push!(loops, loop)
         end
 
@@ -196,7 +196,7 @@ function _analyze_lifetimes(stmts::Vector{Any}, cfg::Compiler.CFG, block_order::
     i = 1
     while i < length(loops)
         li = loops[i]
-        j = i+1
+        j = i + 1
         while j < length(loops)
             lj = loops[j]
             if only(lj.heads) in li.heads
@@ -232,7 +232,7 @@ struct ExprOf
     ssa::Core.SSAValue
 end
 
-@inline function get_inputs!(inputs::V, stmts::Vector{Any}, i::Integer) where {T,V<:Union{Vector{T},Set{T}}}
+@inline function get_inputs!(inputs::V, stmts::Vector{Any}, i::Integer) where {T, V <: Union{Vector{T}, Set{T}}}
     stmt = stmts[i]
     if stmt isa Core.EnterNode
         # TODO Weird edge case
@@ -282,12 +282,12 @@ end
         fname = stmt.args[1]
         fname isa T && push!(inputs, fname)
         # call arguments
-        for i in 6:(5+length(stmt.args[3]))
+        for i in 6:(5 + length(stmt.args[3]))
             arg = stmt.args[i]
             arg isa T && push!(inputs, arg)
         end
         # gc roots
-        for i in (6+length(stmt.args[3])):length(stmt.args)
+        for i in (6 + length(stmt.args[3])):length(stmt.args)
             arg = stmt.args[i]
             arg isa T && push!(inputs, arg)
         end
@@ -324,7 +324,7 @@ end
     return inputs
 end
 
-@inline function get_outputs!(outputs::V, stmts::Vector{Any}, i::Integer) where {T,V<:Union{Vector{T},Set{T}}}
+@inline function get_outputs!(outputs::V, stmts::Vector{Any}, i::Integer) where {T, V <: Union{Vector{T}, Set{T}}}
     stmt = stmts[i]
     if stmt isa Core.PhiNode
         push!(outputs, Core.SSAValue(i))
@@ -343,7 +343,7 @@ end
 function get_virtual_regs(stmts)
     inputs = Set{VirtualReg}()
     outputs = Set{VirtualReg}()
-    for (i,stmt) in enumerate(stmts)
+    for (i, stmt) in enumerate(stmts)
         union!(inputs, get_inputs!(inputs, stmts, i))
         union!(outputs, get_outputs!(outputs, stmts, i))
     end
@@ -358,7 +358,7 @@ function Base.show(io::IO, block::Compiler.BasicBlock)
     else
         print(io, " (stmts ", block.stmts.start, ":", block.stmts.stop, ")")
     end
-    if !isempty(block.succs)
+    return if !isempty(block.succs)
         print(io, " → bb ")
         join(io, block.succs, ", ")
     end
@@ -390,7 +390,7 @@ function LifetimeAnalysisMenu(analysis::LifetimeAnalysis)
     tmpioc = IOContext(tmpio, stdout)
     Base.show(tmpioc, analysis.cinfo)
     str_cinfo = String(take!(tmpio))
-    tmpioc = IOContext(tmpio, :color=>false)
+    tmpioc = IOContext(tmpio, :color => false)
     Base.show(tmpioc, analysis.cinfo)
     str_cinfo_nocolor = String(take!(tmpio))
     nlines = count(==('\n'), str_cinfo_nocolor)
@@ -399,13 +399,15 @@ function LifetimeAnalysisMenu(analysis::LifetimeAnalysis)
 
     block_rngs = [ b.stmts.start for b in analysis.cfg.blocks ]
     regs_slots = [ k for k in keys(analysis.lifetimes) if k isa Core.Argument ]
-    sort!(regs_slots, lt=(a,b) -> a.n < b.n)
+    sort!(regs_slots, lt = (a, b) -> a.n < b.n)
     regs_ssas = [ k for k in keys(analysis.lifetimes) if k isa Core.SSAValue ]
-    sort!(regs_ssas, lt=(a,b) -> a.id < b.id)
+    sort!(regs_ssas, lt = (a, b) -> a.id < b.id)
     regs = vcat(regs_slots, regs_ssas)
     lifetimes = [ analysis.lifetimes[r] for r in regs ]
-    headers = [ reg isa Core.Argument ? string(analysis.cinfo.slotnames[reg.n]) : string(reg)
-                for reg in regs ]
+    headers = [
+        reg isa Core.Argument ? string(analysis.cinfo.slotnames[reg.n]) : string(reg)
+            for reg in regs
+    ]
 
     is_loop_headers = mapreduce(vcat, analysis.loops) do l
         bs = analysis.cfg.blocks[l.heads]
@@ -450,13 +452,13 @@ function TerminalMenus.header(menu::LifetimeAnalysisMenu)
     r_str = String(take!(io))
     printstyled(ioc, 'R', color = :light_blue, bold = true)
     R_str = String(take!(io))
-    printstyled(ioc, '←', bold = true, color=:yellow)
+    printstyled(ioc, '←', bold = true, color = :yellow)
     arrow_left_str = String(take!(io))
-    printstyled(ioc, '→', bold = true, color=:yellow)
+    printstyled(ioc, '→', bold = true, color = :yellow)
     arrow_right_str = String(take!(io))
-    printstyled(ioc, '↑', bold = true, color=:yellow)
+    printstyled(ioc, '↑', bold = true, color = :yellow)
     arrow_up_str = String(take!(io))
-    printstyled(ioc, '↓', bold = true, color=:yellow)
+    printstyled(ioc, '↓', bold = true, color = :yellow)
     arrow_down_str = String(take!(io))
     return """
     [$q_str]uit, [$r_str]edraw, [$R_str]reset, [$arrow_up_str/$arrow_down_str] scroll code, [$arrow_left_str/$arrow_right_str] scroll lifetimes
@@ -465,10 +467,10 @@ end
 
 function TerminalMenus.keypress(menu::LifetimeAnalysisMenu, key::UInt32)
     if key == UInt32(TerminalMenus.ARROW_LEFT)
-        menu.col_cursor = min(menu.col_cursor+1, length(menu.regs))
+        menu.col_cursor = min(menu.col_cursor + 1, length(menu.regs))
         print('\n', _inspect(stdout, menu), '\n')
     elseif key == UInt32(TerminalMenus.ARROW_RIGHT)
-        menu.col_cursor = max(menu.col_cursor-1, 1)
+        menu.col_cursor = max(menu.col_cursor - 1, 1)
         print('\n', _inspect(stdout, menu), '\n')
     elseif key == UInt32('r')
         print('\n', _inspect(stdout, menu), '\n')
@@ -482,12 +484,12 @@ end
 # we are not really using the menu scrolling functionality,
 # but we need to use them to act on up/down arrow
 function TerminalMenus.move_down!(menu::LifetimeAnalysisMenu, cursor::Int64, lastoption::Int64)
-    menu.row_cursor = min(menu.row_cursor+1, menu.nlines)
+    menu.row_cursor = min(menu.row_cursor + 1, menu.nlines)
     print('\n', _inspect(stdout, menu), '\n')
     return 1
 end
 function TerminalMenus.move_up!(menu::LifetimeAnalysisMenu, cursor::Int64, lastoption::Int64)
-    menu.row_cursor = max(menu.row_cursor-1, 1)
+    menu.row_cursor = max(menu.row_cursor - 1, 1)
     print('\n', _inspect(stdout, menu), '\n')
     return 1
 end
@@ -498,10 +500,10 @@ function _inspect(io::IO, M::LifetimeAnalysisMenu)
     line_itr_nocolor = eachline(IOBuffer(M.str_cinfo_nocolor))
     # compute number of registers that fit on screen
     height, width = displaysize(ioc)
-    width -= M.max_w+M.col_gap
+    width -= M.max_w + M.col_gap
     n_cols = 1
-    while M.col_cursor-1+n_cols < length(M.regs)
-        width -= length(M.headers[M.col_cursor+n_cols-1])+M.col_gap
+    while M.col_cursor - 1 + n_cols < length(M.regs)
+        width -= length(M.headers[M.col_cursor + n_cols - 1]) + M.col_gap
         if width ≤ 1
             n_cols -= 1
             break
@@ -510,23 +512,23 @@ function _inspect(io::IO, M::LifetimeAnalysisMenu)
         end
     end
     n_cols = min(n_cols, length(M.regs))
-    col_rng = M.col_cursor:M.col_cursor-1+n_cols
+    col_rng = M.col_cursor:(M.col_cursor - 1 + n_cols)
     # compute number of lines that fit on screen
-    n_rows = height-5
-    row_rng = M.row_cursor:M.row_cursor-1+n_rows
+    n_rows = height - 5
+    row_rng = M.row_cursor:(M.row_cursor - 1 + n_rows)
     # draw output
     println(ioc)
-    for (i,(line, nc_line)) in enumerate(zip(line_itr, line_itr_nocolor))
+    for (i, (line, nc_line)) in enumerate(zip(line_itr, line_itr_nocolor))
         w = length(nc_line)
         Δw = M.max_w - w
 
         if i == 1
             print(ioc, line)
-            print(ioc, " "^(Δw+M.col_gap))
+            print(ioc, " "^(Δw + M.col_gap))
             for h in M.headers[col_rng]
                 l = length(h)
                 # l ≤ 2 && print(ioc, " ")
-                print(ioc, " "^(l≤2), h, " "^((l≤1)+M.col_gap))
+                print(ioc, " "^(l ≤ 2), h, " "^((l ≤ 1) + M.col_gap))
             end
             println(ioc)
             continue
@@ -537,7 +539,7 @@ function _inspect(io::IO, M::LifetimeAnalysisMenu)
         print(ioc, line)
 
         # append trailing dashes to cinfo line to fill space till lifetime diagram starts
-        ii = i-1
+        ii = i - 1
         if ii in M.block_rngs
             # print header
             color = if ii in M.is_loop_headers
@@ -547,15 +549,19 @@ function _inspect(io::IO, M::LifetimeAnalysisMenu)
             else
                 :light_black
             end
-            printstyled(ioc, " ", "─"^(Δw+M.col_gap-1); color)
+            printstyled(ioc, " ", "─"^(Δw + M.col_gap - 1); color)
         else
-            print(ioc, " "^(Δw+M.col_gap))
+            print(ioc, " "^(Δw + M.col_gap))
         end
 
         # draw a horizontal slice of the lifetime diagram
-        for (col,(h,reg,lt)) in enumerate(zip(M.headers[col_rng],
-                                              M.regs[col_rng],
-                                              M.lifetimes[col_rng]))
+        for (col, (h, reg, lt)) in enumerate(
+                zip(
+                    M.headers[col_rng],
+                    M.regs[col_rng],
+                    M.lifetimes[col_rng]
+                )
+            )
             vert_sym, vert_color = "┃", :light_black
             horz_sym, horz_color = " ", :white
             if length(lt.intervals) > 0
@@ -584,14 +590,15 @@ function _inspect(io::IO, M::LifetimeAnalysisMenu)
                 end
             end
             l = length(h)
-            c = l÷2+isodd(l)
-            printstyled(ioc, horz_sym^(max(0,c-2)); color=horz_color)
-            printstyled(ioc, " ", vert_sym, " "; color=vert_color)
+            c = l ÷ 2 + isodd(l)
+            printstyled(ioc, horz_sym^(max(0, c - 2)); color = horz_color)
+            printstyled(ioc, " ", vert_sym, " "; color = vert_color)
             if col < length(col_rng)
-                printstyled(ioc, horz_sym^(max(0,l-c-1)+M.col_gap); color=horz_color)
+                printstyled(ioc, horz_sym^(max(0, l - c - 1) + M.col_gap); color = horz_color)
             end
         end
         println(ioc)
     end
     # TODO take string here
+    return
 end
