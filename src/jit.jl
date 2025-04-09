@@ -22,8 +22,6 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
         inputs_stencil_starts[ip] = zeros(Int64, length(inputs))
         for (i, input) in enumerate(inputs)
             # some inputs require value_pointers referencing codeinfo.code
-            # TODO Move this stuff into separate function
-            # input = maybe_requires_value_pointer(input, ex, codeinfo)
             if Base.isexpr(ex, :foreigncall) && i == 1
                 input = interpret_func_symbol(input, codeinfo)
                 if input.jl_ptr === nothing && input.fptr === C_NULL && isempty(input.f_name)
@@ -44,7 +42,6 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
                 elseif ex isa GlobalRef
                     input = WithValuePtr{GlobalRef}(value_pointer(codeinfo.code[ip]), input, ex)
                 else
-                    # TODO Remove WithValuePtr constructor
                     input = WithValuePtr(input, ex)
                 end
             end
@@ -72,12 +69,6 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
 end
 
 
-ngcroots(ex::Any) = 0
-function ngcroots(ex::Expr)
-    Base.isexpr(ex, :foreigncall) || return 0
-    return length(ex.args)-(6+length(ex.args[3]))+1
-end
-
 mutable struct Context
     ip::Int64 # current instruction pointer (F->ssa), 1-based
     i::Int64 # current push instruction pointer (F->tmps), 1-based
@@ -87,215 +78,16 @@ end
 Context(ntmps::Int64, nroots::Int64) = Context(0, 0, ntmps, nroots)
 
 
-function convert_cconv(lhd::Symbol)
-    if lhd === :stdcall
-        return :x86_stdcall, false
-    elseif lhd === :cdecl || lhd === :ccall
-        # `ccall` calling convention is a placeholder for when there isn't one provided
-        # it is not by itself a valid calling convention name to be specified in the surface
-        # syntax.
-        return :cconv_c, false
-    elseif lhd === :fastcall
-        return :x86_fastcall, false
-    elseif lhd === :thiscall
-        return :x86_thiscall, false
-    elseif lhd === :llvmcall
-        error("ccall: CopyAndPatch can't perform llvm calls")
-        return :cconv_c, true
-    end
-    error("ccall: invalid calling convetion $lhd")
-end
+requires_value_pointer(::Any) = true
+# We can address inputs of these kinds without value_pointer shenanigans
+requires_value_pointer(::Boxable) = false
+requires_value_pointer(::UndefInput) = false
+requires_value_pointer(::Core.Argument) = false
+requires_value_pointer(::Core.SSAValue) = false
 
 
-Base.@kwdef mutable struct NativeSymArg
-    jl_ptr::Any = nothing
-    fptr::Ptr = C_NULL
-    f_name::String = "" # if the symbol name is known
-    f_lib::String = "" # if a library name is specified
-    lib_expr::Ptr = C_NULL # expression to compute library path lazily
-    gcroot::Any = nothing
-end
-
-
-# based on julia/src/{codegen,ccall}.cpp
-function interpret_func_symbol(ex, cinfo::Core.CodeInfo)
-    symarg = NativeSymArg()
-    ptr = static_eval(ex, cinfo)
-    if ptr === nothing
-        if ex isa Expr && Base.isexpr(ex, :call) && length(ex.args) == 3 &&
-                ex.args[1] isa GlobalRef && ex.args[1].mod == Core && ex.args[1].name == :tuple
-            # attempt to interpret a non-constant 2-tuple expression as (func_name, lib_name()), where
-            # `lib_name()` will be executed when first used.
-            name_val = static_eval(ex.args[2], cinfo)
-            if name_val isa Symbol
-                symarg.f_name = string(name_val)
-                symarg.lib_expr = value_pointer(ex.args[3])
-                return symarg
-            elseif name_val isa String
-                symarg.f_name = string(name_val)
-                symarg.gcroot = [name_val]
-                symarg.lib_expr = value_pointer(ex.args[3])
-                return symarg
-            end
-        end
-        if ex isa Core.SSAValue || ex isa Core.Argument
-            symarg.jl_ptr = ex
-        else
-            TODO(ex)
-        end
-    else
-        symarg.gcroot = ptr
-        if ptr isa Tuple && length(ptr) == 1
-            ptr = ptr[1]
-        end
-        if ptr isa Symbol
-            symarg.f_name = string(ptr)
-        elseif ptr isa String
-            symarg.f_name = ptr
-        end
-        if !isempty(symarg.f_name)
-            # @assert !llvmcall
-            iname = string("i", symarg.f_name)
-            if Libdl.dlsym(LIBJULIAINTERNAL[], iname, throw_error=false) !== nothing
-                symarg.f_lib = Libdl.dlpath("libjulia-internal.so")
-                symarg.f_name = iname
-            else
-                symarg.f_lib = Libdl.find_library(iname)
-            end
-        elseif ptr isa Ptr
-            TODO()
-            symarg.f = value_pointer(ptr)
-            # else if (jl_is_cpointer_type(jl_typeof(ptr))) {
-            #     fptr = *(void(**)(void))jl_data_ptr(ptr);
-            # }
-        elseif ptr isa Tuple && length(ptr) > 1
-            t1 = ptr[1]
-            if t1 isa Symbol
-                symarg.f_name = string(t1)
-            elseif t1 isa String
-                symarg.f_name = t1
-            end
-            t2 = ptr[2]
-            if t2 isa Symbol
-                symarg.f_lib = string(t2)
-            elseif t2 isa String
-                symarg.f_lib = t2
-            else
-                TODO()
-                symarg.lib_expr = t2
-            end
-        end
-    end
-    return symarg
-end
-
-function walk_binding_partitions_all(bpart::Union{Nothing,Core.BindingPartition},
-        min_world::UInt64, max_world::UInt64)
-    while true
-        if bpart === nothing
-            return bpart
-        end
-        bkind = Base.binding_kind(bpart)
-        if !Base.is_some_imported(bkind)
-            return bpart
-        end
-        bnd = bpart.restriction
-        bpart = bnd.partitions
-    end
-end
-
-static_eval(arg::Any, cinfo::Core.CodeInfo) = arg
-static_eval(arg::Union{Core.Argument,Core.SlotNumber,Core.MethodInstance}, cinfo::Core.CodeInfo) = nothing
-static_eval(arg::QuoteNode, cinfo::Core.CodeInfo) = getfield(arg, 1)
-function static_eval(arg::Symbol, cinfo::Core.CodeInfo)
-    TODO()
-    method = cinfo.parent.def
-    mod = method.var"module"
-    bnd, bpart, bkind = get_binding_and_partition_and_kind(mod, arg, cinfo.min_world, cinfo.max_world)
-    bkind_is_const = @ccall jl_bkind_is_some_constant(bkind::UInt8)::Cint
-    if bpart != C_NULL && Bool(bkind_is_const)
-        return bpart[].restriction
-    end
-    return nothing
-end
-function static_eval(arg::Core.SSAValue, cinfo::Core.CodeInfo)
-    # TODO What to do here?
-    return nothing
-    # ssize_t idx = ((jl_ssavalue_t*)ex)->id - 1;
-    # assert(idx >= 0);
-    # if (ctx.ssavalue_assigned[idx]) {
-    #     return ctx.SAvalues[idx].constant;
-    # }
-    # return NULL;
-end
-function static_eval(arg::GlobalRef, cinfo::Core.CodeInfo)
-    mod, name = arg.mod, arg.name
-    bnd = convert(Core.Binding, arg)
-    bpart = walk_binding_partitions_all(bnd.partitions, cinfo.min_world, cinfo.max_world)
-    bkind = bpart.kind
-    bkind = Base.binding_kind(bpart)
-    bkind_is_const = Base.is_some_const_binding(bkind)
-    if bpart !== nothing && bkind_is_const
-        v = bpart.restriction
-        # TODO Deprecation warning
-        return v
-    end
-    return nothing
-end
-function static_eval(ex::Expr, cinfo::Core.CodeInfo)
-    min_world, max_world = cinfo.min_world, cinfo.max_world
-    if Base.isexpr(ex, :call)
-        f = static_eval(ex.args[1], cinfo)
-        if f != nothing
-            if length(ex.args) == 3 && (f == Core.getfield || f == Core.getglobal)
-                m = static_eval(ex.args[2], cinfo)
-                if m != nothing || !(m isa Module)
-                    return nothing
-                end
-                s = static_eval(ex.args[3], cinfo)
-                if s != nothing && s isa Symbol
-                    bnd, bpart, bkind = get_binding_and_partition_and_kind(m, s, min_world, max_world)
-                end
-                if bpart != C_NULL && Bool(bkind_is_const)
-                    v = bpart[].restriction
-                    if v != nothing
-                        @ccall jl_binding_deprecation_warning(mod::Ref{Module}, name::Symbol, bnd::Ref{Core.Binding})::Cvoid
-                        println(stderr)
-                    end
-                    return v
-                end
-            elseif f == Core.Tuple || f == Core.apply_type
-                n = length(ex.args)-1
-                if n == 0 && f == Core.Tuple
-                    return ()
-                end
-                v = Vector{Any}(undef, n+1)
-                v[1] = f
-                for i in 1:n
-                    v[i+1] = static_eval(ex.args[i+1])
-                    if v[i+1] == nothing
-                        return nothing
-                    end
-                end
-            end
-            return try
-                Base.invoke_in_world(1, v, n+1)
-            catch
-                nothing
-            end
-        end
-    elseif Base.isexpr(ex, :static_parameter)
-        idx = ex.args[1]
-        mi = cinfo.parent
-        if idx <= length(mi.sparam_vals)
-            e = mi.sparam_vals[idx]
-            return e isa TypeVar ? nothing : e
-        end
-    end
-    return nothing
-end
-
-
+# decorator-like type to capture value_pointer(val) where val is rooted *in* ex
+# said differently: can take a pointer to an immutable object contained in ex
 struct WithValuePtr{T}
     ptr::Ptr{Cvoid}
     val::T
@@ -320,13 +112,7 @@ end
 
 function get_stencil_name(ex::Expr)
     if Base.isexpr(ex, :call)
-        # g = ex.args[1]
-        # fn = g isa GlobalRef ? unwrap(g) : g
-        # if fn isa Core.IntrinsicFunction
-        #     return string("jl_", Symbol(fn))
-        # else
-            return "ast_call"
-        # end
+        return "ast_call"
     elseif Base.isexpr(ex, :invoke)
         return "ast_invoke"
     elseif Base.isexpr(ex, :new)
@@ -377,7 +163,6 @@ get_stencil_name(ex::Core.PiNode) = "ast_pinode"
 get_stencil_name(ex::Core.ReturnNode) = "ast_returnnode"
 get_stencil_name(ex::Core.UpsilonNode) = "ast_upsilonnode"
 get_stencil_name(ex::Nothing) = "ast_goto"
-
 function get_stencil(name::String)
     if !haskey(STENCILS[], name)
         error("no stencil named '$name'")
@@ -391,7 +176,6 @@ function get_stencil(ex)
     end
     return STENCILS[][name]
 end
-
 
 
 get_push_stencil_name(arg::Any) = "jl_push_any"
@@ -421,7 +205,6 @@ function get_push_stencil_name(arg::NativeSymArg)
     # TODO Vararg?
     return "jl_push_plt_voidpointer"
 end
-
 function get_push_stencil(ex)
     name = get_push_stencil_name(ex)
     if !haskey(STENCILS[], name)
@@ -449,14 +232,6 @@ function emitabi!(mc::MachineCode, ctx::Context)
 end
 
 
-requires_value_pointer(::Any) = true
-# We can address inputs of these kinds without value_pointer shenanigans
-requires_value_pointer(::Boxable) = false
-requires_value_pointer(::UndefInput) = false
-requires_value_pointer(::Core.Argument) = false
-requires_value_pointer(::Core.SSAValue) = false
-
-
 function emitpushes!(mc::MachineCode, ctx::Context, ex, inputs::Vector{Any})
     nroots = ngcroots(ex)
     ninputs = length(inputs)
@@ -472,8 +247,6 @@ function emitpushes!(mc::MachineCode, ctx::Context, ex, inputs::Vector{Any})
         emitpush!(mc, ctx, continuation, input)
     end
 end
-
-
 function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
         input::Boxable)
     st, bvec, _ = get_push_stencil(input)
@@ -612,13 +385,6 @@ function emitpush!(mc::MachineCode, ctx::Context, continuation::Ptr,
 end
 
 
-# CodeInfo can contain following symbols
-# (from https://juliadebug.github.io/JuliaInterpreter.jl/stable/ast/)
-# - %2 ... single static assignment (SSA) value
-#          see CodeInfo.ssavaluetypes, CodeInfo.ssaflags
-# - _2 ... slot variable; either a function argument or a local variable
-#          _1 refers to function, _2 to first arg, etc.
-#          see CodeInfo.slottypes, CodeInfo.slotnames
 emitcode!(mc, ip, ex) = TODO(typeof(ex))
 function emitcode!(mc, ip, ex::Nothing)
     st, bvec, _ = get_stencil(ex)
@@ -748,28 +514,12 @@ end
 function emitcode!(mc, ip, ex::Expr)
     st, bvec, _ = get_stencil(ex)
     if Base.isexpr(ex, :call)
-        # g = ex.args[1]
-        # fn = g isa GlobalRef ? unwrap(g) : g
-        # if fn isa Core.IntrinsicFunction
-        #     nargs = length(ex.args)-1
-        #     name = string("jl_", Symbol(fn))
-        #     st, bvec, _ = get(STENCILS[], name) do
-        #         error("don't know how to handle intrinsic $name")
-        #     end
-        #     continuation = get_continuation(mc, ip+1)
-        #     copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
-        #     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
-        #     patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
-        # elseif iscallable(fn) || g isa Core.SSAValue
-            nargs = length(ex.args)
-            continuation = get_continuation(mc, ip+1)
-            copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
-            patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
-            patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NARGS", UInt32(nargs))
-            patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
-        # else
-        #     TODO(fn)
-        # end
+        nargs = length(ex.args)
+        continuation = get_continuation(mc, ip+1)
+        copyto!(mc.buf, mc.stencil_starts[ip], bvec, 1, length(bvec))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_IP", Cint(ip))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_NARGS", UInt32(nargs))
+        patch!(mc.buf, mc.stencil_starts[ip], st.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :invoke)
         mi, g = ex.args[1], ex.args[2]
         @assert mi isa Core.MethodInstance || mi isa Base.CodeInstance

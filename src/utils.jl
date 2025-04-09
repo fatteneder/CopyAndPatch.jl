@@ -8,29 +8,16 @@ TODO(prefix, msg) = error(prefix, msg)
 is_little_endian() = ENDIAN_BOM == 0x04030201
 
 
-unwrap(g::GlobalRef) = getproperty(g.mod, g.name)
-iscallable(@nospecialize(f)) = !isempty(methods(f))
-
-
 # from stencils/libjuliahelpers.c
 is_method_instance(mi) = @ccall LIBJULIAHELPERS_PATH[].is_method_instance(mi::Any)::Cint
 function is_bool(b)
     p = box(b)
     return GC.@preserve b @ccall LIBJULIAHELPERS_PATH[].is_bool(p::Ptr{Cvoid})::Cint
 end
-is_concrete_immutable(@nospecialize(x::DataType)) =
+is_concrete_immutable(x::DataType) =
     @ccall LIBJULIAHELPERS_PATH[].jl_is_concrete_immutable(x::Any)::Bool
-is_pointerfree(@nospecialize(x::DataType)) =
+is_pointerfree(x::DataType) =
     @ccall LIBJULIAHELPERS_PATH[].jl_is_pointerfree(x::Any)::Bool
-
-# from julia_internal.h
-# TODO What about Base.allocatedinline?
-datatype_isinlinealloc(@nospecialize(ty::Ref{T})) where {T} = datatype_isinlinealloc(T)
-function datatype_isinlinealloc(@nospecialize(ty::DataType))
-    ptrfree = is_pointerfree(ty)
-    r = @ccall jl_datatype_isinlinealloc(ty::Any, ptrfree::Cint)::Cint
-    return r != 0
-end
 
 
 # @nospecialize is needed here to return the desired pointer also for immutables.
@@ -109,3 +96,224 @@ unbox(::Type{Ptr{UInt8}}, ptr::Ptr{Cvoid}) = @ccall jl_unbox_uint8pointer(ptr::P
 unbox(::Type{Ptr{T}}, ptr::Ptr{Cvoid}) where {T} = @ccall jl_unbox_voidpointer(ptr::Ptr{Cvoid})::Ptr{T}
 # TODO This def needed?
 unbox(T::Type, ptr::Integer) = unbox(T, Ptr{Cvoid}(UInt64(ptr)))
+
+
+### Codegen utils
+
+ngcroots(ex::Any) = 0
+function ngcroots(ex::Expr)
+    Base.isexpr(ex, :foreigncall) || return 0
+    return length(ex.args)-(6+length(ex.args[3]))+1
+end
+
+
+# based on julia/src/ccall.cpp:convert_cconv
+function convert_cconv(lhd::Symbol)
+    if lhd === :stdcall
+        return :x86_stdcall, false
+    elseif lhd === :cdecl || lhd === :ccall
+        # `ccall` calling convention is a placeholder for when there isn't one provided
+        # it is not by itself a valid calling convention name to be specified in the surface
+        # syntax.
+        return :cconv_c, false
+    elseif lhd === :fastcall
+        return :x86_fastcall, false
+    elseif lhd === :thiscall
+        return :x86_thiscall, false
+    elseif lhd === :llvmcall
+        error("ccall: CopyAndPatch can't perform llvm calls")
+        return :cconv_c, true
+    end
+    error("ccall: invalid calling convetion $lhd")
+end
+
+
+# static evaluation for ccall fptr interpreter
+# based on julia/src/{codegen,ccall}.cpp
+static_eval(arg::Any, cinfo::Core.CodeInfo) = arg
+static_eval(arg::Union{Core.Argument,Core.SlotNumber,Core.MethodInstance}, cinfo::Core.CodeInfo) = nothing
+static_eval(arg::QuoteNode, cinfo::Core.CodeInfo) = getfield(arg, 1)
+function static_eval(arg::Symbol, cinfo::Core.CodeInfo)
+    TODO()
+    method = cinfo.parent.def
+    mod = method.var"module"
+    bnd, bpart, bkind = get_binding_and_partition_and_kind(mod, arg, cinfo.min_world, cinfo.max_world)
+    bkind_is_const = @ccall jl_bkind_is_some_constant(bkind::UInt8)::Cint
+    if bpart != C_NULL && Bool(bkind_is_const)
+        return bpart[].restriction
+    end
+    return nothing
+end
+function static_eval(arg::Core.SSAValue, cinfo::Core.CodeInfo)
+    # TODO What to do here?
+    return nothing
+    # ssize_t idx = ((jl_ssavalue_t*)ex)->id - 1;
+    # assert(idx >= 0);
+    # if (ctx.ssavalue_assigned[idx]) {
+    #     return ctx.SAvalues[idx].constant;
+    # }
+    # return NULL;
+end
+function static_eval(arg::GlobalRef, cinfo::Core.CodeInfo)
+    mod, name = arg.mod, arg.name
+    bnd = convert(Core.Binding, arg)
+    bpart = walk_binding_partitions_all(bnd.partitions, cinfo.min_world, cinfo.max_world)
+    bkind = bpart.kind
+    bkind = Base.binding_kind(bpart)
+    bkind_is_const = Base.is_some_const_binding(bkind)
+    if bpart !== nothing && bkind_is_const
+        v = bpart.restriction
+        # TODO Deprecation warning
+        return v
+    end
+    return nothing
+end
+function static_eval(ex::Expr, cinfo::Core.CodeInfo)
+    min_world, max_world = cinfo.min_world, cinfo.max_world
+    if Base.isexpr(ex, :call)
+        f = static_eval(ex.args[1], cinfo)
+        if f != nothing
+            if length(ex.args) == 3 && (f == Core.getfield || f == Core.getglobal)
+                m = static_eval(ex.args[2], cinfo)
+                if m != nothing || !(m isa Module)
+                    return nothing
+                end
+                s = static_eval(ex.args[3], cinfo)
+                if s != nothing && s isa Symbol
+                    bnd, bpart, bkind = get_binding_and_partition_and_kind(m, s, min_world, max_world)
+                end
+                if bpart != C_NULL && Bool(bkind_is_const)
+                    v = bpart[].restriction
+                    if v != nothing
+                        @ccall jl_binding_deprecation_warning(mod::Ref{Module}, name::Symbol, bnd::Ref{Core.Binding})::Cvoid
+                        println(stderr)
+                    end
+                    return v
+                end
+            elseif f == Core.Tuple || f == Core.apply_type
+                n = length(ex.args)-1
+                if n == 0 && f == Core.Tuple
+                    return ()
+                end
+                v = Vector{Any}(undef, n+1)
+                v[1] = f
+                for i in 1:n
+                    v[i+1] = static_eval(ex.args[i+1])
+                    if v[i+1] == nothing
+                        return nothing
+                    end
+                end
+            end
+            return try
+                Base.invoke_in_world(1, v, n+1)
+            catch
+                nothing
+            end
+        end
+    elseif Base.isexpr(ex, :static_parameter)
+        idx = ex.args[1]
+        mi = cinfo.parent
+        if idx <= length(mi.sparam_vals)
+            e = mi.sparam_vals[idx]
+            return e isa TypeVar ? nothing : e
+        end
+    end
+    return nothing
+end
+
+function walk_binding_partitions_all(bpart::Union{Nothing,Core.BindingPartition},
+        min_world::UInt64, max_world::UInt64)
+    while true
+        if bpart === nothing
+            return bpart
+        end
+        bkind = Base.binding_kind(bpart)
+        if !Base.is_some_imported(bkind)
+            return bpart
+        end
+        bnd = bpart.restriction
+        bpart = bnd.partitions
+    end
+end
+
+
+# ccall fptr interpretation
+Base.@kwdef mutable struct NativeSymArg
+    jl_ptr::Any = nothing
+    fptr::Ptr = C_NULL
+    f_name::String = "" # if the symbol name is known
+    f_lib::String = "" # if a library name is specified
+    lib_expr::Ptr = C_NULL # expression to compute library path lazily
+    gcroot::Any = nothing
+end
+
+function interpret_func_symbol(ex, cinfo::Core.CodeInfo)
+    symarg = NativeSymArg()
+    ptr = static_eval(ex, cinfo)
+    if ptr === nothing
+        if ex isa Expr && Base.isexpr(ex, :call) && length(ex.args) == 3 &&
+                ex.args[1] isa GlobalRef && ex.args[1].mod == Core && ex.args[1].name == :tuple
+            # attempt to interpret a non-constant 2-tuple expression as (func_name, lib_name()), where
+            # `lib_name()` will be executed when first used.
+            name_val = static_eval(ex.args[2], cinfo)
+            if name_val isa Symbol
+                symarg.f_name = string(name_val)
+                symarg.lib_expr = value_pointer(ex.args[3])
+                return symarg
+            elseif name_val isa String
+                symarg.f_name = string(name_val)
+                symarg.gcroot = [name_val]
+                symarg.lib_expr = value_pointer(ex.args[3])
+                return symarg
+            end
+        end
+        if ex isa Core.SSAValue || ex isa Core.Argument
+            symarg.jl_ptr = ex
+        else
+            TODO(ex)
+        end
+    else
+        symarg.gcroot = ptr
+        if ptr isa Tuple && length(ptr) == 1
+            ptr = ptr[1]
+        end
+        if ptr isa Symbol
+            symarg.f_name = string(ptr)
+        elseif ptr isa String
+            symarg.f_name = ptr
+        end
+        if !isempty(symarg.f_name)
+            # @assert !llvmcall
+            iname = string("i", symarg.f_name)
+            if Libdl.dlsym(LIBJULIAINTERNAL[], iname, throw_error=false) !== nothing
+                symarg.f_lib = Libdl.dlpath("libjulia-internal.so")
+                symarg.f_name = iname
+            else
+                symarg.f_lib = Libdl.find_library(iname)
+            end
+        elseif ptr isa Ptr
+            TODO()
+            symarg.f = value_pointer(ptr)
+            # else if (jl_is_cpointer_type(jl_typeof(ptr))) {
+            #     fptr = *(void(**)(void))jl_data_ptr(ptr);
+            # }
+        elseif ptr isa Tuple && length(ptr) > 1
+            t1 = ptr[1]
+            if t1 isa Symbol
+                symarg.f_name = string(t1)
+            elseif t1 isa String
+                symarg.f_name = t1
+            end
+            t2 = ptr[2]
+            if t2 isa Symbol
+                symarg.f_lib = string(t2)
+            elseif t2 isa String
+                symarg.f_lib = t2
+            else
+                TODO()
+                symarg.lib_expr = t2
+            end
+        end
+    end
+    return symarg
+end
