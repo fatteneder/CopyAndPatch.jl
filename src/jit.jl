@@ -579,6 +579,15 @@ function emitcode!(mc, ip, ex::Expr)
         @assert conv.value === :ccall || first(conv.value) === :ccall
         args = ex.args[6:(5 + length(ex.args[3]))]
         nargs = length(args)
+        for at in argtypes
+            isconcretetype(at) || continue
+            for i in 1:fieldcount(at)
+                ty = fieldtype(at, i)
+                if ty isa Union
+                    TODO("non-isbitstypes passed 'by-value', cf. issue #46786 and stencils/mwe_union.c")
+                end
+            end
+        end
         ffi_argtypes = [ Cint(ffi_ctype_id(at)) for at in argtypes ]
         push!(mc.gc_roots, ffi_argtypes)
         ffi_rettype = Cint(ffi_ctype_id(rettype, return_type = true))

@@ -1270,7 +1270,7 @@ let
     @test mc(ptr22734) === 32.0
 end
 
-# # TODO These two tests seem to pass when I adjust the Ref case in ffi_ctype_id
+# # TODO See stencils/mwe_union.c
 # # to take isbitstype into account. However, they do not reliably pass, but also segfault randomly.
 # # issue #46786 -- non-isbitstypes passed "by-value"
 # struct NonBits46786
