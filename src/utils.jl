@@ -100,12 +100,6 @@ unbox(T::Type, ptr::Integer) = unbox(T, Ptr{Cvoid}(UInt64(ptr)))
 
 ### Codegen utils
 
-ngcroots(ex::Any) = 0
-function ngcroots(ex::Expr)
-    Base.isexpr(ex, :foreigncall) || return 0
-    return length(ex.args) - (6 + length(ex.args[3])) + 1
-end
-
 
 # based on julia/src/ccall.cpp:convert_cconv
 function convert_cconv(lhd::Symbol)
@@ -250,7 +244,7 @@ Base.@kwdef mutable struct NativeSymArg
     gcroot::Any = nothing
 end
 
-function interpret_func_symbol(ex, cinfo::Core.CodeInfo)
+function interpret_func_symbol(ex, cinfo::Core.CodeInfo; is_ccall::Bool=true)
     symarg = NativeSymArg()
     ptr = static_eval(ex, cinfo)
     if ptr === nothing
@@ -272,6 +266,13 @@ function interpret_func_symbol(ex, cinfo::Core.CodeInfo)
         end
         if ex isa Core.SSAValue || ex isa Core.Argument
             symarg.jl_ptr = ex
+            return symarg
+        end
+        if !(ex isa Ptr)
+            if !is_ccall
+                return symarg
+            end
+            TODO("emit cpointer check")
         else
             TODO(ex)
         end

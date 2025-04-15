@@ -232,6 +232,12 @@ struct ExprOf
     ssa::Core.SSAValue
 end
 
+function get_inputs(stmts::Vector{Any}, i::Integer)
+    inputs = Vector{Any}()
+    get_inputs!(inputs, stmts, i)
+    return inputs
+end
+
 @inline function get_inputs!(inputs::V, stmts::Vector{Any}, i::Integer) where {T, V <: Union{Vector{T}, Set{T}}}
     stmt = stmts[i]
     if stmt isa Core.EnterNode

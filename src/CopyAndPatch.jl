@@ -33,7 +33,7 @@ include("extern_pkg_code.jl")
 include("julia_integration.jl")
 
 
-const STENCILS = Ref(Dict{String, Any}())
+const STENCILS = Ref(Dict{String, StencilData}())
 const MAGICNR = 0x0070605040302010
 
 
@@ -59,7 +59,7 @@ function init_stencils()
                 @assert h.kind == "R_X86_64_64"
                 bvec[h.offset + 1] = MAGICNR
             end
-            STENCILS[][name] = (s, bvec, bvecs_data)
+            STENCILS[][name] = StencilData(s, bvec, bvecs_data)
         catch e
             println("Failure when processing $f")
             rethrow(e)

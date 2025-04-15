@@ -36,6 +36,13 @@ struct StencilGroup
 end
 
 
+struct StencilData
+    md::StencilGroup # stencil meta data
+    bvec::ByteVector # _JIT_ENTRY section
+    bvecs_data::Vector{ByteVector}
+end
+
+
 function handle_section(section, group::StencilGroup)
     section_type = section["Type"]["Name"] # build.py uses Value instead of Name, why?
     flags = [ flag["Name"] for flag in section["Flags"]["Flags"] ]
