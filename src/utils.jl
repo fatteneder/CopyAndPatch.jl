@@ -244,7 +244,7 @@ Base.@kwdef mutable struct NativeSymArg
     gcroot::Any = nothing
 end
 
-function interpret_func_symbol(ex, cinfo::Core.CodeInfo; is_ccall::Bool=true)
+function interpret_func_symbol(ex, cinfo::Core.CodeInfo; is_ccall::Bool = true)
     symarg = NativeSymArg()
     ptr = static_eval(ex, cinfo)
     if ptr === nothing

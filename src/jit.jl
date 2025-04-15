@@ -65,8 +65,10 @@ function Context(codeinfo::Core.CodeInfo)
     roots = Vector{Any}[ Any[] for _ in 1:nssas ]
     load_stencils = Vector{StencilData}[ StencilData[] for _ in 1:nssas ]
     instr_stencils = Vector{StencilData}(undef, nssas)
-    return Context(codeinfo, ip, i, nssas, ntmps, nroots,
-                   inputs, roots, load_stencils, instr_stencils)
+    return Context(
+        codeinfo, ip, i, nssas, ntmps, nroots,
+        inputs, roots, load_stencils, instr_stencils
+    )
 end
 
 
@@ -90,7 +92,7 @@ requires_value_pointer(::Core.SSAValue) = false
 function extract_inputs!(ctx::Context, ex::Any)
     ctx.inputs[ctx.ip] = get_inputs(ctx.codeinfo.code, ctx.ip)
     # extract value_pointers for immutable inputs rooted in ctx.codeinfo.code
-    for (i,input) in enumerate(ctx.inputs[ctx.ip])
+    for (i, input) in enumerate(ctx.inputs[ctx.ip])
         ctx.i = i
         if requires_value_pointer(input)
             if input isa ExprOf
@@ -105,7 +107,7 @@ function extract_inputs!(ctx::Context, ex::Any)
             elseif ex isa Core.PhiNode
                 idx = something(findfirst(a -> a === input, ex.values))
                 input = WithValuePtr(value_pointer(ex.values[idx]), input, ex)
-            elseif ex isa Union{Core.UpsilonNode,Core.PiNode,Core.ReturnNode}
+            elseif ex isa Union{Core.UpsilonNode, Core.PiNode, Core.ReturnNode}
                 @assert isdefined(ex, :val)
                 input = WithValuePtr(value_pointer(ex.val), input, ex)
             end
@@ -394,9 +396,7 @@ function select_stencils!(ctx::Context, ex::GlobalRef)
     ctx.instr_stencils[ctx.ip] = get_stencil("ast_globalref")
     return
 end
-function emit_loads!(mc::MachineCode, ctx::Context, ex::GlobalRef)
-    emit_loads_generic!(mc, ctx)
-end
+emit_loads!(mc::MachineCode, ctx::Context, ex::GlobalRef) = emit_loads_generic!(mc, ctx)
 function emit_instr!(mc::MachineCode, ctx::Context, ex::GlobalRef)
     st = ctx.instr_stencils[ctx.ip]
     continuation = get_continuation(mc, ctx.ip + 1)
@@ -447,7 +447,6 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Core.ReturnNode)
     patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
     return
 end
-
 
 
 # Core.GotoIfNot
@@ -626,11 +625,12 @@ function select_stencils!(ctx::Context, ex::Expr)
         end
         if fn.lib_expr !== C_NULL
             roots = ctx.roots[ctx.ip]
-            ctx.nroots = max(ctx.nroots, length(roots)+1)
+            ctx.nroots = max(ctx.nroots, length(roots) + 1)
         end
         ctx.inputs[ctx.ip][1] = fn
     end
     ctx.load_stencils[ctx.ip] = select_load_stencil_generic.(ctx.inputs[ctx.ip])
+    # runic: off
     name = if Base.isexpr(ex, :call); "ast_call"
     elseif Base.isexpr(ex, :invoke); "ast_invoke"
     elseif Base.isexpr(ex, :new); "ast_new"
@@ -651,7 +651,8 @@ function select_stencils!(ctx::Context, ex::Expr)
     elseif Base.isexpr(ex, :gc_preserve_begin); "ast_gc_preserve_begin"
     elseif Base.isexpr(ex, :gc_preserve_end); "ast_gc_preserve_end"
     else TODO("Stencil not implemented yet:", ex) end
-    ctx.instr_stencils[ctx.ip] = get_stencil(name)
+    # runic: on
+    return ctx.instr_stencils[ctx.ip] = get_stencil(name)
 end
 emit_loads!(mc::MachineCode, ctx::Context, ex::Expr) = emit_loads_generic!(mc, ctx)
 function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
