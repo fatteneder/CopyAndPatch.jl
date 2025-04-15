@@ -258,6 +258,8 @@ end
             val isa T && push!(inputs, val)
         end
     elseif stmt isa Core.PhiCNode
+        # TODO Why doesn't this have inputs?
+        # stmt.val isa T && push!(inputs, stmt.val)
     elseif stmt isa Core.PiNode
         stmt.val isa T && push!(inputs, stmt.val)
     elseif stmt isa Core.ReturnNode

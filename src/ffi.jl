@@ -107,6 +107,8 @@ function ffi_type_struct(@nospecialize(t::Type{T})) where {T}
     return pointer(mem_ffi_type)
 end
 
+# TODO cache results by signature,
+# rm unused fields, including slots
 mutable struct Ffi_cif
     mem_cif::Vector{UInt8}
     p::Ptr{Cvoid}

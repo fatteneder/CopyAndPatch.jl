@@ -6,6 +6,7 @@ mutable struct MachineCode
     codeinfo::Core.CodeInfo
     stencil_starts::Vector{Int64}
     inputs_stencil_starts::Vector{Vector{Int64}}
+    # TODO remove
     slots::Vector{Ptr{UInt64}}
     ssas::Vector{Ptr{UInt64}}
     static_prms::Vector{Any}
