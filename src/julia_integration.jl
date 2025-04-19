@@ -3,8 +3,8 @@ const CodegenDict = IdDict{Core.CodeInstance, Core.CodeInfo}
 
 struct CacheOwner end
 struct Interpreter <: CC.AbstractInterpreter
-    # native::CC.NativeInterpreter
     world::UInt
+    owner::CacheOwner
     inf_prms::CC.InferenceParams
     opt_prms::CC.OptimizationParams
     inf_cache::Vector{CC.InferenceResult}
@@ -13,11 +13,12 @@ struct Interpreter <: CC.AbstractInterpreter
     function Interpreter(
             ;
             world::UInt = Base.get_world_counter(),
+            owner::CacheOwner = CacheOwner(),
             inf_prms::CC.InferenceParams = CC.InferenceParams(),
             opt_prms::CC.OptimizationParams = CC.OptimizationParams(),
             inf_cache::Vector{CC.InferenceResult} = CC.InferenceResult[]
         )
-        return new(world, inf_prms, opt_prms, inf_cache, CodegenDict())
+        return new(world, owner, inf_prms, opt_prms, inf_cache, CodegenDict())
     end
 end
 
@@ -26,7 +27,7 @@ CC.InferenceParams(interp::Interpreter) = interp.inf_prms
 CC.OptimizationParams(interp::Interpreter) = interp.opt_prms
 CC.get_inference_world(interp::Interpreter) = interp.world
 CC.get_inference_cache(interp::Interpreter) = interp.inf_cache
-CC.cache_owner(::Interpreter) = CacheOwner()
+CC.cache_owner(interp::Interpreter) = interp.owner
 CC.codegen_cache(interp::Interpreter) = interp.codegen_cache
 
 
@@ -58,13 +59,11 @@ function CC.add_codeinsts_to_jit!(interp::Interpreter, ci, source_mode::UInt8)
             if !isa(src, Core.CodeInfo)
                 newcallee = CC.typeinf_ext(interp, callee.def, source_mode)
                 if newcallee isa Core.CodeInstance
-                    if callee === ci
-                        # ci stopped meeting the requirements after typeinf_ext last checked, try again with newcallee
-                        ci = newcallee
-                    end
+                    callee === ci && (ci = newcallee) # ci stopped meeting the requirements after typeinf_ext last checked, try again with newcallee
                     push!(tocompile, newcallee)
-                    #else
-                    #    println("warning: could not get source code for ", callee.def)
+                end
+                if newcallee !== callee
+                    push!(inspected, callee)
                 end
                 continue
             end
@@ -90,36 +89,19 @@ function CC.add_codeinsts_to_jit!(interp::Interpreter, ci, source_mode::UInt8)
 end
 
 
-# function compile(@nospecialize(fn), @nospecialize(ts::Tuple))
-#     # query MethodInstance, there is also MethodAnalysis.methodinstance(fn, args)
-#     mi = FromGPUCompiler.methodinstance(typeof(fn), Base.to_tuple_type(ts))
-#     interp = Interpreter()
-#     ci = CC.typeinf_ext_toplevel(interp, mi, CC.SOURCE_MODE_ABI)
-#     # sanity check, from GPUCompiler.jl:src/jlgen.jl/ci_cache_populate
-#     cache = CC.code_cache(interp)
-#     world = Base.get_world_counter()
-#     wvc = CC.WorldView(cache, world, world)
-#     @assert CC.haskey(wvc, mi)
-#     return
-# end
-
-
 ### Using the example in Compiler/extra/src/CompilerDevTools.jl example to enter into our jit.
 ### below version adapted from 8a31ad6c4d1282d4c974ab1c357d43373ba4d578
 
 
-import Core.OptimizedGenerics.CompilerPlugins
-@eval @noinline function CompilerPlugins.typeinf(::CacheOwner, mi::Core.MethodInstance, source_mode::UInt8)
-    world = which(CompilerPlugins.typeinf, Tuple{CacheOwner, Core.MethodInstance, UInt8}).primary_world
-    return Base.invoke_in_world(
-        world, CC.typeinf_ext_toplevel,
-        Interpreter(; world = Base.tls_world_age()),
-        mi, source_mode
-    )
+
+@eval @noinline function CCPlugins.typeinf(owner::CacheOwner, mi::Core.MethodInstance, source_mode::UInt8)
+    world = which(CCPlugins.typeinf, Tuple{CacheOwner, Core.MethodInstance, UInt8}).primary_world
+    interp = Interpreter(; world=Base.tls_world_age(), owner)
+    return Base.invoke_in_world(world, CC.typeinf_ext_toplevel, interp, mi, source_mode)
 end
 
 
-@eval @noinline function CompilerPlugins.typeinf_edge(
+@eval @noinline function CCPlugins.typeinf_edge(
         ::CacheOwner, mi::Core.MethodInstance,
         parent_frame::CC.InferenceState, world::UInt, source_mode::UInt8
     )
@@ -129,14 +111,29 @@ end
 end
 
 
-function with_compiler(f, args...)
-    mi = @ccall jl_method_lookup(
-        Any[f, args...]::Ptr{Any}, (1 + length(args))::Csize_t,
-        Base.tls_world_age()::Csize_t
-    )::Ref{Core.MethodInstance}
-    world = Base.tls_world_age()
-    new_compiler_ci = Core.OptimizedGenerics.CompilerPlugins.typeinf(
-        CopyAndPatch.CacheOwner(), mi, Compiler.SOURCE_MODE_ABI
+function lookup_method_instance(f, args...)
+    @ccall jl_method_lookup(Any[f, args...]::Ptr{Any}, (1+length(args))::Csize_t,
+                            Base.tls_world_age()::Csize_t)::Ref{Core.MethodInstance}
+end
+
+
+function CC.transform_result_for_cache(
+        interp::Interpreter, result::CC.InferenceResult, edges::CC.SimpleVector
     )
+    return @invoke CC.transform_result_for_cache(interp::CC.AbstractInterpreter,
+                                                 result::CC.InferenceResult,
+                                                 edges::CC.SimpleVector)
+end
+
+
+function with_new_compiler(f, args...; owner::CacheOwner = CacheOwner())
+    return with_new_compiler(f, owner, args...)
+end
+
+
+function with_new_compiler(f, owner::CacheOwner, args...)
+    isa(f, Core.Builtin) && return f(args...)
+    mi = lookup_method_instance(f, args...)
+    new_compiler_ci = CCPlugins.typeinf(owner, mi, CC.SOURCE_MODE_ABI)
     return invoke(f, new_compiler_ci, args...)
 end

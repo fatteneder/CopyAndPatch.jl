@@ -19,6 +19,7 @@ if VERSION ≥ v"1.12.0-DEV.1581"
 else
     const CC = Core.Compiler
 end
+import Core.OptimizedGenerics.CompilerPlugins as CCPlugins
 
 
 include("utils.jl")
