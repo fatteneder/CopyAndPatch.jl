@@ -13,3 +13,5 @@ JIT_ENTRY()
    SET_IP(F, ip);
    PATCH_JUMP(_JIT_CONT, F);
 }
+
+int isIntrinsicFunction = 1;

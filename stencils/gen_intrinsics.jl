@@ -139,9 +139,11 @@ JIT_ENTRY()
    DEBUGSTMT(\"$fn_name\", F, ip);
 $patch_args
    F->ssas[ip-1] = $fn_name($fn_args);
-   NEXT_IP(F, ip);
+   SET_IP(F, ip);
    PATCH_JUMP(_JIT_CONT, F);
-}"""
+}
+
+int isIntrinsicFunction = 1;"""
     println(code)
     filename = joinpath(@__DIR__, "$fn_name.c")
     open(filename, write=true) do file

@@ -28,11 +28,12 @@ end
 Stencil() = Stencil(nothing, [], [], [], Dict(), Dict(), [])
 
 
-struct StencilGroup
-    name::String
-    code::Stencil # actual machine code (with holes)
-    data::Stencil # needed to build a header file
-    global_offset_table
+mutable struct StencilGroup
+    const name::String
+    const code::Stencil # actual machine code (with holes)
+    const data::Stencil # needed to build a header file
+    const global_offset_table
+    isIntrinsicFunction::Bool
 end
 
 
@@ -94,6 +95,16 @@ function handle_section(section, group::StencilGroup)
             # "SHT_NOBITS" # added by me; this a section header for section that does not contain actual data
             # # (e.g. uninitialized global and static vars) -- ref: gemini
         ) section_type
+    end
+    if section["Name"]["Name"] == ".data"
+        for sym in section["Symbols"]
+            s = get(sym, "Symbol", nothing); s === nothing && continue
+            name = get(s, "Name", nothing); name === nothing && continue
+            if name["Name"] == "isIntrinsicFunction"
+                group.isIntrinsicFunction = true
+            end
+            break
+        end
     end
     return section
 end
@@ -217,7 +228,7 @@ end
 
 StencilGroup(path::AbstractString, name::String) = StencilGroup(JSON.parsefile(string(path)), name)
 function StencilGroup(json::Vector{Any}, name::String)
-    group = StencilGroup(name, Stencil(), Stencil(), Dict())
+    group = StencilGroup(name, Stencil(), Stencil(), Dict(), false)
     group.code.parent = group
     group.data.parent = group
     for sec in json[1]["Sections"]
