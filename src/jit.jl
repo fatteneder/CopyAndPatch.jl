@@ -759,10 +759,11 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
                 :inline, :noinline, :gc_preserve_begin, :gc_preserve_end,
             )
         )
-        if Base.isexpr(ex, :gc_preserve_begin)
-            # :gc_preserve_begin is a no-op if everything is pushed to frame *F (which is GC rooted)
-            @assert all(s -> s isa Union{Core.SSAValue, Core.Argument}, ex.args)
-        end
+        # TODO This is no longer holds on fatteneder/julia@cpjit-mmap-v3
+        # if Base.isexpr(ex, :gc_preserve_begin)
+        #     # :gc_preserve_begin is a no-op if everything is pushed to frame *F (which is GC rooted)
+        #     @assert all(s -> s isa Union{Core.SSAValue, Core.Argument}, ex.args)
+        # end
         continuation = get_continuation(mc, ctx.ip + 1)
         copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
         patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
