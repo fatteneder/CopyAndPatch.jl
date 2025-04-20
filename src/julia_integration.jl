@@ -117,9 +117,40 @@ function lookup_method_instance(f, args...)
 end
 
 
+function transform_ir_for_cpjit(ir::Compiler.IRCode)
+    made_copy = false
+    new_ir = ir
+    for (ip,inst) in enumerate(ir.stmts)
+        stmt = inst[:stmt]
+        Base.isexpr(stmt, :call) || continue
+        f = stmt.args[1]
+        f === GlobalRef(Main, :cglobal) || continue
+        symlib = stmt.args[2]
+        # symlib requires a runtime call, so convert it to a separate SSA instr
+        symlib isa Expr || continue
+        @assert Base.isexpr(symlib, :call)
+        if !made_copy
+            new_ir = copy(ir)
+            made_copy = true
+        end
+        new_inst = CC.NewInstruction(symlib, Any)
+        new_ssa = CC.insert_node!(new_ir, Core.SSAValue(ip), new_inst)
+        new_stmt = CC.getindex(CC.getindex(new_ir, Core.SSAValue(ip)), :stmt)
+        new_stmt.args[2] = new_ssa
+    end
+    if made_copy
+        new_ir = CC.compact!(new_ir)
+    end
+    return new_ir
+end
+
+
 function CC.transform_result_for_cache(
         interp::Interpreter, result::CC.InferenceResult, edges::CC.SimpleVector
     )
+    opt = result.src::Compiler.OptimizationState
+    ir = opt.optresult.ir::Compiler.IRCode
+    opt.optresult.ir = transform_ir_for_cpjit(ir)
     return @invoke CC.transform_result_for_cache(interp::CC.AbstractInterpreter,
                                                  result::CC.InferenceResult,
                                                  edges::CC.SimpleVector)
