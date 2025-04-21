@@ -145,15 +145,11 @@ function transform_ir_for_cpjit(ir::Compiler.IRCode)
 end
 
 
-function CC.transform_result_for_cache(
-        interp::Interpreter, result::CC.InferenceResult, edges::CC.SimpleVector
-    )
-    opt = result.src::Compiler.OptimizationState
-    ir = opt.optresult.ir::Compiler.IRCode
-    opt.optresult.ir = transform_ir_for_cpjit(ir)
-    return @invoke CC.transform_result_for_cache(interp::CC.AbstractInterpreter,
-                                                 result::CC.InferenceResult,
-                                                 edges::CC.SimpleVector)
+# with this, code_typed(...; optimize=true, interp=Interpreter()) will run our IRCode trafo,
+# but it won't for code_ircode(...; optimize=true, interp=Interpreter()) ...
+function CC.optimize(interp::Interpreter, opt::CC.OptimizationState, caller::CC.InferenceResult)
+    @invoke CC.optimize(interp::CC.AbstractInterpreter, opt::CC.OptimizationState, caller::CC.InferenceResult)
+    opt.optresult.ir = transform_ir_for_cpjit(opt.optresult.ir::CC.IRCode)
 end
 
 
