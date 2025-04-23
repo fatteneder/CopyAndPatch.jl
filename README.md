@@ -41,3 +41,4 @@ julia> include("test/runtests.jl")
 - `debug=1`: enable stencil's DEBUGSTMT output
 - `use_ghc_cc=1`: compile stencils with the Glasgow Haskell compiler (GHC) calling convention,
   requires `clang >= 19`
+- `emit_llvm=1`: also emit LLVM IR for each stencil

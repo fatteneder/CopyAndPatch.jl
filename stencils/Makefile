@@ -8,11 +8,13 @@ OBJ=$(SRC:.c=.o)
 JSON=$(OBJ:.o=.json)
 SO=$(SRCLIBS:.c=.so)
 MWES=$(SRCMWES:.c=)
+LL=$(SRC:.c=.ll)
 
 BINOBJ=$(addprefix bin/,$(OBJ))
 BINJSON=$(addprefix bin/,$(JSON))
 BINSO=$(addprefix bin/,$(SO))
 BINMWES=$(addprefix bin/,$(MWES))
+BINLL=$(addprefix bin/,$(LL))
 
 $(shell mkdir -p bin/mwes)
 
@@ -30,16 +32,26 @@ ifeq ($(use_ghc_cc),1)
 CFLAGS+=-DUSE_GHC_CC
 endif
 
+emit_llvm?=0
+
 # targets
 
+ifeq ($(emit_llvm),0)
 .SECONDARY:
 all: $(BINJSON) $(BINSO) $(BINMWES)
+else
+.SECONDARY:
+all: $(BINJSON) $(BINSO) $(BINMWES) $(BINLL)
+endif
 
 bin/%.o: %.c compile common.h
 	./compile "$(CFLAGS)" $< bin/$*.o
 
 bin/%.json: bin/%.o readobj
 	./readobj $< > bin/$*.json
+
+bin/%.ll: %.c compile common.h
+	./compile "$(CFLAGS) -S -emit-llvm" $< bin/$*.ll
 
 bin/libjuliahelpers.so: libjuliahelpers.c
 	$(CC) -I'${JULIA_INCLUDE}' -I'${JULIA_INCLUDE}/julia' -I'${JULIA_INTERNAL_INCLUDE}' \
