@@ -6,30 +6,6 @@ LLVM.InitializeNativeTarget()
 LLVM.InitializeNativeAsmPrinter()
 
 
-function llvm_ir_load_stencil_hole(sym::String, ty::Type)
-    llvm_ty = string(convert(LLVM.LLVMType, ty))
-    global_decl = """
-    @_stencil_hole_$(sym) = external dso_local constant i8, align 1
-    """
-    instr = """
-    %$(sym)Addr = getelementptr inbounds i8, ptr %stackBase, i64 sub (i64 ptrtoint (ptr @_stencil_hole_$(sym) to i64), i64 1)
-    %$(sym)Val = load $(llvm_ty), ptr %$(sym)Addr, align 8
-    """
-    return global_decl, instr
-end
-function llvm_ir_store_stencil_hole(val::String, sym::String, ty::Type)
-    llvm_ty = string(convert(LLVM.LLVMType, rty))
-    global_decl = """
-    @_stencil_hole_$(sym) = external dso_local constant i8, align 1
-    """
-    instr = """
-    %$(sym)Addr = getelementptr inbounds i8, ptr %stackBase, i64 sub (i64 ptrtoint (ptr @_stencil_hole_$(sym) to i64), i64 1)
-    store $(llvm_ty) %$(val), ptr %$(sym)Addr, align 8
-    """
-    return global_decl, instr
-end
-
-
 function generate_intrinsic_stencil(f::Core.IntrinsicFunction, sig::Tuple)
     return LLVM.@dispose ctx=LLVM.Context() begin
         with_ctx_generate_intrinsic_stencil(f, sig)
@@ -67,7 +43,15 @@ function with_ctx_generate_intrinsic_stencil(f::Core.IntrinsicFunction, sig::Tup
     input_global_decls = String[]
     input_instrs = String[]
     for (i,ty) in enumerate(sig)
-        decl, instr = llvm_ir_load_stencil_hole("a$i", ty)
+        llvm_ty = string(convert(LLVM.LLVMType, ty))
+        sym = "a$i"
+        decl = """
+        @_stencil_hole_$(sym) = external dso_local constant i8, align 1
+        """
+        instr = """
+        %$(sym)Addr = getelementptr inbounds i8, ptr %stackBase, i64 sub (i64 ptrtoint (ptr @_stencil_hole_$(sym) to i64), i64 1)
+        %$(sym)Val = load $(llvm_ty), ptr %$(sym)Addr, align 8
+        """
         push!(input_global_decls, decl)
         push!(input_instrs, instr)
     end
