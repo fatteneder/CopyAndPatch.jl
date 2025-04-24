@@ -6,15 +6,6 @@ LLVM.InitializeNativeTarget()
 LLVM.InitializeNativeAsmPrinter()
 
 
-function llvm_machine()
-    triple = Sys.MACHINE
-    target = LLVM.Target(; triple)
-    tm = LLVM.TargetMachine(target, triple)
-    LLVM.asm_verbosity!(tm, true)
-    return tm
-end
-
-
 function llvm_ir_load_stencil_hole(sym::String, ty::Type)
     llvm_ty = string(convert(LLVM.LLVMType, ty))
     global_decl = """
@@ -137,6 +128,7 @@ function with_ctx_generate_intrinsic_stencil(f::Core.IntrinsicFunction, sig::Tup
         end
     end
     LLVM.verify(mod)
+    println(string(mod))
 
     # generate textual assembly
     tm = llvm_machine()
@@ -322,13 +314,16 @@ integer_intrinsics = [
 ]
 # runic: on
 
-for (sym,nargs) in float_intrinsics
-    intr = getproperty(Core.Intrinsics, sym)
-    for ty in Floats
-        sig = Tuple(ty for _ in 1:nargs)
-        generate_intrinsic_stencil(intr, sig)
-    end
-end
+generate_intrinsic_stencil(Core.Intrinsics.add_int, (Int64,Int64)) |> println
+
+# for (sym,nargs) in float_intrinsics
+#     intr = getproperty(Core.Intrinsics, sym)
+#     for ty in Floats
+#         sig = Tuple(ty for _ in 1:nargs)
+#         generate_intrinsic_stencil(intr, sig)
+#     end
+# end
+
 # for (sym,nargs) in integer_intrinsics
 #     intr = getproperty(Core.Intrinsics, sym)
 #     @show intr
