@@ -9,15 +9,16 @@ LLVM.InitializeNativeAsmPrinter()
 
 
 function generate_ast_stencil(ir::String)
-    return LLVM.@dispose ctx=LLVM.Context() builder=LLVM.IRBuilder() begin
-        with_ctx_generate_ast_stencil(builder, ir)
+    return LLVM.@dispose ctx=LLVM.Context() builder=LLVM.IRBuilder() tm=llvm_machine() begin
+        with_ctx_generate_ast_stencil(ir, builder, tm)
     end
 end
-function with_ctx_generate_ast_stencil(builder::LLVM.IRBuilder, ir::String)
+function with_ctx_generate_ast_stencil(ir::String, builder::LLVM.IRBuilder, tm::LLVM.TargetMachine)
     mod = parse(LLVM.Module, ir)
     f_jitentry = LLVM.functions(mod)["_JIT_ENTRY"]
     bbs = LLVM.blocks(f_jitentry)
 
+    # parse the ghccc stencil decl
     ir_def_stencil = """
     declare dso_local ghccc void @_JIT_STENCIL_GHCCC(
         ptr %_1, ptr %stackBase, ptr %_3, ptr %_4,
@@ -31,16 +32,19 @@ function with_ctx_generate_ast_stencil(builder::LLVM.IRBuilder, ir::String)
     ftype = LLVM.function_type(f)
     prms_types = LLVM.parameters(ftype)
 
+    # clone ghccc stencil decl into our module
     new_f = LLVM.Function(mod, LLVM.name(f), ftype)
     LLVM.linkage!(new_f, LLVM.API.LLVMExternalLinkage)
     value_map = Dict{LLVM.Value, LLVM.Value}(LLVM.parameters(f) .=> LLVM.parameters(new_f))
     LLVM.clone_into!(new_f, f; value_map)
 
+    # substitute the previous stencil call
     for bb in bbs
         for instr in LLVM.instructions(bb)
             instr isa LLVM.CallInst || continue
             f = LLVM.called_value(instr)
             LLVM.name(f) == "_JIT_STENCIL" || continue
+            break
             LLVM.position!(builder, instr)
             arg = only(LLVM.arguments(instr))
             # copy over all function, parameter and return attributes at declaration and call site
@@ -73,7 +77,6 @@ function with_ctx_generate_ast_stencil(builder::LLVM.IRBuilder, ir::String)
     LLVM.verify(mod)
 
     # generate textual assembly
-    tm = llvm_machine()
     asm = String(LLVM.emit(tm, mod, LLVM.API.LLVMAssemblyFile))
 
     return asm
@@ -81,18 +84,24 @@ end
 
 let
 
-fname = joinpath(@__DIR__, "..", "stencils", "bin", "abi.ll")
+indir = joinpath(@__DIR__, "..", "stencils", "bin")
+fname = joinpath(indir, "abi.ll")
 llvm_ir = String(read(fname))
 asm = generate_ast_stencil(llvm_ir)
-out_fname = tempname()
+
+outdir = joinpath(@__DIR__, "bin")
+!isdir(outdir) && mkdir(outdir)
+out_fname = joinpath(outdir, "abi")
 asm_fname = out_fname*".s"
 obj_fname = out_fname*".o"
+json_fname = out_fname*".json"
+
 open(asm_fname, "w") do f
     write(f, asm)
 end
-
 compile_script = joinpath(@__DIR__, "..", "stencils", "compile")
-run(Cmd([compile_script, "-c", asm_fname, obj_fname]))
-# TODO There appear ridicilous Addend values in the objdump output
+run(Cmd([compile_script, "", asm_fname, obj_fname]))
+readobj_script = joinpath(@__DIR__, "..", "stencils", "readobj")
+run(pipeline(Cmd([readobj_script, obj_fname]), json_fname))
 
 end
