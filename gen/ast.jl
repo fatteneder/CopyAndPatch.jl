@@ -56,14 +56,14 @@ function with_ctx_generate_ast_stencil(builder::LLVM.IRBuilder, ir::String)
                 push!(LLVM.return_attributes(new_f), attr)
             end
             new_instr = LLVM.call!(builder, ftype, new_f, new_args)
-            for attr in collect(parameter_attributes(instr, 1))
-                push!(parameter_attributes(new_instr, idx_stackBase), attr)
+            for attr in collect(LLVM.argument_attributes(instr, 1))
+                push!(LLVM.argument_attributes(new_instr, idx_stackBase), attr)
             end
-            for attr in collect(function_attributes(instr))
-                push!(function_attributes(new_instr), attr)
+            for attr in collect(LLVM.function_attributes(instr))
+                push!(LLVM.function_attributes(new_instr), attr)
             end
-            for attr in collect(return_attributes(instr))
-                push!(return_attributes(new_instr), attr)
+            for attr in collect(LLVM.return_attributes(instr))
+                push!(LLVM.return_attributes(new_instr), attr)
             end
             LLVM.replace_uses!(instr, new_instr)
             LLVM.erase!(instr)
