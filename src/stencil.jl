@@ -44,6 +44,9 @@ struct StencilData
 end
 
 
+get_name(st::StencilData) = st.md.name
+
+
 function handle_section(section, group::StencilGroup)
     section_type = section["Type"]["Name"] # build.py uses Value instead of Name, why?
     flags = [ flag["Name"] for flag in section["Flags"]["Flags"] ]

@@ -32,7 +32,8 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
 
     mc = MachineCode(
         code_size, fn, rettype, argtypes, codeinfo,
-        instr_stencil_starts, load_stencil_starts
+        instr_stencil_starts, load_stencil_starts,
+        ctx.instr_stencils, ctx.load_stencils
     )
 
     emit_abi!(mc, ctx)
@@ -169,10 +170,10 @@ function emit_abi!(mc::MachineCode, ctx::Context)
     patch!(mc.buf, 1, st.md.code, "_JIT_NSSAS", Cint(length(mc.codeinfo.code)))
     patch!(mc.buf, 1, st.md.code, "_JIT_NTMPS", Cint(ctx.ntmps))
     patch!(mc.buf, 1, st.md.code, "_JIT_NGCROOTS", Cint(ctx.nroots))
-    next = if length(mc.inputs_stencil_starts) > 0 && length(first(mc.inputs_stencil_starts)) > 0
-        first(first(mc.inputs_stencil_starts))
+    next = if length(mc.load_stencils_starts) > 0 && length(first(mc.load_stencils_starts)) > 0
+        first(first(mc.load_stencils_starts))
     else
-        first(mc.stencil_starts)
+        first(mc.instr_stencil_starts)
     end
     patch!(mc.buf, 1, st.md.code, "_JIT_STENCIL", pointer(mc.buf, next))
     return
@@ -184,9 +185,9 @@ function emit_loads_generic!(mc::MachineCode, ctx::Context)
     for input in ctx.inputs[ctx.ip]
         ctx.i += 1
         continuation = if ctx.i < length(ctx.inputs[ctx.ip])
-            pointer(mc.buf, mc.inputs_stencil_starts[ctx.ip][ctx.i + 1])
+            pointer(mc.buf, mc.load_stencils_starts[ctx.ip][ctx.i + 1])
         else
-            pointer(mc.buf, mc.stencil_starts[ctx.ip])
+            pointer(mc.buf, mc.instr_stencil_starts[ctx.ip])
         end
         emit_load_generic!(mc, ctx, continuation, input)
     end
@@ -197,7 +198,7 @@ function emit_load_generic!(
         input::Boxable
     )
     st = ctx.load_stencils[ctx.ip][ctx.i]
-    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
+    stencil_start = mc.load_stencils_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, st.bvec, 1, length(st.bvec))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_IP", Cint(ctx.ip))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_I", Cint(ctx.i))
@@ -211,7 +212,7 @@ function emit_load_generic!(
     )
     # special case jl_box_and_push_uint8pointer
     st = ctx.load_stencils[ctx.ip][ctx.i]
-    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
+    stencil_start = mc.load_stencils_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, st.bvec, 1, length(st.bvec))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_IP", Cint(ctx.ip))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_I", Cint(ctx.i))
@@ -225,7 +226,7 @@ function emit_load_generic!(
     )
     # special case for jl_box_and_push_voidpointer
     st = ctx.load_stencils[ctx.ip][ctx.i]
-    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
+    stencil_start = mc.load_stencils_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, st.bvec, 1, length(st.bvec))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_IP", Cint(ctx.ip))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_I", Cint(ctx.i))
@@ -239,7 +240,7 @@ function emit_load_generic!(
     )
     # C_NULL != jl_box_voidpointer(NULL)
     st = ctx.load_stencils[ctx.ip][ctx.i]
-    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
+    stencil_start = mc.load_stencils_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, st.bvec, 1, length(st.bvec))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_IP", Cint(ctx.ip))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_I", Cint(ctx.i))
@@ -252,7 +253,7 @@ function emit_load_generic!(
         input::Core.Argument
     )
     st = ctx.load_stencils[ctx.ip][ctx.i]
-    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
+    stencil_start = mc.load_stencils_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, st.bvec, 1, length(st.bvec))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_IP", Cint(ctx.ip))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_I", Cint(ctx.i))
@@ -265,7 +266,7 @@ function emit_load_generic!(
         input::Core.SSAValue
     )
     st = ctx.load_stencils[ctx.ip][ctx.i]
-    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
+    stencil_start = mc.load_stencils_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, st.bvec, 1, length(st.bvec))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_IP", Cint(ctx.ip))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_I", Cint(ctx.i))
@@ -278,7 +279,7 @@ function emit_load_generic!(
         input::WithValuePtr{ExprOf}
     )
     st = ctx.load_stencils[ctx.ip][ctx.i]
-    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
+    stencil_start = mc.load_stencils_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, st.bvec, 1, length(st.bvec))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_IP", Cint(ctx.ip))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_I", Cint(ctx.i))
@@ -291,7 +292,7 @@ function emit_load_generic!(
         @nospecialize(input::WithValuePtr{<:Any})
     )
     st = ctx.load_stencils[ctx.ip][ctx.i]
-    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
+    stencil_start = mc.load_stencils_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, st.bvec, 1, length(st.bvec))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_IP", Cint(ctx.ip))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_I", Cint(ctx.i))
@@ -304,7 +305,7 @@ function emit_load_generic!(
         input::WithValuePtr{GlobalRef}
     )
     st = ctx.load_stencils[ctx.ip][ctx.i]
-    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
+    stencil_start = mc.load_stencils_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, st.bvec, 1, length(st.bvec))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_IP", Cint(ctx.ip))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_I", Cint(ctx.i))
@@ -317,7 +318,7 @@ function emit_load_generic!(
         input::WithValuePtr{QuoteNode}
     )
     st = ctx.load_stencils[ctx.ip][ctx.i]
-    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
+    stencil_start = mc.load_stencils_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, st.bvec, 1, length(st.bvec))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_IP", Cint(ctx.ip))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_I", Cint(ctx.i))
@@ -330,7 +331,7 @@ function emit_load_generic!(
         input::NativeSymArg
     )
     st = ctx.load_stencils[ctx.ip][ctx.i]
-    stencil_start = mc.inputs_stencil_starts[ctx.ip][ctx.i]
+    stencil_start = mc.load_stencils_starts[ctx.ip][ctx.i]
     copyto!(mc.buf, stencil_start, st.bvec, 1, length(st.bvec))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_IP", Cint(ctx.ip))
     patch!(mc.buf, stencil_start, st.md.code, "_JIT_I", Cint(ctx.i))
@@ -380,9 +381,9 @@ emit_loads!(mc::MachineCode, ctx::Context, ex::Nothing) = nothing
 function emit_instr!(mc::MachineCode, ctx::Context, ex::Nothing)
     st = ctx.instr_stencils[ctx.ip]
     continuation = get_continuation(mc, ctx.ip + 1)
-    copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+    copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     return
 end
 
@@ -400,9 +401,9 @@ emit_loads!(mc::MachineCode, ctx::Context, ex::GlobalRef) = emit_loads_generic!(
 function emit_instr!(mc::MachineCode, ctx::Context, ex::GlobalRef)
     st = ctx.instr_stencils[ctx.ip]
     continuation = get_continuation(mc, ctx.ip + 1)
-    copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+    copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     return
 end
 
@@ -422,11 +423,11 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Core.EnterNode)
     call = get_continuation(mc, ctx.ip + 1)
     continuation_leave = get_continuation(mc, leave_ip)
     continuation_catch = get_continuation(mc, catch_ip)
-    copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CALL", call)
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT_LEAVE", continuation_leave)
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT_CATCH", continuation_catch)
+    copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CALL", call)
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT_LEAVE", continuation_leave)
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT_CATCH", continuation_catch)
     return
 end
 
@@ -443,8 +444,8 @@ emit_loads!(mc::MachineCode, ctx::Context, ex::Core.ReturnNode) = emit_loads_gen
 function emit_instr!(mc::MachineCode, ctx::Context, ex::Core.ReturnNode)
     # TODO :unreachable nodes are also of type Core.ReturnNode. Anything to do here?
     st = ctx.instr_stencils[ctx.ip]
-    copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+    copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
     return
 end
 
@@ -461,9 +462,9 @@ emit_loads!(mc::MachineCode, ctx::Context, ex::Core.GotoNode) = nothing
 function emit_instr!(mc::MachineCode, ctx::Context, ex::Core.GotoNode)
     st = ctx.instr_stencils[ctx.ip]
     continuation = get_continuation(mc, ex.label)
-    copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+    copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     return
 end
 
@@ -479,12 +480,12 @@ end
 emit_loads!(mc::MachineCode, ctx::Context, ex::Core.GotoIfNot) = emit_loads_generic!(mc, ctx)
 function emit_instr!(mc::MachineCode, ctx::Context, ex::Core.GotoIfNot)
     st = ctx.instr_stencils[ctx.ip]
-    copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+    copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
     continuation1 = get_continuation(mc, ex.dest)
     continuation2 = get_continuation(mc, ctx.ip + 1)
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT1", continuation1)
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT2", continuation2)
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT1", continuation1)
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT2", continuation2)
     return
 end
 
@@ -500,7 +501,7 @@ end
 emit_loads!(mc::MachineCode, ctx::Context, ex::Core.PhiNode) = emit_loads_generic!(mc, ctx)
 function emit_instr!(mc::MachineCode, ctx::Context, ex::Core.PhiNode)
     st = ctx.instr_stencils[ctx.ip]
-    copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+    copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
     nedges = length(ex.edges)
     n = length(mc.codeinfo.code)
     local nphis
@@ -523,11 +524,11 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Core.PhiNode)
     end
     ip_blockend = ctx.ip + nphis - 1
     continuation = get_continuation(mc, ctx.ip + 1)
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_EDGES_FROM", pointer(ex.edges))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP_BLOCKEND", Cint(ip_blockend))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_NEDGES", nedges)
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_EDGES_FROM", pointer(ex.edges))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP_BLOCKEND", Cint(ip_blockend))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_NEDGES", nedges)
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     return
 end
 
@@ -544,9 +545,9 @@ emit_loads!(mc::MachineCode, ctx::Context, ex::Core.PhiCNode) = emit_loads_gener
 function emit_instr!(mc::MachineCode, ctx::Context, ex::Core.PhiCNode)
     st = ctx.instr_stencils[ctx.ip]
     continuation = get_continuation(mc, ctx.ip + 1)
-    copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+    copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     return
 end
 
@@ -564,10 +565,10 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Core.PiNode)
     # https://docs.julialang.org/en/v1/devdocs/ssair/#Phi-nodes-and-Pi-nodes
     # PiNodes are ignored in the interpreter, so ours also only copy values into ssas[ip]
     st = ctx.instr_stencils[ctx.ip]
-    copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+    copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
     continuation = get_continuation(mc, ctx.ip + 1)
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     return
 end
 
@@ -595,10 +596,10 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Core.UpsilonNode)
         ret_ip += ctx.ip
     end
     continuation = get_continuation(mc, ctx.ip + 1)
-    copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_RET_IP", Cint(ret_ip))
-    patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+    copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_RET_IP", Cint(ret_ip))
+    patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     return
 end
 
@@ -660,26 +661,26 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
     if Base.isexpr(ex, :call)
         nargs = length(ex.args)
         continuation = get_continuation(mc, ctx.ip + 1)
-        copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", UInt32(nargs))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+        copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", UInt32(nargs))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :invoke)
         mi, g = ex.args[1], ex.args[2]
         @assert mi isa Core.MethodInstance || mi isa Base.CodeInstance
         nargs = length(ex.args)
         continuation = get_continuation(mc, ctx.ip + 1)
-        copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", UInt32(nargs))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+        copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", UInt32(nargs))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :new)
         nargs = length(ex.args)
         continuation = get_continuation(mc, ctx.ip + 1)
-        copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", UInt32(nargs))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+        copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", UInt32(nargs))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :foreigncall)
         rettype = ex.args[2]
         argtypes = ex.args[3]
@@ -712,46 +713,46 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
         sz_argtypes = Cint[ ffi_argtypes[i] == -2 ? sizeof(argtypes[i]) : 0 for i in 1:nargs ]
         push!(mc.gc_roots, sz_argtypes)
         continuation = get_continuation(mc, ctx.ip + 1)
-        copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CIF", pointer(cif))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_ARGTYPES", pointer(ffi_argtypes))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_SZARGTYPES", pointer(sz_argtypes))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_RETTYPE", ffi_rettype)
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_RETTYPEPTR", rettype_ptr)
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_FFIRETVAL", pointer(ffi_retval))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", nargs)
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+        copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CIF", pointer(cif))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_ARGTYPES", pointer(ffi_argtypes))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_SZARGTYPES", pointer(sz_argtypes))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_RETTYPE", ffi_rettype)
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_RETTYPEPTR", rettype_ptr)
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_FFIRETVAL", pointer(ffi_retval))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", nargs)
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :boundscheck)
         continuation = get_continuation(mc, ctx.ip + 1)
-        copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+        copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :leave)
         hand_n_leave = count(ex.args) do a
             a !== nothing && mc.codeinfo.code[a.id] !== nothing
         end
         continuation = get_continuation(mc, ctx.ip + 1)
-        copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_HAND_N_LEAVE", Cint(hand_n_leave))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+        copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_HAND_N_LEAVE", Cint(hand_n_leave))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :pop_exception)
         continuation = get_continuation(mc, ctx.ip + 1)
-        copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+        copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :the_exception)
         ret = pointer(mc.ssas, ctx.ip)
         continuation = get_continuation(mc, ctx.ip + 1)
-        copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+        copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif Base.isexpr(ex, :throw_undef_if_not)
         continuation = get_continuation(mc, ctx.ip + 1)
-        copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+        copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif any(
             s -> Base.isexpr(ex, s),
             (
@@ -765,9 +766,9 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
         #     @assert all(s -> s isa Union{Core.SSAValue, Core.Argument}, ex.args)
         # end
         continuation = get_continuation(mc, ctx.ip + 1)
-        copyto!(mc.buf, mc.stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
-        patch!(mc.buf, mc.stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+        copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     else
         TODO(ex.head)
     end

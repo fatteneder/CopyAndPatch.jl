@@ -4,8 +4,10 @@ mutable struct MachineCode
     argtypes::Vector{Any}
     buf::Vector{UInt8}
     codeinfo::Core.CodeInfo
-    stencil_starts::Vector{Int64}
-    inputs_stencil_starts::Vector{Vector{Int64}}
+    instr_stencil_starts::Vector{Int64}
+    load_stencils_starts::Vector{Vector{Int64}}
+    instr_stencils::Vector{StencilData}
+    load_stencils::Vector{Vector{StencilData}}
     # TODO remove
     slots::Vector{Ptr{UInt64}}
     ssas::Vector{Ptr{UInt64}}
@@ -16,8 +18,11 @@ mutable struct MachineCode
     function MachineCode(
             sz::Integer, @nospecialize(fn::Any),
             @nospecialize(rettype::Any), @nospecialize(argtypes::Tuple),
-            codeinfo::Core.CodeInfo, stencil_starts::Vector{Int64},
-            inputs_stencil_starts::Vector{Vector{Int64}},
+            codeinfo::Core.CodeInfo,
+            instr_stencil_starts::Vector{Int64},
+            load_stencils_starts::Vector{Vector{Int64}},
+            instr_stencils::Vector{StencilData},
+            load_stencils::Vector{Vector{StencilData}},
             gc_roots::Vector{Any} = Any[]
         )
         rt = rettype <: Union{} ? Nothing : rettype
@@ -29,20 +34,24 @@ mutable struct MachineCode
         slots = zeros(UInt64, nslots)
         ssas = zeros(UInt64, nssas)
         return new(
-            fn, rt, ats, buf, codeinfo, stencil_starts, inputs_stencil_starts,
-            slots, ssas, Any[], gc_roots, 0
+            fn, rt, ats, buf, codeinfo, instr_stencil_starts, load_stencils_starts,
+            instr_stencils, load_stencils, slots, ssas, Any[], gc_roots, 0
         )
     end
     function MachineCode(
             bvec::ByteVector, @nospecialize(fn::Any),
             @nospecialize(rettype::Any), @nospecialize(argtypes::Tuple),
-            codeinfo::Core.CodeInfo, stencil_starts::Vector{Int64},
-            inputs_stencil_starts::Vector{Vector{Int64}},
+            codeinfo::Core.CodeInfo,
+            instr_stencil_starts::Vector{Int64},
+            load_stencils_starts::Vector{Vector{Int64}},
+            instr_stencils::Vector{StencilData},
+            load_stencils::Vector{Vector{StencilData}},
             gc_roots::Vector{Any} = Any[]
         )
         mc = MachineCode(
             length(bvec), fn, rettype, argtypes, codeinfo,
-            stencil_starts, inputs_stencil_starts; gc_roots
+            instr_stencil_starts, load_stencils_starts;
+            instr_stencils, load_stencils, gc_roots
         )
         copyto!(mc.bvec, 1, bvec, 1, length(bvec))
         return mc
@@ -50,11 +59,11 @@ mutable struct MachineCode
 end
 
 
-function get_continuation(mc::MachineCode, ip::Integer)
-    return if length(mc.inputs_stencil_starts[ip]) > 0
-        pointer(mc.buf, mc.inputs_stencil_starts[ip][1])
+function get_continuation(mc::MachineCode, ip::Int64)
+    return if length(mc.load_stencils_starts[ip]) > 0
+        pointer(mc.buf, mc.load_stencils_starts[ip][1])
     else
-        pointer(mc.buf, mc.stencil_starts[ip])
+        pointer(mc.buf, mc.instr_stencil_starts[ip])
     end
 end
 
