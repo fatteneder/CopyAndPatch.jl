@@ -45,7 +45,7 @@ jl_value_t *
 _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t *ci)
 {
    frame *F; jl_value_t **locals;
-   PATCH_VALUE(volatile int, _nargs, _JIT_NARGS);
+   PATCH_VALUE(int, _nargs, _JIT_NARGS);
    PATCH_VALUE(int, nssas, _JIT_NSSAS);
    PATCH_VALUE(int, ntmps, _JIT_NTMPS);
    PATCH_VALUE(int, ngcroots, _JIT_NGCROOTS);

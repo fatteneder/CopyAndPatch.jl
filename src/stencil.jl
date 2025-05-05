@@ -274,12 +274,16 @@ function StencilGroup(json::Vector{Any}, name::String)
 end
 
 
-patch!(b::ByteVector, h::Hole, val) = patch!(b, 0, h, val)
+patch!(b::ByteVector, h::Hole, val; kwargs...) = patch!(b, 0, h, val; kwargs...)
 
-patch!(b::ByteVector, start::Integer, h::Hole, val) = b[start #=1-based=# + h.offset] = val
-patch!(bvec::ByteVector, st::Stencil, symbol::String, val) = patch!(bvec, 0, st, symbol, val)
+patch!(b::ByteVector, start::Integer, h::Hole, val; kwargs...) =
+    b[start #=1-based=# + h.offset] = val
+patch!(bvec::ByteVector, st::Stencil, symbol::String, val; kwargs...) =
+    patch!(bvec, 0, st, symbol, val, kwargs...)
 
-function patch!(bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, val)
+function patch!(bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, val;
+                optional::Bool = false
+    )
     holes = st.relocations
     anyfound = false
     for h in holes
@@ -294,8 +298,13 @@ function patch!(bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, 
             anyfound = true
         end
     end
-    return !anyfound && error("No symbol $symbol found in stencil '$(st.parent.name)'")
+    if !optional && !anyfound
+        error("No symbol $symbol found in stencil '$(st.parent.name)'")
+    end
+    return
 end
-function patch!(vec::AbstractVector{<:UInt8}, offset::Integer, st::Stencil, symbol::String, val)
-    return patch!(ByteVector(vec), offset, st, symbol, val)
+function patch!(vec::AbstractVector{<:UInt8}, offset::Integer, st::Stencil, symbol::String, val;
+        kwargs...
+    )
+    return patch!(ByteVector(vec), offset, st, symbol, val; kwargs...)
 end
