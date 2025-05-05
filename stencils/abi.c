@@ -79,10 +79,10 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
       jl_errorf("abi stencil: encountered %s when converting args to slots",
                 jl_typeof_str((jl_value_t*)args));
    }
+   JL_GC_ENABLEFRAME(F);
    SET_IP(F, ip);
    extern void (CALLING_CONV _JIT_STENCIL)(frame *);
    _JIT_STENCIL(F);
-   JL_GC_ENABLEFRAME(F);
    int ret_ip = F->ip; // 1-based
    jl_value_t *ret = F->ssas[ret_ip-1];
    JL_GC_POP();
