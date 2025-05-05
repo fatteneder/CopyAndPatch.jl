@@ -93,10 +93,9 @@ end
 ### below version adapted from 8a31ad6c4d1282d4c974ab1c357d43373ba4d578
 
 
-
 @eval @noinline function CCPlugins.typeinf(owner::CacheOwner, mi::Core.MethodInstance, source_mode::UInt8)
     world = which(CCPlugins.typeinf, Tuple{CacheOwner, Core.MethodInstance, UInt8}).primary_world
-    interp = Interpreter(; world=Base.tls_world_age(), owner)
+    interp = Interpreter(; world = Base.tls_world_age(), owner)
     return Base.invoke_in_world(world, CC.typeinf_ext_toplevel, interp, mi, source_mode)
 end
 
@@ -112,15 +111,17 @@ end
 
 
 function lookup_method_instance(f, args...)
-    @ccall jl_method_lookup(Any[f, args...]::Ptr{Any}, (1+length(args))::Csize_t,
-                            Base.tls_world_age()::Csize_t)::Ref{Core.MethodInstance}
+    return @ccall jl_method_lookup(
+        Any[f, args...]::Ptr{Any}, (1 + length(args))::Csize_t,
+        Base.tls_world_age()::Csize_t
+    )::Ref{Core.MethodInstance}
 end
 
 
 function transform_ir_for_cpjit(ir::Compiler.IRCode)
     made_copy = false
     new_ir = ir
-    for (ip,inst) in enumerate(ir.stmts)
+    for (ip, inst) in enumerate(ir.stmts)
         stmt = inst[:stmt]
         Base.isexpr(stmt, :call) || continue
         f = stmt.args[1]
@@ -149,7 +150,7 @@ end
 # but it won't for code_ircode(...; optimize=true, interp=Interpreter()) ...
 function CC.optimize(interp::Interpreter, opt::CC.OptimizationState, caller::CC.InferenceResult)
     @invoke CC.optimize(interp::CC.AbstractInterpreter, opt::CC.OptimizationState, caller::CC.InferenceResult)
-    opt.optresult.ir = transform_ir_for_cpjit(opt.optresult.ir::CC.IRCode)
+    return opt.optresult.ir = transform_ir_for_cpjit(opt.optresult.ir::CC.IRCode)
 end
 
 

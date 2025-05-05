@@ -228,8 +228,10 @@ function annotate_code_native_load_stencil!(
     menu.print_relocs || return
     code = String(take!(io))
     st = menu.mc.load_stencils[ip][i]
-    cpjit_code_native_load_stencil!(ioc, menu.mc, ip, i; kwargs..., color = false,
-                                    print_unpatched_stencil = true)
+    cpjit_code_native_load_stencil!(
+        ioc, menu.mc, ip, i; kwargs..., color = false,
+        print_unpatched_stencil = true
+    )
     unpatched_code = String(take!(io))
     cpjit_code_native_load_stencil!(ioc, menu.mc, ip, i; kwargs..., color = false)
     uncolored_code = String(take!(io))
@@ -248,8 +250,10 @@ function annotate_code_native_instr_stencil!(
     else
         menu.mc.instr_stencils[ip]
     end
-    cpjit_code_native_instr_stencil!(ioc, menu.mc, ip; kwargs..., color = false,
-                                     print_unpatched_stencil = true)
+    cpjit_code_native_instr_stencil!(
+        ioc, menu.mc, ip; kwargs..., color = false,
+        print_unpatched_stencil = true
+    )
     unpatched_code = String(take!(io))
     cpjit_code_native_instr_stencil!(ioc, menu.mc, ip; kwargs..., color = false)
     uncolored_code = String(take!(io))
@@ -259,7 +263,8 @@ end
 function annotate_relocs!(
         io::IOBuffer, ioc::IOContext,
         code::String, uncolored_code::String, unpatched_code::String,
-        stencil::StencilData)
+        stencil::StencilData
+    )
     # this is a hacky way to relocate the _JIT_* patches in the native code output
     # we are given
     #   - code: formatted and colored native code output of a patched stencil
