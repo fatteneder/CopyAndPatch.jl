@@ -1,7 +1,7 @@
 function jit(@nospecialize(fn), @nospecialize(argtypes::Tuple))
     optimize = true
+    # TODO: utilize our interpreter to profit from transform_ir_for_cpjit
     codeinfo, rettype = only(Base.code_typed(fn, argtypes; optimize))
-    # @show codeinfo
     return jit(codeinfo, fn, rettype, argtypes)
 end
 function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype), @nospecialize(argtypes))
