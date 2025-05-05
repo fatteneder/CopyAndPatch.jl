@@ -274,7 +274,6 @@ function StencilGroup(json::Vector{Any}, name::String)
 end
 
 
-patch!(m::MachineCode, h::Hole, p::Ptr) = m.buf[h.offset + 1] = p
 patch!(b::ByteVector, h::Hole, val) = patch!(b, 0, h, val)
 
 patch!(b::ByteVector, start::Integer, h::Hole, val) = b[start #=1-based=# + h.offset] = val

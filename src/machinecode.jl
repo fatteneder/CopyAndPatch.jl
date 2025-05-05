@@ -71,6 +71,9 @@ end
 invoke_pointer(code::MachineCode) = Base.unsafe_convert(Ptr{Cvoid}, pointer(code.buf))
 
 
+patch!(m::MachineCode, h::Hole, p::Ptr) = m.buf[h.offset + 1] = p
+
+
 call(mc::MachineCode, @nospecialize(args...)) = mc(args...)
 
 
