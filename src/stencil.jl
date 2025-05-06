@@ -44,6 +44,12 @@ struct StencilData
 end
 
 
+function Base.show(io::IO, ::MIME"text/plain", st::StencilData)
+    print(io, "StencilData(\"", get_name(st), "\")")
+    return
+end
+
+
 get_name(st::StencilData) = st.md.name
 
 

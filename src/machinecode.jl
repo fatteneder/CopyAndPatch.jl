@@ -94,5 +94,6 @@ end
 function Base.show(io::IO, ::MIME"text/plain", mc::MachineCode)
     print(io, "MachineCode(")
     length(mc.argtypes) > 0 && print(io, "::", join(mc.argtypes, ",::"))
-    return print(io, ")::", mc.rettype)
+    print(io, ")::", mc.rettype)
+    return
 end

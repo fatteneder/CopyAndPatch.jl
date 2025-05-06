@@ -149,7 +149,7 @@ function cpjit_code_native_instr_stencil!(
                 if length(mc.load_stencils_starts[ip + 1]) > 0
                     mc.load_stencils_starts[ip + 1][1] - 1
                 else
-                    mc.instr_stencil_starts[1] - 1
+                    mc.instr_stencil_starts[ip + 1] - 1
                 end
             end
             view(mc.buf, start:stop)
