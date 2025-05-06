@@ -82,6 +82,12 @@ struct WithValuePtr{T}
 end
 
 
+function Base.show(io::IO, ::MIME"text/plain", @nospecialize(p::WithValuePtr))
+    print(io, "$(typeof(p))($(p.val) in $(p.ex))")
+    return
+end
+
+
 requires_value_pointer(::Any) = true
 # We can address inputs of these kinds without value_pointer shenanigans
 requires_value_pointer(::Boxable) = false
@@ -658,14 +664,15 @@ end
 emit_loads!(mc::MachineCode, ctx::Context, ex::Expr) = emit_loads_generic!(mc, ctx)
 function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
     st = ctx.instr_stencils[ctx.ip]
-    if Base.isexpr(ex, :call)
+    name = get_name(st)
+    if name == "ast_call"
         nargs = length(ex.args)
         continuation = get_continuation(mc, ctx.ip + 1)
         copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", UInt32(nargs))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
-    elseif Base.isexpr(ex, :invoke)
+    elseif name == "ast_invoke"
         mi, g = ex.args[1], ex.args[2]
         @assert mi isa Core.MethodInstance || mi isa Base.CodeInstance
         nargs = length(ex.args)
@@ -674,14 +681,14 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", UInt32(nargs))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
-    elseif Base.isexpr(ex, :new)
+    elseif name == "ast_new"
         nargs = length(ex.args)
         continuation = get_continuation(mc, ctx.ip + 1)
         copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", UInt32(nargs))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
-    elseif Base.isexpr(ex, :foreigncall)
+    elseif name == "ast_foreigncall"
         rettype = ex.args[2]
         argtypes = ex.args[3]
         nreq = ex.args[4]
@@ -723,12 +730,12 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_FFIRETVAL", pointer(ffi_retval))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", nargs)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
-    elseif Base.isexpr(ex, :boundscheck)
+    elseif name == "ast_boundscheck"
         continuation = get_continuation(mc, ctx.ip + 1)
         copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
-    elseif Base.isexpr(ex, :leave)
+    elseif name == "ast_leave"
         hand_n_leave = count(ex.args) do a
             a !== nothing && mc.codeinfo.code[a.id] !== nothing
         end
@@ -737,24 +744,24 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_HAND_N_LEAVE", Cint(hand_n_leave))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
-    elseif Base.isexpr(ex, :pop_exception)
+    elseif name == "ast_pop_exception"
         continuation = get_continuation(mc, ctx.ip + 1)
         copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
-    elseif Base.isexpr(ex, :the_exception)
+    elseif name == "ast_the_exception"
         ret = pointer(mc.ssas, ctx.ip)
         continuation = get_continuation(mc, ctx.ip + 1)
         copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
-    elseif Base.isexpr(ex, :throw_undef_if_not)
+    elseif name == "ast_throw_undef_if_not"
         continuation = get_continuation(mc, ctx.ip + 1)
         copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif any(
-            s -> Base.isexpr(ex, s),
+            n -> name == "ast_$n",
             (
                 :meta, :coverageeffect, :inbounds, :loopinfo, :aliasscope, :popaliasscope,
                 :inline, :noinline, :gc_preserve_begin, :gc_preserve_end,
@@ -770,7 +777,7 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     else
-        TODO(ex.head)
+        TODO(name)
     end
     return
 end
