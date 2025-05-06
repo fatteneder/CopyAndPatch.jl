@@ -13,6 +13,7 @@ clang -O3 \
       -fno-omit-frame-pointer \
       -mcmodel=large \
       -std=gnu11 \
+      -fintegrated-as \
       $CFLAGS \
       -I"${JULIA_INCLUDE}" \
       -I"${JULIA_INCLUDE}/julia" \

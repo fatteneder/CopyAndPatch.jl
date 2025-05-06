@@ -1,13 +1,3 @@
-// this is essential for julia's exception handling, taken from julia/src/task.c
-#ifdef _FORTIFY_SOURCE
-// disable __longjmp_chk validation so that we can jump between stacks
-// (which would normally be invalid to do with setjmp / longjmp)
-#pragma push_macro("_FORTIFY_SOURCE")
-#undef _FORTIFY_SOURCE
-#include <setjmp.h>
-#pragma pop_macro("_FORTIFY_SOURCE")
-#endif
-
 // helpers to allocate and active frames on the stack, taken from julia/src/interpreter.c
 
 //// general alloca rules are incompatible on C and C++, so define a macro that deals with the difference
@@ -22,19 +12,21 @@
 #define JL_GC_ENCODE_PUSHFRAME(n)  ((((size_t)(n))<<2)|2)
 
 #define JL_GC_PUSHFRAME(frame,locals,n)                                               \
-    JL_CPPALLOCA(frame, sizeof(*frame)+(n)*sizeof(void*)+3*sizeof(jl_value_t*));      \
-    ((void**)&frame[1])[0] = NULL;                                                    \
-    ((void**)&frame[1])[1] = (void*)JL_GC_ENCODE_PUSHFRAME(n);                        \
-    ((void**)&frame[1])[2] = jl_pgcstack;                                             \
-    memset(&((void**)&frame[1])[3], 0, (n)*sizeof(jl_value_t*));                      \
-    jl_pgcstack = (jl_gcframe_t*)&(((void**)&frame[1])[1]);                           \
-    locals = (jl_value_t**)&((void**)&frame[1])[3]
+    JL_CPPALLOCA((frame), sizeof(*(frame))+3*sizeof(void*)+(n)*sizeof(jl_value_t*));  \
+    ((void**)&(frame)[1])[0] = NULL;                                                  \
+    ((void**)&(frame)[1])[1] = (void*)JL_GC_ENCODE_PUSHFRAME(n);                      \
+    ((void**)&(frame)[1])[2] = jl_pgcstack;                                           \
+    memset(&((void**)&(frame)[1])[3], 0, (n)*sizeof(jl_value_t*));                    \
+    jl_pgcstack = (jl_gcframe_t*)&(((void**)&(frame)[1])[1]);                         \
+    (locals) = (jl_value_t**)&((void**)&(frame)[1])[3]
 
 //// we define this separately so that we can populate the frame before we add it to the backtrace
 //// it's recommended to mark the containing function with NOINLINE, though not essential
 #define JL_GC_ENABLEFRAME(frame) \
     jl_signal_fence(); \
     ((void**)&frame[1])[0] = __builtin_frame_address(0)
+
+// end helpers
 
 
 #include "common.h"

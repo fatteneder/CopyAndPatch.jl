@@ -1,3 +1,4 @@
+#include <setjmp.h>
 #include <inttypes.h>
 #include <julia.h>
 #include <ffi.h>
