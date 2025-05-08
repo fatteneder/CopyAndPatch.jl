@@ -179,16 +179,12 @@ end
 
 ## Tests for native Julia data types
 
-## TODO JL_GC_ENABLEFRAME(F) in abi.c causes
-#   fatal: error thrown and no exception handler available.
-#   TypeError(func=:typeassert, context="", expected=Union{Nothing, Core.CodeInfo, Core.CodeInstance, Core.MethodInstance}, got=
-#   [101012] signal 11 (128): Segmentation fault
-# let a
-#     a = 2.84 + 5.2im
-#     cptest(a) = ccall((:cptest, libccalltest), Ptr{Complex{Int}}, (Ptr{Complex{Int}},), a)
-#     mc = CP.jit(cptest, (typeof(a),))
-#     @test_throws MethodError mc(a)
-# end
+let a
+    a = 2.84 + 5.2im
+    cptest(a) = ccall((:cptest, libccalltest), Ptr{Complex{Int}}, (Ptr{Complex{Int}},), a)
+    mc = CP.jit(cptest, (typeof(a),))
+    @test_throws MethodError mc(a)
+end
 
 
 ## Tests for various sized data types (ByVal)

@@ -1,18 +1,12 @@
-// helpers to allocate and active frames on the stack, taken from julia/src/interpreter.c
+// helpers to allocate and active frames on the stack, based on julia/src/interpreter.c
 
-//// general alloca rules are incompatible on C and C++, so define a macro that deals with the difference
-#ifdef __cplusplus
-#define JL_CPPALLOCA(var,n)                                                         \
-  var = (decltype(var))alloca((n))
-#else
-#define JL_CPPALLOCA(var,n)                                                         \
-  var = alloca((n));
-#endif
-
-#define JL_GC_ENCODE_PUSHFRAME(n)  ((((size_t)(n))<<2)|2)
+// note: we don't tag our frame like interpreter.c does (e.g. (((size_t)(n))<<2)|2),
+// as we roll our own `struct frame` compared to julia's internal `struct interpreter_state`
+// this makes us miss out on backtrace info though
+#define JL_GC_ENCODE_PUSHFRAME(n)  ((((size_t)(n))<<2))
 
 #define JL_GC_PUSHFRAME(frame,locals,n)                                               \
-    JL_CPPALLOCA((frame), sizeof(*(frame))+3*sizeof(void*)+(n)*sizeof(jl_value_t*));  \
+    (frame) = alloca(sizeof(*(frame))+3*sizeof(void*)+(n)*sizeof(jl_value_t*));       \
     ((void**)&(frame)[1])[0] = NULL;                                                  \
     ((void**)&(frame)[1])[1] = (void*)JL_GC_ENCODE_PUSHFRAME(n);                      \
     ((void**)&(frame)[1])[2] = jl_pgcstack;                                           \
