@@ -676,7 +676,7 @@ test_16_Struct16I(a, b) = ccall((:test_16, libccalltest), Struct16I, (Struct16I,
 let
     for (Struct, quoteplz) in [
             (Struct16, false),
-            # (Struct16I,true), # requirest copyast node implementation
+            (Struct16I, true),
             (Struct16I, false),
         ]
 
@@ -692,7 +692,7 @@ let
         else
             if quoteplz
                 mc = CP.jit(test_16_Struct16I_quoteplz, (typeof(a),))
-                x = mc(a, b)
+                x = mc(a)
             else
                 mc = CP.jit(test_16_Struct16I, (typeof(a), typeof(b)))
                 x = mc(a, b)
@@ -1298,6 +1298,9 @@ end
 # # 26297#issuecomment-371165725
 # #   test that the first argument to cglobal is recognized as a tuple literal even through
 # #   macro expansion
+# # This should be resolved by transform_ir_for_cpjit once we adapt our interpreter for
+# # the jit pipeline.
+#
 # macro cglobal26297(sym)
 #     :(cglobal(($(esc(sym)), libccalltest), Cint))
 # end
@@ -1322,24 +1325,23 @@ let
     @test mc() == 2 + 0im
 end
 
-# TODO This depends on :copyast expr node.
-# # issue #31073
-# let
-#     function f31073()
-#         a = ['0']
-#         arr = Vector{Char}(undef, 2)
-#         ptr = pointer(arr)
-#         elsz = sizeof(Char)
-#         na = length(a)
-#         nba = na * elsz
-#         ptr = eval(:(ccall(:memcpy, Ptr{Cvoid}, (Ptr{Cvoid}, Ptr{Cvoid}, UInt), $(arr), $(a), $(nba))))
-#         ptr, arr
-#     end
-#     mc = CP.jit(f31073, ())
-#     ptr, arr = mc()
-#     @test isa(ptr, Ptr{Cvoid})
-#     @test arr[1] == '0'
-# end
+# issue #31073
+let
+    function f31073()
+        a = ['0']
+        arr = Vector{Char}(undef, 2)
+        ptr = pointer(arr)
+        elsz = sizeof(Char)
+        na = length(a)
+        nba = na * elsz
+        ptr = eval(:(ccall(:memcpy, Ptr{Cvoid}, (Ptr{Cvoid}, Ptr{Cvoid}, UInt), $(arr), $(a), $(nba))))
+        ptr, arr
+    end
+    mc = CP.jit(f31073, ())
+    ptr, arr = mc()
+    @test isa(ptr, Ptr{Cvoid})
+    @test arr[1] == '0'
+end
 
 # issue #38751
 let

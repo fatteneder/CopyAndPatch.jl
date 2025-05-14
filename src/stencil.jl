@@ -287,8 +287,9 @@ patch!(b::ByteVector, start::Integer, h::Hole, val; kwargs...) =
 patch!(bvec::ByteVector, st::Stencil, symbol::String, val; kwargs...) =
     patch!(bvec, 0, st, symbol, val, kwargs...)
 
-function patch!(bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, val;
-                optional::Bool = false
+function patch!(
+        bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, val;
+        optional::Bool = false
     )
     holes = st.relocations
     anyfound = false
@@ -309,7 +310,8 @@ function patch!(bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, 
     end
     return
 end
-function patch!(vec::AbstractVector{<:UInt8}, offset::Integer, st::Stencil, symbol::String, val;
+function patch!(
+        vec::AbstractVector{<:UInt8}, offset::Integer, st::Stencil, symbol::String, val;
         kwargs...
     )
     return patch!(ByteVector(vec), offset, st, symbol, val; kwargs...)

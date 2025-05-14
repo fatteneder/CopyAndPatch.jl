@@ -657,11 +657,32 @@ function select_stencils!(ctx::Context, ex::Expr)
     elseif Base.isexpr(ex, :noinline); "ast_noinline"
     elseif Base.isexpr(ex, :gc_preserve_begin); "ast_gc_preserve_begin"
     elseif Base.isexpr(ex, :gc_preserve_end); "ast_gc_preserve_end"
+    elseif Base.isexpr(ex, :copyast); "ast_copyast"
     else TODO("Stencil not implemented yet:", ex) end
     # runic: on
-    return ctx.instr_stencils[ctx.ip] = get_stencil(name)
+    ctx.instr_stencils[ctx.ip] = get_stencil(name)
+    return
 end
-emit_loads!(mc::MachineCode, ctx::Context, ex::Expr) = emit_loads_generic!(mc, ctx)
+function emit_loads!(mc::MachineCode, ctx::Context, ex::Expr)
+    if Base.isexpr(ex, :copyast)
+        # TODO julia/src/interpreter.c applys eval_value to copyast input first
+        # eval_value handles: SSAValue, Argument/Slot, QuoteNode, GlobalRef, Symbol,
+        # which should be covered by emit_loads_generic
+        # the remaining cases are as follows and would require a different solution:
+        # PiNode, jl_call_sym, jl_invoke_sym, jl_invoke_modify_sym, jl_isdefined_sym,
+        # jl_throw_undef_if_not_sym, jl_new_sym, jl_splatnew_sym, jl_new_opaque_closure_sym,
+        # jl_static_parameter_sym, jl_copy_ast_sym, jl_exc_sym, jl_boundscheck_sym,
+        # jl_meta_sym, jl_coverageeffect_sym, jl_inbounds_sym, jl_loopinfo_sym,
+        # jl_aliasscope_sym, jl_popaliasscope_sym, jl_inline_sym, jl_noinline_sym,
+        # jl_gc_preserve_begin_sym, jl_gc_preserve_end_sym, jl_method_sym
+        arg = only(ex.args)
+        if arg isa Expr || arg isa Core.PiNode
+            TODO("ast_copyast does not handle $(ex.args) yet")
+        end
+    end
+    emit_loads_generic!(mc, ctx)
+    return
+end
 function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
     st = ctx.instr_stencils[ctx.ip]
     name = get_name(st)
@@ -756,6 +777,11 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif name == "ast_throw_undef_if_not"
+        continuation = get_continuation(mc, ctx.ip + 1)
+        copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+    elseif name === "ast_copyast"
         continuation = get_continuation(mc, ctx.ip + 1)
         copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)

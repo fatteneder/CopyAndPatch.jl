@@ -316,6 +316,10 @@ end
         for arg in stmt.args
             arg isa T && push!(inputs, arg)
         end
+    elseif Base.isexpr(stmt, :copyast)
+        @assert length(stmt.args) == 1
+        arg = stmt.args[1]
+        arg isa T && push!(inputs, arg)
     elseif any(
             s -> Base.isexpr(stmt, s),
             (
