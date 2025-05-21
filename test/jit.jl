@@ -1,3 +1,21 @@
+# from https://github.com/JuliaLang/julia/issues/12711#issuecomment-912740865
+function my_redirect_stdout(f::Function, io::IO)
+    old_stdout = stdout
+    rd, = redirect_stdout()
+    task = @async write(io, rd)
+    try
+        ret = f()
+        Libc.flush_cstdio()
+        flush(stdout)
+        return ret
+    finally
+        close(rd)
+        redirect_stdout(old_stdout)
+        wait(task)
+    end
+end
+
+
 f1(x) = x + 2
 f2(x) = (x + 2) * 3 - x^3
 f3(x) = (x + 2) / 3
@@ -464,10 +482,6 @@ end
                 ret = mc(x)
             end
             @test contains(String(take!(io)), "hello from the closure, 2x = $(2 * x)")
-            # my_redirect_stdout(io) do
-            #     ret()
-            # end
-            # @test contains(String(take!(io)), "hello from the closure, 2x = $(2*x)")
         catch e
             @error "Failed f_closure(::$T)"
             rethrow(e)
