@@ -1467,20 +1467,17 @@ end
     @test str == "α+β=15"
 end
 
-# TODO This depends on manual evaluation of compute_lib_name() in ast.
-# Idea: Add a new stencil ast_foreigncall_w_dlsym which does a dlsym() lookup
-# on the first call to and stores the result in a static variable.
-# # issue #36458
-# compute_lib_name() = "libcc" * "alltest"
-# let
-#     ccall_lazy_lib_name(x) = ccall((:testUcharX, compute_lib_name()), Int32, (UInt8,), x % UInt8)
-#     mc = CP.jit(ccall_lazy_lib_name, (Int64,))
-#     @test mc(0) == 0
-#     @test mc(3) == 1
-#     ccall_with_undefined_lib() = ccall((:time, xx_nOt_DeFiNeD_xx), Cint, (Ptr{Cvoid},), C_NULL)
-#     mc = CP.jit(ccall_with_undefined_lib, ())
-#     @test_throws UndefVarError(:xx_nOt_DeFiNeD_xx, @__MODULE__) mc()
-# end
+# issue #36458
+compute_lib_name() = "libcc" * "alltest"
+let
+    ccall_lazy_lib_name(x) = ccall((:testUcharX, compute_lib_name()), Int32, (UInt8,), x % UInt8)
+    mc = CP.jit(ccall_lazy_lib_name, (Int64,))
+    @test mc(0) == 0
+    @test mc(3) == 1
+    ccall_with_undefined_lib() = ccall((:time, xx_nOt_DeFiNeD_xx), Cint, (Ptr{Cvoid},), C_NULL)
+    mc = CP.jit(ccall_with_undefined_lib, ())
+    @test_throws UndefVarError(:xx_nOt_DeFiNeD_xx, @__MODULE__) mc()
+end
 
 @testset "transcode for UInt8 and UInt16" begin
     a = [UInt8(1), UInt8(2), UInt8(3)]
@@ -1555,23 +1552,24 @@ fn45187() = nothing
     @test unsafe_load(mc()) == 1
     mc = CP.jit(cglobal33413_ptrinline, ())
     @test unsafe_load(mc()) == 1
-    # TODO This depends on the resolution of Expr as Symbols for the cglobal call
+    ## TODO This depends on the resolution of Expr as Symbols for the cglobal call
+    ## should be resolved by enabling transform_ir_for_cpjit, already works using with_new_compiler
+    ## @test unsafe_load(CP.with_new_compiler(cglobal33413_tupleliteral)) == 1
     # mc = CP.jit(cglobal33413_tupleliteral, ())
     # @test unsafe_load(mc()) == 1
-    # TODO Segfault
-    # mc = CP.jit(cglobal33413_ptrvar_notype, ())
-    # @test unsafe_load(convert(Ptr{Cint}, mc())) == 1
-    # TODO Segfault
-    # mc = CP.jit(cglobal33413_ptrinline_notype, ())
-    # @test unsafe_load(convert(Ptr{Cint}, mc())) == 1
-    # TODO Segfault
+    mc = CP.jit(cglobal33413_ptrvar_notype, ())
+    @test unsafe_load(convert(Ptr{Cint}, mc())) == 1
+    mc = CP.jit(cglobal33413_ptrinline_notype, ())
+    @test unsafe_load(convert(Ptr{Cint}, mc())) == 1
+    ## TODO This depends on the resolution of Expr as Symbols for the cglobal call
+    ## should be resolved by enabling transform_ir_for_cpjit
+    ## @test unsafe_load(convert(Ptr{Cint}, CP.with_new_compiler(cglobal33413_tupleliteral_notype))) == 1
     # mc = CP.jit(cglobal33413_tupleliteral_notype, ())
     # @test unsafe_load(convert(Ptr{Cint}, mc())) == 1
     mc = CP.jit(cglobal33413_literal, ())
     @test mc() != C_NULL
-    # TODO Segfault
-    # mc = CP.jit(cglobal33413_literal_notype, ())
-    # @test mc() != C_NULL
+    mc = CP.jit(cglobal33413_literal_notype, ())
+    @test mc() != C_NULL
     @test_throws(TypeError, cglobal49142_nothing())
     @test_throws(TypeError, cglobal45187fn())
     @test_throws(TypeError, @eval cglobal(nothing))
