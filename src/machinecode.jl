@@ -26,7 +26,19 @@ mutable struct MachineCode
             gc_roots::Vector{Any} = Any[]
         )
         rt = rettype <: Union{} ? Nothing : rettype
-        ats = [ at for at in argtypes ]
+        # can't use codeinfo.nargs, because it only counts the used arguments
+        # when codeinfo came from code_typed(; optimize=true)
+        nargs = length(codeinfo.slotnames) - 1 # -1 because first is function
+        ats = if nargs == 0
+            Any[]
+        else
+            ats = Vector{Any}(undef, nargs)
+            for i in 1:nargs-1
+                ats[i] = argtypes[i]
+            end
+            ats[end] = codeinfo.isva ? argtypes[nargs:end] : argtypes[end]
+            ats
+        end
         buf = Mmap.mmap(Vector{UInt8}, sz, shared = false, exec = true)
         nslots = length(codeinfo.slotnames)
         nssas = length(codeinfo.ssavaluetypes)
@@ -80,20 +92,32 @@ call(mc::MachineCode, @nospecialize(args...)) = mc(args...)
 function (mc::MachineCode)(@nospecialize(args...))
     p = invoke_pointer(mc)
     fn = mc.fn
-    nargs = length(args)
+    nargs = length(mc.argtypes)
+    p_args = if nargs == 0
+        Any[]
+    else
+        if mc.codeinfo.isva
+            Any[ args[1:nargs-1]..., args[nargs:end] ]
+        else
+            Any[ args... ]
+        end
+    end
     ci = C_NULL # unused by us, but required for ci->invoke abi
-    return GC.@preserve mc args begin
-        @ccall $p(
-            fn::Any, args::Any #= Any, because args isa Tuple =#,
-            nargs::UInt32, ci::Ptr{Cvoid}
-        )::Any
+    return GC.@preserve mc p_args begin
+        @ccall $p(fn::Any, p_args::Ptr{Any}, nargs::UInt32, ci::Ptr{Cvoid})::Any
     end
 end
 
 
 function Base.show(io::IO, ::MIME"text/plain", mc::MachineCode)
     print(io, "MachineCode(")
-    length(mc.argtypes) > 0 && print(io, "::", join(mc.argtypes, ",::"))
+    if length(mc.argtypes) > 0
+        if mc.codeinfo.isva
+            print(io, "::", join(mc.argtypes[1:end-1], ",::"), ",::", join(mc.argtypes[end], ",::"))
+        else
+            print(io, "::", join(mc.argtypes, ",::"))
+        end
+    end
     print(io, ")::", mc.rettype)
     return
 end

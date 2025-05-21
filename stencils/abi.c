@@ -49,21 +49,8 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
    int ip = 0;
    DEBUGSTMT("abi", F, ip);
    F->slots[0] = f;
-   // when called from julia's invoke then args is a genuine jl_value_t ** array
-   if (!jl_is_datatype(jl_typeof((jl_value_t *)args))) {
-      for (int i = 0; i < (int)nargs; i++) {
-         F->slots[i+1] = args[i];
-      }
-   }
-   // when called from src/machinecode.jl we just forward the tuple of vargs to here
-   else if (jl_is_tuple((jl_value_t *)args)) {
-      for (int i = 0; i < (int)nargs; i++) {
-         F->slots[i+1] = jl_fieldref(args, i);
-      }
-   }
-   else {
-      jl_errorf("abi stencil: encountered %s when converting args to slots",
-                jl_typeof_str((jl_value_t*)args));
+   for (int i = 0; i < (int)nargs; i++) {
+      F->slots[i+1] = args[i];
    }
    JL_GC_ENABLEFRAME(F);
    SET_IP(F, ip);

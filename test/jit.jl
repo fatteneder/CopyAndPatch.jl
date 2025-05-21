@@ -494,9 +494,20 @@ function f_vararg(x...)
 end
 @testset "vararg" begin
     try
-        expected = f_vararg(1, 2, 3)
+        args = (1,2,3)
+        expected = f_vararg(args...)
         mc = CP.jit(f_vararg, (Vararg{Int64},))
-        ret = mc((1, 2, 3))
+        ret = mc(args...)
+        @test ret == expected
+    catch e
+        @error "Failed f_vararg()"
+        rethrow(e)
+    end
+    try
+        args = (1,2,3)
+        expected = f_vararg(args...)
+        mc = CP.jit(f_vararg, typeof.(args))
+        ret = mc(args...)
         @test ret == expected
     catch e
         @error "Failed f_vararg()"

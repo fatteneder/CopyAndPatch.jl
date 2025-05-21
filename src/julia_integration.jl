@@ -154,6 +154,7 @@ function CC.optimize(interp::Interpreter, opt::CC.OptimizationState, caller::CC.
 end
 
 
+@nospecialize
 function with_new_compiler(f, args...; owner::CacheOwner = CacheOwner())
     return with_new_compiler(f, owner, args...)
 end
@@ -165,3 +166,4 @@ function with_new_compiler(f, owner::CacheOwner, args...)
     new_compiler_ci = CCPlugins.typeinf(owner, mi, CC.SOURCE_MODE_ABI)
     return invoke(f, new_compiler_ci, args...)
 end
+@specialize
