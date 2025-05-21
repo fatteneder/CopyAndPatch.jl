@@ -1353,7 +1353,7 @@ let
     dest = zeros(UInt8, 8)
     mc = CP.jit(f38751!, (Vector{UInt8}, Vector{UInt8}, UInt))
     @test mc(dest, collect(0x01:0x08), UInt(8)) == 0x01:0x08
-    llvm = sprint(code_llvm, f38751!, (Vector{UInt8}, Vector{UInt8}, UInt))
+    llvm = sprint(InteractiveUtils.code_llvm, f38751!, (Vector{UInt8}, Vector{UInt8}, UInt))
     @test !occursin("call void inttoptr", llvm)
 end
 
