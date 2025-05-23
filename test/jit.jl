@@ -24,8 +24,7 @@ f3(x) = (x + 2) / 3
         for (i, f) in enumerate((f1, f2, f3))
             expected = f(one(T))
             try
-                mc = CP.jit(f, (T,))
-                res = CP.call(mc, one(T))
+                res = @cpjit(f, (one(T),))
                 @test res == expected
             catch e
                 @error "Failed $f(::$T)"
@@ -41,8 +40,7 @@ end
 @testset "bit" begin
     expected = mybitcast(C_NULL)
     try
-        mc = CP.jit(mybitcast, (typeof(C_NULL),))
-        res = CP.call(mc, C_NULL)
+        res = @cpjit(mybitcast, (C_NULL,))
         @test res == expected
     catch e
         @error "Failed mybitcast(::$(typeof(C_NULL)))"
@@ -64,8 +62,7 @@ end
     for T in (Int64, Int32)
         expected = f(one(T))
         try
-            mc = CP.jit(f, (T,))
-            res = CP.call(mc, one(T))
+            res = @cpjit(f, (one(T),))
             @test res == expected
         catch e
             @error "Failed $f(::$T)"
@@ -82,8 +79,7 @@ end
         try
             io = IOBuffer()
             my_redirect_stdout(io) do
-                mc = CP.jit(f_println, (T,))
-                mc(one(T))
+                @cpjit(f_println, (one(T),))
             end
             @test contains(String(take!(io)), "sers oida: 1")
         catch e
@@ -99,8 +95,7 @@ f(x) = x > 1 ? 1 : 2
     for T in (Int64, Int32)
         expected = f(one(T))
         try
-            mc = CP.jit(f, (T,))
-            res = CP.call(mc, one(T))
+            res = @cpjit(f, (one(T),))
             @test res == expected
         catch e
             @error "Failed $f(::$T)"
@@ -122,8 +117,7 @@ end
     for T in (Int64, Int32)
         expected = f(one(T))
         try
-            mc = CP.jit(f, (T,))
-            res = CP.call(mc, one(T))
+            res = @cpjit(f, (one(T),))
             @test res == expected
         catch e
             @error "Failed $f(::$T)"
@@ -139,8 +133,7 @@ end
     for T in (Int64, Int32)
         expected = f(one(T))
         try
-            mc = CP.jit(f, (T,))
-            res = CP.call(mc, one(T))
+            res = @cpjit(f, (one(T),))
             @test res == expected
         catch e
             @error "Failed $f(::$T)"
@@ -174,8 +167,7 @@ end
     for f in (foreign_1, foreign_2, foreign_3)
         try
             expected = f(3)
-            mc = CP.jit(f, (Int64,))
-            ret = CP.call(mc, 3)
+            ret = @cpjit(f, (3,))
             @test ret == expected
         catch e
             @error "Failed $f(::Int64)"
@@ -188,8 +180,7 @@ end
             arg = T(3)
             try
                 expected = f(arg)
-                mc = CP.jit(f, (T,))
-                ret = CP.call(mc, arg)
+                ret = @cpjit(f, (arg,))
                 @test ret == expected
             catch e
                 @error "Failed $f(::$T)"
@@ -206,8 +197,7 @@ end
 @testset "make and return tuple" begin
     try
         expected = mytuple(3)
-        mc = CP.jit(mytuple, (Int64,))
-        ret = CP.call(mc, 3)
+        ret = @cpjit(mytuple, (3,))
         @test ret == expected
     catch e
         @error "Failed mytuple(::Int64)"
@@ -260,8 +250,7 @@ end
 @testset "exceptions" begin
     try
         expected = foo_no_throw()
-        mc = CP.jit(foo_no_throw, ())
-        ret = CP.call(mc)
+        ret = @cpjit(foo_no_throw, ())
         @test ret == expected
     catch e
         @error "Failed foo_no_throw()"
@@ -270,8 +259,7 @@ end
 
     try
         expected = foo_throw()
-        mc = CP.jit(foo_throw, ())
-        ret = CP.call(mc)
+        ret = @cpjit(foo_throw, ())
         @test ret == expected
     catch e
         @error "Failed foo_throw()"
@@ -280,8 +268,7 @@ end
 
     try
         expected = foo_catch()
-        mc = CP.jit(foo_catch, ())
-        ret = CP.call(mc)
+        ret = @cpjit(foo_catch, ())
         @test ret == expected
     catch e
         @error "Failed foo_catch()"
@@ -295,8 +282,7 @@ end
 @testset "unused arguments" begin
     try
         expected = f_unused_arguments(123)
-        mc = CP.jit(f_unused_arguments, (Int64,))
-        ret = mc(123)
+        ret = @cpjit(f_unused_arguments, (123,))
         @test ret == expected
     catch e
         @error "Failed f_unused_arguments()"
@@ -310,8 +296,7 @@ end
 @testset "simple collect" begin
     try
         expected = f_collect(123)
-        mc = CP.jit(f_collect, (Int64,))
-        ret = mc(123)
+        ret = @cpjit(f_collect, (123,))
         @test ret == expected
     catch e
         @error "Failed f_collect()"
@@ -329,8 +314,7 @@ end
     # see comment about <= vs < in stencils/ast_phinode.c
     try
         expected = f_implicit_block(5)
-        mc = CP.jit(f_implicit_block, (Int64,))
-        ret = mc(5)
+        ret = @cpjit(f_implicit_block, (5,))
         @test ret == expected
     catch e
         @error "Failed f_implicit_block()"
@@ -348,8 +332,7 @@ end
 # @testset "logging macro" begin
 #     try
 #         expected = f_phiblock_w_nothing()
-#         mc = CP.jit(f_phiblock_w_nothing, ())
-#         ret = mc()
+#         ret = @cpjit(f_phiblock_w_nothing, ())
 #         @test ret == expected
 #     catch e
 #         @error "Failed f_phiblock_w_nothing()"
@@ -368,8 +351,7 @@ end
 #     try
 #         a = InterpolateIntoMacro(123)
 #         expected = f_interpolate_into_logging_macro(a)
-#         mc = CP.jit(f_interpolate_into_logging_macro, (InterpolateIntoMacro,))
-#         ret = mc(a)
+#         ret = @cpjit(f_interpolate_into_logging_macro, (a,))
 #         @test ret == expected
 #     catch e
 #         @error "Failed f_interpolate_into_logging_macro()"
@@ -394,8 +376,7 @@ end
         Random.seed!(123)
         expected = f_avoid_box(5)
         Random.seed!(123)
-        mc = CP.jit(f_avoid_box, (Int64,))
-        ret = mc(5)
+        ret = @cpjit(f_avoid_box, (5,))
         @test ret == expected
     catch e
         @error "Failed f_avoid_box()"
@@ -417,9 +398,8 @@ end
         catch e
             e
         end
-        mc = CP.jit(f_undefvar, (Int64,))
         ret = try
-            mc(5)
+            @cpjit(f_undefvar, (5,))
         catch e
             e
         end
@@ -456,8 +436,7 @@ end
     n = 30
     expected = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]
     try
-        mc = CP.jit(eratosthenes_sieve, (Int64,))
-        ret = mc(n)
+        ret = @cpjit(eratosthenes_sieve, (n,))
         @test ret == expected
     catch e
         @error "Failed eratosthenes_sieve($n)"
@@ -478,8 +457,7 @@ end
             io = IOBuffer()
             x = rand(T)
             ret = my_redirect_stdout(io) do
-                mc = CP.jit(f_closure, (T,))
-                ret = mc(x)
+                ret = @cpjit(f_closure, (x,))
             end
             @test contains(String(take!(io)), "hello from the closure, 2x = $(2 * x)")
         catch e
@@ -496,8 +474,7 @@ end
     try
         args = (1,2,3)
         expected = f_vararg(args...)
-        mc = CP.jit(f_vararg, (Vararg{Int64},))
-        ret = mc(args...)
+        ret = @cpjit(f_vararg, args)
         @test ret == expected
     catch e
         @error "Failed f_vararg()"
@@ -506,8 +483,7 @@ end
     try
         args = (1,2,3)
         expected = f_vararg(args...)
-        mc = CP.jit(f_vararg, typeof.(args))
-        ret = mc(args...)
+        ret = @cpjit(f_vararg, args, (Vararg{Int64},))
         @test ret == expected
     catch e
         @error "Failed f_vararg()"
@@ -517,8 +493,7 @@ end
 
 @testset ":foreigncall with nreq>0 and (cconv|effects)" begin
     try
-        mc = CP.jit(IOBuffer, ())
-        ret = mc()
+        ret = @cpjit(IOBuffer, ())
         @test ret isa IOBuffer
     catch e
         @error "Failed IOBuffer()"
