@@ -13,13 +13,9 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
     instr_stencil_starts = zeros(Int64, ctx.nssas)
     load_stencil_starts = Vector{Vector{Int64}}(undef, ctx.nssas)
     for (ip, ex) in enumerate(codeinfo.code)
-        ctx.ip = ip
-        select_stencils!(ctx, ex)
-        inputs = ctx.inputs[ip]
-        roots = ctx.roots[ip]
-        ctx.ntmps = max(ctx.ntmps, length(inputs))
-        ctx.nroots = max(ctx.nroots, length(roots))
+        select_stencils!(ctx, ex, ip)
         load_stencils = ctx.load_stencils[ip]
+        inputs = ctx.inputs[ip]
         load_stencil_starts[ip] = zeros(Int64, length(inputs))
         for (il, st) in enumerate(load_stencils)
             load_stencil_starts[ip][il] = 1 + code_size
@@ -38,9 +34,8 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
 
     emit_abi!(mc, ctx)
     for (ip, ex) in enumerate(codeinfo.code)
-        ctx.ip = ip
-        emit_loads!(mc, ctx, ex)
-        emit_instr!(mc, ctx, ex)
+        emit_loads!(mc, ctx, ex, ip)
+        emit_instr!(mc, ctx, ex, ip)
     end
     return mc
 end
@@ -48,27 +43,31 @@ end
 
 mutable struct Context
     codeinfo::Core.CodeInfo
-    ip::Int64 # current instruction pointer (F->ssa), 1-based
-    il::Int64 # current push instruction pointer (F->tmps), 1-based
+    ip::Int64 # current instruction pointer, 1-based
+    il::Int64 # current load instruction pointer, 1-based
+    is::Int64 # current store instruction pointer, 1-bast
     nssas::Int64 # number of ssa statements
+    # filled by select_stencils!
     ntmps::Int64 # max number of tmp variables across all stencils
     nroots::Int64 # max number of root variables across all stencils
-    # filled in select_stencils!
+    ncargs::Int64 # max number of carg (:foreigncall) variables across all stencils
     inputs::Vector{Vector{Any}}
     roots::Vector{Vector{Any}}
     load_stencils::Vector{Vector{StencilData}}
     instr_stencils::Vector{StencilData}
+    store_stencils::Vector{Vector{StencilData}}
 end
 function Context(codeinfo::Core.CodeInfo)
     nssas = length(codeinfo.code)
-    ip, il, ntmps, nroots = 0, 0, 0, 0
+    ip, il, is, ntmps, nroots, ncargs = 0, 0, 0, 0, 0, 0
     inputs = Vector{Any}[ Any[] for _ in 1:nssas ]
     roots = Vector{Any}[ Any[] for _ in 1:nssas ]
     load_stencils = Vector{StencilData}[ StencilData[] for _ in 1:nssas ]
     instr_stencils = Vector{StencilData}(undef, nssas)
+    store_stencils = Vector{StencilData}[ StencilData[] for _ in 1:nssas ]
     return Context(
-        codeinfo, ip, il, nssas, ntmps, nroots,
-        inputs, roots, load_stencils, instr_stencils
+        codeinfo, ip, il, is, nssas, ntmps, nroots, ncargs,
+        inputs, roots, load_stencils, instr_stencils, store_stencils
     )
 end
 
@@ -370,15 +369,41 @@ function emit_load_generic!(
 end
 
 
-# Codegen interface
+# The codegen interface to use
+function select_stencils!(ctx::Context, ex, ip::Int64)
+    ctx.ip = ip
+    extract_inputs!(ctx, ex)
+    select_stencils!(ctx, ex)
+    ctx.ntmps = max(ctx.ntmps, length(ctx.inputs[ctx.ip]))
+    ctx.nroots = max(ctx.nroots, length(ctx.roots[ctx.ip]))
+    return
+end
+function emit_loads!(mc::MachineCode, ctx::Context, ex, ip::Int64)
+    ctx.ip = ip
+    emit_loads!(mc, ctx, ex)
+    return
+end
+function emit_instr!(mc::MachineCode, ctx::Context, ex, ip::Int64)
+    ctx.ip = ip
+    emit_instr!(mc, ctx, ex)
+    return
+end
+function emit_stores!(mc::MachineCode, ctx::Context, ex, ip::Int64)
+    ctx.ip = ip
+    emit_stores!(mc, ctx, ex)
+    return
+end
+
+
+# The codegen interface to implement for AST elements
 select_stencils!(ctx::Context, ex::Any) = TODO("select_stencils! for $ex")
-emit_loads!(ctx::Context, ex::Any) = TODO("emit_loads! for $ex")
+emit_loads!(mc::MachineCode, ctx::Context, ex::Any) = TODO("emit_loads! for $ex")
 emit_instr!(mc::MachineCode, ctx::Context, ex::Any) = TODO("emit_instr! for $ex")
+emit_stores!(mc::MachineCode, ctx::Context, ex::Any) = TODO("emit_stores! for $ex")
 
 
 # Nothing
 function select_stencils!(ctx::Context, ex::Nothing)
-    extract_inputs!(ctx, ex)
     @assert length(ctx.inputs[ctx.ip]) == 0
     ctx.instr_stencils[ctx.ip] = get_stencil("ast_goto")
     return
@@ -396,7 +421,6 @@ end
 
 # GlobalRef
 function select_stencils!(ctx::Context, ex::GlobalRef)
-    extract_inputs!(ctx, ex)
     @assert length(ctx.inputs[ctx.ip]) == 1
     # ctx.load_stencils[ctx.ip] = [ select_load_stencil_generic("jl_eval_and_push_globalref") ]
     ctx.load_stencils[ctx.ip] = select_load_stencil_generic.(ctx.inputs[ctx.ip])
@@ -416,7 +440,6 @@ end
 
 # Core.EnterNode
 function select_stencils!(ctx::Context, ex::Core.EnterNode)
-    extract_inputs!(ctx, ex)
     ctx.load_stencils[ctx.ip] = select_load_stencil_generic.(ctx.inputs[ctx.ip])
     ctx.instr_stencils[ctx.ip] = get_stencil("ast_enternode")
     return
@@ -440,7 +463,6 @@ end
 
 # Core.ReturnNode
 function select_stencils!(ctx::Context, ex::Core.ReturnNode)
-    extract_inputs!(ctx, ex)
     @assert length(ctx.inputs[ctx.ip]) ≤ 1
     ctx.load_stencils[ctx.ip] = select_load_stencil_generic.(ctx.inputs[ctx.ip])
     ctx.instr_stencils[ctx.ip] = get_stencil("ast_returnnode")
@@ -456,9 +478,8 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Core.ReturnNode)
 end
 
 
-# Core.GotoIfNot
+# Core.GotoNode
 function select_stencils!(ctx::Context, ex::Core.GotoNode)
-    extract_inputs!(ctx, ex)
     @assert length(ctx.inputs[ctx.ip]) == 0
     ctx.load_stencils[ctx.ip] = select_load_stencil_generic.(ctx.inputs[ctx.ip])
     ctx.instr_stencils[ctx.ip] = get_stencil("ast_goto")
@@ -477,7 +498,6 @@ end
 
 # Core.GotoIfNot
 function select_stencils!(ctx::Context, ex::Core.GotoIfNot)
-    extract_inputs!(ctx, ex)
     @assert length(ctx.inputs[ctx.ip]) == 1
     ctx.load_stencils[ctx.ip] = select_load_stencil_generic.(ctx.inputs[ctx.ip])
     ctx.instr_stencils[ctx.ip] = get_stencil("ast_gotoifnot")
@@ -498,7 +518,6 @@ end
 
 # Core.PhiNode
 function select_stencils!(ctx::Context, ex::Core.PhiNode)
-    extract_inputs!(ctx, ex)
     @assert length(ctx.inputs[ctx.ip]) ≥ 1
     ctx.load_stencils[ctx.ip] = select_load_stencil_generic.(ctx.inputs[ctx.ip])
     ctx.instr_stencils[ctx.ip] = get_stencil("ast_phinode")
@@ -541,7 +560,6 @@ end
 
 # Core.PhiCNode
 function select_stencils!(ctx::Context, ex::Core.PhiCNode)
-    extract_inputs!(ctx, ex)
     # @assert length(ctx.inputs[ctx.ip]) ≥ 1
     ctx.load_stencils[ctx.ip] = select_load_stencil_generic.(ctx.inputs[ctx.ip])
     ctx.instr_stencils[ctx.ip] = get_stencil("ast_phicnode")
@@ -560,7 +578,6 @@ end
 
 # Core.PiNode
 function select_stencils!(ctx::Context, ex::Core.PiNode)
-    extract_inputs!(ctx, ex)
     @assert length(ctx.inputs[ctx.ip]) == 1
     ctx.load_stencils[ctx.ip] = select_load_stencil_generic.(ctx.inputs[ctx.ip])
     ctx.instr_stencils[ctx.ip] = get_stencil("ast_pinode")
@@ -581,7 +598,6 @@ end
 
 # Core.UpsilonNode
 function select_stencils!(ctx::Context, ex::Core.UpsilonNode)
-    extract_inputs!(ctx, ex)
     @assert length(ctx.inputs[ctx.ip]) == 1
     ctx.load_stencils[ctx.ip] = select_load_stencil_generic.(ctx.inputs[ctx.ip])
     ctx.instr_stencils[ctx.ip] = get_stencil("ast_upsilonnode")
@@ -612,7 +628,6 @@ end
 
 # Expr
 function select_stencils!(ctx::Context, ex::Expr)
-    extract_inputs!(ctx, ex)
     if Base.isexpr(ex, :foreigncall) && length(ctx.inputs[ctx.ip]) ≥ 1
         fn = ctx.inputs[ctx.ip][1]
         fn = if fn isa WithValuePtr
