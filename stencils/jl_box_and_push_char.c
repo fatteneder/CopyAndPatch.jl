@@ -10,7 +10,7 @@ JIT_ENTRY()
    PATCH_VALUE(int, ip, _JIT_IP);
    PATCH_VALUE(int, i, _JIT_I); // 1-based
    PATCH_VALUE(void *, x, _JIT_X);
-   DEBUGSTMT("jl_box_char", F, ip);
+   DEBUGSTMT("jl_box_and_push_char", F, ip);
    converter_uint32_t c;
    c.p = x;
    uint32_t v = c.v;

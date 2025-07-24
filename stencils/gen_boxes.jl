@@ -18,16 +18,18 @@ JL_DLLEXPORT jl_value_t *jl_box_float64(double x);
 """
 
 let
-rgx_sig = r"^JL_DLLEXPORT (\w* \*)(\w*)\((.*)x\)"
-rgx_arg = r"(\w* \*)"
+stem = "jl_box_and_push_"
+
+rgx_sig = r"^JL_DLLEXPORT jl_value_t \*(\w+)\((.+)x\)"
 for line in split(box_signatures,'\n')
     isempty(line) && continue
     m = match(rgx_sig, line)
     isnothing(m) && continue
-    rettype, fn_name, ctype = m[1], m[2], strip(m[3])
+    fn_name, ctype = m[1], strip(m[2])
     m = something(match(r"jl_box_(.*)", fn_name))
     suffix = m[1]
-    rettype != "jl_value_t *" && continue
+
+    stencil_name = stem * suffix
     code = """
 #include "common.h"
 
@@ -41,8 +43,7 @@ JIT_ENTRY()
    PATCH_VALUE(int, ip, _JIT_IP);
    PATCH_VALUE(int, i, _JIT_I); // 1-based
    PATCH_VALUE(void *, x, _JIT_X);
-   # TODO fn_name -> stencil_name
-   DEBUGSTMT(\"$fn_name\", F, ip);
+   DEBUGSTMT(\"$stencil_name\", F, ip);
    converter_$ctype c;
    c.p = x;
    $ctype v = c.v;
@@ -50,8 +51,6 @@ JIT_ENTRY()
    // push operations don't increment ip
    PATCH_JUMP(_JIT_CONT, F);
 }"""
-    println(code)
-    stencil_name = "jl_box_and_push_$(suffix)"
     filename = joinpath(@__DIR__, "$stencil_name.c")
     open(filename, write=true) do file
         println(file, code)
