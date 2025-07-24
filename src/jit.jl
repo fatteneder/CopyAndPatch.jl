@@ -133,20 +133,20 @@ function get_stencil(name::String)
 end
 
 
-load_stencil_generic_name(arg::Any) = "jl_push_any"
-load_stencil_generic_name(arg::Core.Argument) = "jl_push_slot"
-load_stencil_generic_name(arg::Core.SSAValue) = "jl_push_ssa"
-load_stencil_generic_name(arg::Core.Const) = get_stencil_name(c.val)
-function load_stencil_generic_name(arg::Boxable)
+name_load_stencil_generic(arg::Any) = "jl_push_any"
+name_load_stencil_generic(arg::Core.Argument) = "jl_push_slot"
+name_load_stencil_generic(arg::Core.SSAValue) = "jl_push_ssa"
+name_load_stencil_generic(arg::Core.Const) = get_stencil_name(c.val)
+function name_load_stencil_generic(arg::Boxable)
     typename = lowercase(string(typeof(arg)))
     return "jl_box_and_push_$typename"
 end
-load_stencil_generic_name(arg::GlobalRef) = "jl_eval_and_push_globalref"
-load_stencil_generic_name(arg::QuoteNode) = "jl_push_quotenode_value"
-load_stencil_generic_name(arg::Ptr{UInt8}) = "jl_box_uint8pointer"
-load_stencil_generic_name(@nospecialize(arg::Ptr)) = "jl_box_and_push_voidpointer"
-load_stencil_generic_name(@nospecialize(arg::WithValuePtr)) = load_stencil_generic_name(arg.val)
-function load_stencil_generic_name(arg::NativeSymArg)
+name_load_stencil_generic(arg::GlobalRef) = "jl_eval_and_push_globalref"
+name_load_stencil_generic(arg::QuoteNode) = "jl_push_quotenode_value"
+name_load_stencil_generic(arg::Ptr{UInt8}) = "jl_box_uint8pointer"
+name_load_stencil_generic(@nospecialize(arg::Ptr)) = "jl_box_and_push_voidpointer"
+name_load_stencil_generic(@nospecialize(arg::WithValuePtr)) = name_load_stencil_generic(arg.val)
+function name_load_stencil_generic(arg::NativeSymArg)
     if arg.jl_ptr isa Core.SSAValue
         return "jl_push_deref_ssa"
     elseif arg.jl_ptr isa Core.Argument
@@ -161,7 +161,7 @@ function load_stencil_generic_name(arg::NativeSymArg)
     return "jl_push_plt_voidpointer"
 end
 function select_load_stencil_generic(ex)
-    name = load_stencil_generic_name(ex)
+    name = name_load_stencil_generic(ex)
     if !haskey(STENCILS[], name)
         error("no stencil named '$name' found for expression $ex")
     end
