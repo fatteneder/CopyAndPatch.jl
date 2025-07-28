@@ -90,7 +90,7 @@ function cpjit_code_native!(
         end
     end
     cpjit_code_native_instr_stencil!(io, mc, ip; syntax, color, hex_for_imm)
-    if isassigned(mc.store_stencils, ip)
+    if haskey(mc.store_stencils, ip)
         cpjit_code_native_store_stencil!(io, mc, ip; syntax, color, hex_for_imm)
     end
     return
@@ -152,7 +152,7 @@ function cpjit_code_native_instr_stencil!(
             st.bvec
         else
             start = mc.instr_stencil_starts[ip]
-            stop = if isassigned(mc.store_stencils, ip)
+            stop = if haskey(mc.store_stencils, ip)
                 mc.store_stencil_starts[ip] - 1
             elseif ip == nstarts
                     length(mc.buf)
@@ -255,7 +255,7 @@ function annotate_code_native(menu::CopyAndPatchMenu, cursor::Int64)
     end
     code = annotate_code_native_instr_stencil!(tmpio, tmpioc, menu, ip)
     print(ioc, String(take!(tmpio)))
-    if isassigned(menu.mc.store_stencils, ip)
+    if haskey(menu.mc.store_stencils, ip)
         annotate_code_native_store_stencil!(tmpio, tmpioc, menu, ip)
     end
     print(ioc, String(take!(tmpio)))

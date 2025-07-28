@@ -12,7 +12,7 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
     code_size = length(only(st.md.code.body))
     instr_stencil_starts = zeros(Int64, ctx.nssas)
     load_stencil_starts = Vector{Vector{Int64}}(undef, ctx.nssas)
-    store_stencil_starts = zeros(Int64, ctx.nssas)
+    store_stencil_starts = Dict{Int64,Int64}() # ip -> start
     for (ip, ex) in enumerate(codeinfo.code)
         select_stencils!(ctx, ex, ip)
         load_stencils = ctx.load_stencils[ip]
@@ -24,7 +24,7 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
         st = ctx.instr_stencils[ip]
         instr_stencil_starts[ip] = 1 + code_size
         code_size += length(only(st.md.code.body))
-        if isassigned(ctx.store_stencils, ip)
+        if haskey(ctx.store_stencils, ip)
             st = ctx.store_stencils[ip]
             store_stencil_starts[ip] = 1 + code_size
             code_size += length(only(st.md.code.body))
@@ -65,7 +65,7 @@ mutable struct Context
     roots::Vector{Vector{Any}}
     load_stencils::Vector{Vector{StencilData}}
     instr_stencils::Vector{StencilData}
-    store_stencils::Vector{StencilData}
+    store_stencils::Dict{Int64,StencilData} # ip -> stencil
     ctxs_foreigncall::Dict{Int64,ContextForeigncall}
 end
 function Context(codeinfo::Core.CodeInfo)
@@ -75,7 +75,7 @@ function Context(codeinfo::Core.CodeInfo)
     roots = Vector{Any}[ Any[] for _ in 1:nssas ]
     load_stencils = Vector{StencilData}[ StencilData[] for _ in 1:nssas ]
     instr_stencils = Vector{StencilData}(undef, nssas)
-    store_stencils = Vector{StencilData}(undef, nssas)
+    store_stencils = Dict{Int64,StencilData}()
     ctxs_foreigncall = Dict{Int64,ContextForeigncall}()
     return Context(
         codeinfo, ip, il, nssas, ntmps, nroots, ncargs,
@@ -475,7 +475,7 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex, ip::Int64)
 end
 function emit_store!(mc::MachineCode, ctx::Context, ex, ip::Int64)
     ctx.ip = ip
-    if isassigned(ctx.store_stencils, ip)
+    if haskey(ctx.store_stencils, ip)
         emit_store!(mc, ctx, ex)
     end
     return

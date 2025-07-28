@@ -6,10 +6,10 @@ mutable struct MachineCode
     codeinfo::Core.CodeInfo
     instr_stencil_starts::Vector{Int64}
     load_stencils_starts::Vector{Vector{Int64}}
-    store_stencil_starts::Vector{Int64}
+    store_stencil_starts::Dict{Int64,Int64} # ip -> start
     instr_stencils::Vector{StencilData}
     load_stencils::Vector{Vector{StencilData}}
-    store_stencils::Vector{StencilData}
+    store_stencils::Dict{Int64,StencilData} # ip -> stencil
     gc_roots::Vector{Any}
 
     function MachineCode(
@@ -18,10 +18,10 @@ mutable struct MachineCode
             codeinfo::Core.CodeInfo,
             instr_stencil_starts::Vector{Int64},
             load_stencils_starts::Vector{Vector{Int64}},
-            store_stencil_starts::Vector{Int64},
+            store_stencil_starts::Dict{Int64,Int64},
             instr_stencils::Vector{StencilData},
             load_stencils::Vector{Vector{StencilData}},
-            store_stencils::Vector{StencilData},
+            store_stencils::Dict{Int64,StencilData},
             gc_roots::Vector{Any} = Any[]
         )
         rt = rettype <: Union{} ? Nothing : rettype
@@ -50,10 +50,10 @@ mutable struct MachineCode
             codeinfo::Core.CodeInfo,
             instr_stencil_starts::Vector{Int64},
             load_stencils_starts::Vector{Vector{Int64}},
-            store_stencil_starts::Vector{Int64},
+            store_stencil_starts::Dict{Int64,Int64},
             instr_stencils::Vector{StencilData},
             load_stencils::Vector{Vector{StencilData}},
-            store_stencils::Vector{StencilData},
+            store_stencils::Dict{Int64,StencilData},
             gc_roots::Vector{Any} = Any[]
         )
         mc = MachineCode(
