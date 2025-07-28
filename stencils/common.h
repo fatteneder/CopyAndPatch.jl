@@ -11,6 +11,7 @@ typedef struct {
    jl_value_t **ssas;
    jl_value_t **tmps;
    jl_value_t **gcroots;
+   void **cargs;
 } frame;
 
 #ifdef USE_GHC_CC

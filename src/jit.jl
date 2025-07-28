@@ -12,11 +12,11 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
     code_size = length(only(st.md.code.body))
     instr_stencil_starts = zeros(Int64, ctx.nssas)
     load_stencil_starts = Vector{Vector{Int64}}(undef, ctx.nssas)
+    store_stencil_starts = zeros(Int64, ctx.nssas)
     for (ip, ex) in enumerate(codeinfo.code)
         select_stencils!(ctx, ex, ip)
         load_stencils = ctx.load_stencils[ip]
-        inputs = ctx.inputs[ip]
-        load_stencil_starts[ip] = zeros(Int64, length(inputs))
+        load_stencil_starts[ip] = zeros(Int64, length(load_stencils))
         for (il, st) in enumerate(load_stencils)
             load_stencil_starts[ip][il] = 1 + code_size
             code_size += length(only(st.md.code.body))
@@ -24,28 +24,38 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
         st = ctx.instr_stencils[ip]
         instr_stencil_starts[ip] = 1 + code_size
         code_size += length(only(st.md.code.body))
+        if isassigned(ctx.store_stencils, ip)
+            st = ctx.store_stencils[ip]
+            store_stencil_starts[ip] = 1 + code_size
+            code_size += length(only(st.md.code.body))
+        end
     end
 
     mc = MachineCode(
         code_size, fn, rettype, argtypes, codeinfo,
-        instr_stencil_starts, load_stencil_starts,
-        ctx.instr_stencils, ctx.load_stencils
+        instr_stencil_starts, load_stencil_starts, store_stencil_starts,
+        ctx.instr_stencils, ctx.load_stencils, ctx.store_stencils
     )
 
     emit_abi!(mc, ctx)
     for (ip, ex) in enumerate(codeinfo.code)
         emit_loads!(mc, ctx, ex, ip)
         emit_instr!(mc, ctx, ex, ip)
+        emit_store!(mc, ctx, ex, ip)
     end
     return mc
 end
 
 
+mutable struct ContextForeigncall
+    cif::Ffi_cif
+    cargs_starts::Vector{Int64}
+    sz_cargs::Int64
+end
 mutable struct Context
     codeinfo::Core.CodeInfo
     ip::Int64 # current instruction pointer, 1-based
     il::Int64 # current load instruction pointer, 1-based
-    is::Int64 # current store instruction pointer, 1-bast
     nssas::Int64 # number of ssa statements
     # filled by select_stencils!
     ntmps::Int64 # max number of tmp variables across all stencils
@@ -55,19 +65,22 @@ mutable struct Context
     roots::Vector{Vector{Any}}
     load_stencils::Vector{Vector{StencilData}}
     instr_stencils::Vector{StencilData}
-    store_stencils::Vector{Vector{StencilData}}
+    store_stencils::Vector{StencilData}
+    ctxs_foreigncall::Dict{Int64,ContextForeigncall}
 end
 function Context(codeinfo::Core.CodeInfo)
     nssas = length(codeinfo.code)
-    ip, il, is, ntmps, nroots, ncargs = 0, 0, 0, 0, 0, 0
+    ip, il, ntmps, nroots, ncargs = 0, 0, 0, 0, 0
     inputs = Vector{Any}[ Any[] for _ in 1:nssas ]
     roots = Vector{Any}[ Any[] for _ in 1:nssas ]
     load_stencils = Vector{StencilData}[ StencilData[] for _ in 1:nssas ]
     instr_stencils = Vector{StencilData}(undef, nssas)
-    store_stencils = Vector{StencilData}[ StencilData[] for _ in 1:nssas ]
+    store_stencils = Vector{StencilData}(undef, nssas)
+    ctxs_foreigncall = Dict{Int64,ContextForeigncall}()
     return Context(
-        codeinfo, ip, il, is, nssas, ntmps, nroots, ncargs,
-        inputs, roots, load_stencils, instr_stencils, store_stencils
+        codeinfo, ip, il, nssas, ntmps, nroots, ncargs,
+        inputs, roots, load_stencils, instr_stencils, store_stencils,
+        ctxs_foreigncall
     )
 end
 
@@ -132,20 +145,20 @@ function get_stencil(name::String)
 end
 
 
-name_load_stencil_generic(arg::Any) = "jl_push_any"
-name_load_stencil_generic(arg::Core.Argument) = "jl_push_slot"
-name_load_stencil_generic(arg::Core.SSAValue) = "jl_push_ssa"
-name_load_stencil_generic(arg::Core.Const) = get_stencil_name(c.val)
-function name_load_stencil_generic(arg::Boxable)
+stencil_name_load_generic(arg::Any) = "jl_push_any"
+stencil_name_load_generic(arg::Core.Argument) = "jl_push_slot"
+stencil_name_load_generic(arg::Core.SSAValue) = "jl_push_ssa"
+stencil_name_load_generic(arg::Core.Const) = get_stencil_name(c.val)
+function stencil_name_load_generic(arg::Boxable)
     typename = lowercase(string(typeof(arg)))
     return "jl_box_and_push_$typename"
 end
-name_load_stencil_generic(arg::GlobalRef) = "jl_eval_and_push_globalref"
-name_load_stencil_generic(arg::QuoteNode) = "jl_push_quotenode_value"
-name_load_stencil_generic(arg::Ptr{UInt8}) = "jl_box_uint8pointer"
-name_load_stencil_generic(@nospecialize(arg::Ptr)) = "jl_box_and_push_voidpointer"
-name_load_stencil_generic(@nospecialize(arg::WithValuePtr)) = name_load_stencil_generic(arg.val)
-function name_load_stencil_generic(arg::NativeSymArg)
+stencil_name_load_generic(arg::GlobalRef) = "jl_eval_and_push_globalref"
+stencil_name_load_generic(arg::QuoteNode) = "jl_push_quotenode_value"
+stencil_name_load_generic(arg::Ptr{UInt8}) = "jl_box_uint8pointer"
+stencil_name_load_generic(@nospecialize(arg::Ptr)) = "jl_box_and_push_voidpointer"
+stencil_name_load_generic(@nospecialize(arg::WithValuePtr)) = stencil_name_load_generic(arg.val)
+function stencil_name_load_generic(arg::NativeSymArg)
     if arg.jl_ptr isa Core.SSAValue
         return "jl_push_deref_ssa"
     elseif arg.jl_ptr isa Core.Argument
@@ -160,12 +173,50 @@ function name_load_stencil_generic(arg::NativeSymArg)
     return "jl_push_plt_voidpointer"
 end
 function select_load_stencil_generic(ex)
-    name = name_load_stencil_generic(ex)
+    name = stencil_name_load_generic(ex)
     if !haskey(STENCILS[], name)
         error("no stencil named '$name' found for expression $ex")
     end
     return STENCILS[][name]
 end
+
+
+stencil_name_foreigncall_load_store(::Type{Bool}, kind::String) = "ast_foreigncall_$(kind)_bool"
+stencil_name_foreigncall_load_store(::Type{Int8}, kind::String) = "ast_foreigncall_$(kind)_int8" # Cchar
+stencil_name_foreigncall_load_store(::Type{UInt8}, kind::String) = "ast_foreigncall_$(kind)_uint8" # Cuchar
+stencil_name_foreigncall_load_store(::Type{Int16}, kind::String) = "ast_foreigncall_$(kind)_int16" # Cshort
+stencil_name_foreigncall_load_store(::Type{UInt16}, kind::String) = "ast_foreigncall_$(kind)_uint16" # Cushort
+stencil_name_foreigncall_load_store(::Type{Int32}, kind::String) = "ast_foreigncall_$(kind)_int32" # Cint
+stencil_name_foreigncall_load_store(::Type{UInt32}, kind::String) = "ast_foreigncall_$(kind)_uint32" # Cuint
+stencil_name_foreigncall_load_store(::Type{Int64}, kind::String) = "ast_foreigncall_$(kind)_int64" # Clong
+stencil_name_foreigncall_load_store(::Type{UInt64}, kind::String) = "ast_foreigncall_$(kind)_uint64" # Culong
+stencil_name_foreigncall_load_store(::Type{Float32}, kind::String) = "ast_foreigncall_$(kind)_float32" # Cfloat
+stencil_name_foreigncall_load_store(::Type{Float64}, kind::String) = "ast_foreigncall_$(kind)_float64" # Cdouble
+stencil_name_foreigncall_load_store(::Type{Ptr{UInt8}}, kind::String) = "ast_foreigncall_$(kind)_uint8pointer" # Ptr{Cuchar}
+stencil_name_foreigncall_load_store(::Type{<:Ptr}, kind::String) = "ast_foreigncall_$(kind)_voidpointer" # Ptr{Cvoid}
+function stencil_name_foreigncall_load_store(t::Type{<:Ref}, kind::String)
+    return if kind == "store"
+        "ast_foreigncall_$(kind)_any"
+    else
+        stencil_name_foreigncall_load_store(Ptr, kind)
+    end
+end
+function stencil_name_foreigncall_load_store(t::Type{<:Any}, kind::String)
+    return if isconcretetype(t)
+        "ast_foreigncall_$(kind)_concretetype"
+    else
+        "ast_foreigncall_$(kind)_any"
+    end
+end
+function select_load_store_foreigncall_stencil(ty, kind)
+    name = stencil_name_foreigncall_load_store(ty, kind)
+    if !haskey(STENCILS[], name)
+        error("no stencil named '$name' found for type $ty")
+    end
+    return STENCILS[][name]
+end
+select_load_foreigncall_stencil(arg) = select_load_store_foreigncall_stencil(arg, "load")
+select_store_foreigncall_stencil(arg) = select_load_store_foreigncall_stencil(arg, "store")
 
 
 function emit_abi!(mc::MachineCode, ctx::Context)
@@ -175,6 +226,7 @@ function emit_abi!(mc::MachineCode, ctx::Context)
     patch!(mc.buf, 1, st.md.code, "_JIT_NSSAS", Cint(length(mc.codeinfo.code)))
     patch!(mc.buf, 1, st.md.code, "_JIT_NTMPS", Cint(ctx.ntmps))
     patch!(mc.buf, 1, st.md.code, "_JIT_NGCROOTS", Cint(ctx.nroots))
+    patch!(mc.buf, 1, st.md.code, "_JIT_NCARGS", Cint(ctx.ncargs))
     next = if length(mc.load_stencils_starts) > 0 && length(first(mc.load_stencils_starts)) > 0
         first(first(mc.load_stencils_starts))
     else
@@ -189,10 +241,10 @@ function emit_loads_generic!(mc::MachineCode, ctx::Context)
     ctx.il = 0
     for input in ctx.inputs[ctx.ip]
         ctx.il += 1
-        continuation = if ctx.il < length(ctx.inputs[ctx.ip])
-            pointer(mc.buf, mc.load_stencils_starts[ctx.ip][ctx.il + 1])
+        continuation = if ctx.il < length(ctx.load_stencils[ctx.ip])
+            get_continuation_load(mc, ctx.ip, ctx.il + 1)
         else
-            pointer(mc.buf, mc.instr_stencil_starts[ctx.ip])
+            get_continuation_instr(mc, ctx.ip)
         end
         emit_load_generic!(mc, ctx, continuation, input)
     end
@@ -376,6 +428,39 @@ function select_stencils!(ctx::Context, ex, ip::Int64)
     select_stencils!(ctx, ex)
     ctx.ntmps = max(ctx.ntmps, length(ctx.inputs[ctx.ip]))
     ctx.nroots = max(ctx.nroots, length(ctx.roots[ctx.ip]))
+    if Base.isexpr(ex, :foreigncall)
+        # setup ContextForeigncall and update ctx.ncargs
+        rettype = foreigncall_rettype(ex)
+        argtypes = foreigncall_argtypes(ex)
+        cif = Ffi_cif(rettype, tuple(argtypes...))
+        nargs = foreigncall_nargs(ex)
+        # offsets for F->cargs usage in ast_foreigncall.c:
+        # F->cargs[0:nargs-1] is the cargs array for ffi_call
+        # F->cargs[nargs] is the return value
+        # F->cargs[nargs + 1:2*nargs] is the memory to which elements of F->cargs[0:nargs-1] point
+        n_cargs = 2*nargs + 1
+        cargs_starts = Vector{Int64}(undef, n_cargs)
+        sz_ptr = sizeof(Ptr{Cvoid})
+        sz_cargs = 0
+        for i in 1:nargs
+            at = argtypes[i]
+            cargs_starts[i] = 1 + sz_cargs ÷ sz_ptr
+            sz_cargs += sz_ptr
+        end
+        sz = Base.LLT_ALIGN(ffi_sizeof_rettyp(rettype), sz_ptr)
+        cargs_starts[nargs + 1] = 1 + sz_cargs ÷ sz_ptr
+        sz_cargs += sz
+        for i in 1:nargs
+            at = argtypes[i]
+            cargs_starts[nargs + 1 + i] = 1 + sz_cargs ÷ sz_ptr
+            sz = Base.LLT_ALIGN(ffi_sizeof_argtype(at), sz_ptr)
+            sz_cargs += sz
+        end
+        ctxf = ContextForeigncall(cif, cargs_starts, sz_cargs)
+        ctx.ctxs_foreigncall[ip] = ctxf
+        # TODO Replace ctx.ncargs with sz_cargs
+        ctx.ncargs = max(ctx.ncargs, sz_cargs ÷ sz_ptr)
+    end
     return
 end
 function emit_loads!(mc::MachineCode, ctx::Context, ex, ip::Int64)
@@ -388,9 +473,11 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex, ip::Int64)
     emit_instr!(mc, ctx, ex)
     return
 end
-function emit_stores!(mc::MachineCode, ctx::Context, ex, ip::Int64)
+function emit_store!(mc::MachineCode, ctx::Context, ex, ip::Int64)
     ctx.ip = ip
-    emit_stores!(mc, ctx, ex)
+    if isassigned(ctx.store_stencils, ip)
+        emit_store!(mc, ctx, ex)
+    end
     return
 end
 
@@ -399,7 +486,7 @@ end
 select_stencils!(ctx::Context, ex::Any) = TODO("select_stencils! for $ex")
 emit_loads!(mc::MachineCode, ctx::Context, ex::Any) = TODO("emit_loads! for $ex")
 emit_instr!(mc::MachineCode, ctx::Context, ex::Any) = TODO("emit_instr! for $ex")
-emit_stores!(mc::MachineCode, ctx::Context, ex::Any) = TODO("emit_stores! for $ex")
+emit_store!(mc::MachineCode, ctx::Context, ex::Any) = nothing # optional
 
 
 # Nothing
@@ -626,9 +713,20 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Core.UpsilonNode)
 end
 
 
+foreigncall_rettype(ex::Expr) = ex.args[2]
+foreigncall_argtypes(ex::Expr) = ex.args[3]
+foreigncall_argtypes(ex::Expr, i::Integer) = ex.args[3][i]
+foreigncall_nreq(ex::Expr) = ex.args[4]
+foreigncall_conv(ex::Expr) = ex.args[5]
+foreigncall_args(ex::Expr) = ex.args[6:(5 + length(ex.args[3]))]
+foreigncall_args(ex::Expr, i::Integer) = ex.args[6:(5 + length(ex.args[3]))][i]
+foreigncall_nargs(ex::Expr) = length(6:(5 + length(ex.args[3])))
+
 # Expr
 function select_stencils!(ctx::Context, ex::Expr)
-    if Base.isexpr(ex, :foreigncall) && length(ctx.inputs[ctx.ip]) ≥ 1
+    if Base.isexpr(ex, :foreigncall)
+        # special handling of :foreigncall f arg
+        @assert length(ctx.inputs[ctx.ip]) ≥ 1
         fn = ctx.inputs[ctx.ip][1]
         fn = if fn isa WithValuePtr
             fn.val
@@ -652,6 +750,19 @@ function select_stencils!(ctx::Context, ex::Expr)
         ctx.inputs[ctx.ip][1] = fn
     end
     ctx.load_stencils[ctx.ip] = select_load_stencil_generic.(ctx.inputs[ctx.ip])
+    if Base.isexpr(ex, :foreigncall)
+        # select load stencils to unbox F->tmps[1:nargs] into F->cargs[0:nargs-1]
+        nloads = length(ctx.inputs[ctx.ip]) # length of F->tmps
+        nargs = foreigncall_nargs(ex)
+        resize!(ctx.load_stencils[ctx.ip], nloads + nargs)
+        for i in 1:nargs
+            at = foreigncall_argtypes(ex, i)
+            ctx.load_stencils[ctx.ip][nloads+i] = select_load_foreigncall_stencil(at)
+        end
+        # select store stencils to box the result F->cargs[nargs] into F->ssas[ip-1]
+        rettype = foreigncall_rettype(ex)
+        ctx.store_stencils[ctx.ip] = select_store_foreigncall_stencil(rettype)
+    end
     # runic: off
     name = if Base.isexpr(ex, :call); "ast_call"
     elseif Base.isexpr(ex, :invoke); "ast_invoke"
@@ -695,7 +806,39 @@ function emit_loads!(mc::MachineCode, ctx::Context, ex::Expr)
             TODO("ast_copyast does not handle $(ex.args) yet")
         end
     end
-    emit_loads_generic!(mc, ctx)
+    if Base.isexpr(ex, :foreigncall)
+        emit_loads_generic!(mc, ctx)
+        ntmps = length(ctx.inputs[ctx.ip]) # length of F->tmps
+        nargs = foreigncall_nargs(ex)
+        for i in 1:nargs
+            il = i + ntmps # index load stencil
+            argtype = foreigncall_argtypes(ex, i)
+            continuation = if i < nargs
+                get_continuation_load(mc, ctx.ip, il + 1)
+            else
+                get_continuation_instr(mc, ctx.ip)
+            end
+            st = ctx.load_stencils[ctx.ip][il]
+            start = mc.load_stencils_starts[ctx.ip][il]
+            ctxf = ctx.ctxs_foreigncall[ctx.ip]
+            # mem addr in F->cargs, nargs to skip ffi arg vec, + 1 to skip ret val
+            i_mem = ctxf.cargs_starts[nargs + 1 + i]
+            copyto!(mc.buf, start, st.bvec, 1, length(st.bvec))
+            name = get_name(st)
+            patch!(mc.buf, start, st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
+            patch!(mc.buf, start, st.md.code, "_JIT_I_TMPS", Cint(i + 1)) # + 1 to skip f
+            patch!(mc.buf, start, st.md.code, "_JIT_I_CARGS", Cint(i))
+            patch!(mc.buf, start, st.md.code, "_JIT_I_MEM", Cint(i_mem), optional = true)
+            patch!(mc.buf, start, st.md.code, "_JIT_CONT", continuation)
+            rettype = foreigncall_rettype(ex)
+            if name == "ast_foreigncall_load_concretetype"
+                argtype_ptr = pointer_from_objref(argtype)
+                patch!(mc.buf, start, st.md.code, "_JIT_TY", argtype_ptr)
+            end
+        end
+    else
+        emit_loads_generic!(mc, ctx)
+    end
     return
 end
 function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
@@ -743,28 +886,17 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
                 end
             end
         end
-        ffi_argtypes = [ Cint(ffi_ctype_id(at)) for at in argtypes ]
-        push!(mc.gc_roots, ffi_argtypes)
-        ffi_rettype = Cint(ffi_ctype_id(rettype, return_type = true))
-        # push!(mc.gc_roots, ffi_rettype) # kept alive through FFI_TYPE_CACHE
-        sz_ffi_arg = Csize_t(ffi_rettype == -2 ? sizeof(rettype) : sizeof_ffi_arg())
-        ffi_retval = Vector{UInt8}(undef, sz_ffi_arg)
-        push!(mc.gc_roots, ffi_retval)
         rettype_ptr = pointer_from_objref(rettype)
         cif = Ffi_cif(rettype, tuple(argtypes...))
         push!(mc.gc_roots, cif)
-        sz_argtypes = Cint[ ffi_argtypes[il] == -2 ? sizeof(argtypes[il]) : 0 for il in 1:nargs ]
-        push!(mc.gc_roots, sz_argtypes)
-        continuation = get_continuation(mc, ctx.ip + 1)
+        ctxf = ctx.ctxs_foreigncall[ctx.ip]
+        nargs = foreigncall_nargs(ex)
+        i_retval = ctxf.cargs_starts[nargs + 1]
+        continuation = get_continuation_store(mc, ctx.ip)
         copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
-        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CIF", pointer(cif))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
-        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_ARGTYPES", pointer(ffi_argtypes))
-        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_SZARGTYPES", pointer(sz_argtypes))
-        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_RETTYPE", ffi_rettype)
-        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_RETTYPEPTR", rettype_ptr)
-        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_FFIRETVAL", pointer(ffi_retval))
-        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", nargs)
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CIF", pointer(ctxf.cif))
+        patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_I_RETVAL", Cint(i_retval))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif name == "ast_boundscheck"
         continuation = get_continuation(mc, ctx.ip + 1)
@@ -822,44 +954,21 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
     end
     return
 end
-function ffi_ctype_id(t; return_type = false)
-    # need to keep this in sync with switch statements in ast_foreigncall.c
-    return if t === Bool # Int8
-        0
-    elseif t === Cchar # Int8
-        1
-    elseif t === Cuchar # UInt8
-        2
-    elseif t === Cshort # Int16
-        3
-    elseif t === Cushort # UInt16
-        4
-    elseif t === Cint # Int32
-        5
-    elseif t === Cuint # UInt32
-        6
-    elseif t === Clonglong # Int64
-        7
-    elseif t === Culonglong # UInt64
-        8
-    elseif t === Cfloat # Float32
-        9
-    elseif t === Cdouble # Float64
-        10
-    elseif t === Ptr{UInt8} # TODO For what is this even needed?
-        11
-    elseif t <: Ptr
-        12
-    elseif t <: Ref
-        if return_type
-            # cf. https://discourse.julialang.org/t/returning-arbitrary-julia-value-from-c-function/11429/2
-            @goto any
-        end
-        12
-    elseif isconcretetype(t)
-        -2
-    else # Any
-        @label any
-        -1
+function emit_store!(mc::MachineCode, ctx::Context, ex::Expr)
+    st = ctx.store_stencils[ctx.ip]
+    ctxf = ctx.ctxs_foreigncall[ctx.ip]
+    nargs = foreigncall_nargs(ex)
+    i_retval = ctxf.cargs_starts[nargs + 1]
+    continuation = get_continuation(mc, ctx.ip + 1)
+    copyto!(mc.buf, mc.store_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
+    patch!(mc.buf, mc.store_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
+    patch!(mc.buf, mc.store_stencil_starts[ctx.ip], st.md.code, "_JIT_I_RETVAL", Cint(i_retval))
+    patch!(mc.buf, mc.store_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
+    name = get_name(st)
+    if name == "ast_foreigncall_store_concretetype" || name == "ast_foreigncall_store_voidpointer"
+        # rettype remains rooted in mc.codeinfo
+        rettype = foreigncall_rettype(ex)
+        rettype_ptr = pointer_from_objref(rettype)
+        patch!(mc.buf, mc.store_stencil_starts[ctx.ip], st.md.code, "_JIT_TY", rettype_ptr)
     end
 end

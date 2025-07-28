@@ -35,6 +35,7 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
    PATCH_VALUE(int, nssas, _JIT_NSSAS);
    PATCH_VALUE(int, ntmps, _JIT_NTMPS);
    PATCH_VALUE(int, ngcroots, _JIT_NGCROOTS);
+   PATCH_VALUE(int, ncargs, _JIT_NCARGS);
    assert(nargs == _nargs);
    int nslots = nargs+1; // +1 for f
    int n = nslots + nssas + ntmps + ngcroots;
@@ -46,6 +47,7 @@ _JIT_ENTRY(jl_value_t *f, jl_value_t **args, uint32_t nargs, jl_code_instance_t 
    F->ssas = &locals[nslots];
    F->tmps = &locals[nslots+nssas];
    F->gcroots = &locals[nslots+nssas+ntmps];
+   F->cargs = (void **)alloca(ncargs * sizeof(void *));
    int ip = 0;
    DEBUGSTMT("abi", F, ip);
    F->slots[0] = f;

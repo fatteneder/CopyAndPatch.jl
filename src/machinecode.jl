@@ -6,8 +6,10 @@ mutable struct MachineCode
     codeinfo::Core.CodeInfo
     instr_stencil_starts::Vector{Int64}
     load_stencils_starts::Vector{Vector{Int64}}
+    store_stencil_starts::Vector{Int64}
     instr_stencils::Vector{StencilData}
     load_stencils::Vector{Vector{StencilData}}
+    store_stencils::Vector{StencilData}
     # TODO remove
     slots::Vector{Ptr{UInt64}}
     ssas::Vector{Ptr{UInt64}}
@@ -21,8 +23,10 @@ mutable struct MachineCode
             codeinfo::Core.CodeInfo,
             instr_stencil_starts::Vector{Int64},
             load_stencils_starts::Vector{Vector{Int64}},
+            store_stencil_starts::Vector{Int64},
             instr_stencils::Vector{StencilData},
             load_stencils::Vector{Vector{StencilData}},
+            store_stencils::Vector{StencilData},
             gc_roots::Vector{Any} = Any[]
         )
         rt = rettype <: Union{} ? Nothing : rettype
@@ -46,8 +50,8 @@ mutable struct MachineCode
         slots = zeros(UInt64, nslots)
         ssas = zeros(UInt64, nssas)
         return new(
-            fn, rt, ats, buf, codeinfo, instr_stencil_starts, load_stencils_starts,
-            instr_stencils, load_stencils, slots, ssas, Any[], gc_roots, 0
+            fn, rt, ats, buf, codeinfo, instr_stencil_starts, load_stencils_starts, store_stencil_starts,
+            instr_stencils, load_stencils, store_stencils, slots, ssas, Any[], gc_roots, 0
         )
     end
     function MachineCode(
@@ -56,20 +60,21 @@ mutable struct MachineCode
             codeinfo::Core.CodeInfo,
             instr_stencil_starts::Vector{Int64},
             load_stencils_starts::Vector{Vector{Int64}},
+            store_stencil_starts::Vector{Int64},
             instr_stencils::Vector{StencilData},
             load_stencils::Vector{Vector{StencilData}},
+            store_stencils::Vector{StencilData},
             gc_roots::Vector{Any} = Any[]
         )
         mc = MachineCode(
             length(bvec), fn, rettype, argtypes, codeinfo,
-            instr_stencil_starts, load_stencils_starts;
-            instr_stencils, load_stencils, gc_roots
+            instr_stencil_starts, load_stencils_starts, store_stencil_starts;
+            instr_stencils, load_stencils, store_stencils, gc_roots
         )
         copyto!(mc.bvec, 1, bvec, 1, length(bvec))
         return mc
     end
 end
-
 
 function get_continuation(mc::MachineCode, ip::Int64)
     return if length(mc.load_stencils_starts[ip]) > 0
@@ -77,6 +82,18 @@ function get_continuation(mc::MachineCode, ip::Int64)
     else
         pointer(mc.buf, mc.instr_stencil_starts[ip])
     end
+end
+
+function get_continuation_load(mc::MachineCode, ip::Int64, il::Int64)
+    return pointer(mc.buf, mc.load_stencils_starts[ip][il])
+end
+
+function get_continuation_instr(mc::MachineCode, ip::Int64)
+    return pointer(mc.buf, mc.instr_stencil_starts[ip])
+end
+
+function get_continuation_store(mc::MachineCode, ip::Int64)
+    return pointer(mc.buf, mc.store_stencil_starts[ip])
 end
 
 

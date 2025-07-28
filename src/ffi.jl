@@ -48,6 +48,15 @@ sizeof_ffi_arg() = @ccall LIBFFIHELPERS_PATH[].sizeof_ffi_arg()::Csize_t
 sizeof_ffi_type() = @ccall LIBFFIHELPERS_PATH[].sizeof_ffi_type()::Csize_t
 ffi_sizeof(p::Ptr) = @ccall LIBFFIHELPERS_PATH[].get_size_ffi_type(p::Ptr{Cvoid})::Csize_t
 
+function ffi_sizeof_rettyp(ty::Type)
+    return Csize_t(!(ty <: Boxable) && isconcretetype(ty) ? sizeof(ty) : sizeof_ffi_arg())
+end
+ffi_sizeof_rettyp(ty::Type{<:Ref}) = ffi_sizeof_rettyp(Any)
+
+function ffi_sizeof_argtype(ty::Type)
+    return Csize_t(!(ty <: Boxable) && isconcretetype(ty) ? sizeof(ty) : sizeof_ffi_arg())
+end
+
 const Ctypes = Union{
     Cchar, Cuchar, Cshort, Cstring, Cushort, Cint, Cuint, Clong, Culong,
     Clonglong, Culonglong, Cintmax_t, Cuintmax_t, Csize_t, Cssize_t,

@@ -90,6 +90,9 @@ function cpjit_code_native!(
         end
     end
     cpjit_code_native_instr_stencil!(io, mc, ip; syntax, color, hex_for_imm)
+    if isassigned(mc.store_stencils, ip)
+        cpjit_code_native_store_stencil!(io, mc, ip; syntax, color, hex_for_imm)
+    end
     return
 end
 function cpjit_code_native_load_stencil!(
@@ -98,7 +101,9 @@ function cpjit_code_native_load_stencil!(
     )
     st = mc.load_stencils[ip][i]
     name = get_name(st)
-    title = "$(ip) | $(i) | $(name) | "
+    addr = get_continuation_load(mc, ip, i)
+    fmt_addr = Printf.@sprintf "0x%016x" UInt64(addr)
+    title = "$(ip) | $(i) | $(name) | $(fmt_addr)"
     buf = if print_unpatched_stencil
         st.bvec
     else
@@ -122,7 +127,9 @@ function cpjit_code_native_instr_stencil!(
     if ip == 0
         st = get_stencil("abi")
         name = get_name(st)
-        title = "$(ip) | abi | -"
+        addr = pointer(mc.buf)
+        fmt_addr = Printf.@sprintf "0x%016x" UInt64(addr)
+        title = "$(ip) | abi | - | $(fmt_addr)"
         buf = if print_unpatched_stencil
             st.bvec
         else
@@ -138,13 +145,17 @@ function cpjit_code_native_instr_stencil!(
         ex = mc.codeinfo.code[ip]
         st = mc.instr_stencils[ip]
         name = get_name(st)
-        title = "$(ip) | $(name) | $(ex)"
+        addr = get_continuation_instr(mc, ip)
+        fmt_addr = Printf.@sprintf "0x%016x" UInt64(addr)
+        title = "$(ip) | $(name) | $(ex) | $(fmt_addr)"
         buf = if print_unpatched_stencil
             st.bvec
         else
             start = mc.instr_stencil_starts[ip]
-            stop = if ip == nstarts
-                length(mc.buf)
+            stop = if isassigned(mc.store_stencils, ip)
+                mc.store_stencil_starts[ip] - 1
+            elseif ip == nstarts
+                    length(mc.buf)
             else
                 if length(mc.load_stencils_starts[ip + 1]) > 0
                     mc.load_stencils_starts[ip + 1][1] - 1
@@ -154,6 +165,32 @@ function cpjit_code_native_instr_stencil!(
             end
             view(mc.buf, start:stop)
         end
+    end
+    cpjit_code_native!(io, title, buf; kwargs...)
+    return
+end
+function cpjit_code_native_store_stencil!(
+        io::IO, mc::MachineCode, ip::Int64;
+        print_unpatched_stencil::Bool = false, kwargs...
+    )
+    nstarts = length(mc.instr_stencil_starts)
+    st = mc.store_stencils[ip]
+    name = get_name(st)
+    addr = get_continuation_store(mc, ip)
+    fmt_addr = Printf.@sprintf "0x%016x" UInt64(addr)
+    title = "$(ip) | - | $(name) | $(fmt_addr)"
+    buf = if print_unpatched_stencil
+        st.bvec
+    else
+        start = mc.store_stencil_starts[ip]
+        stop = if ip == nstarts
+            length(mc.buf)
+        elseif length(mc.load_stencils_starts[ip + 1]) > 0
+            mc.load_stencils_starts[ip + 1][1] - 1
+        else
+            mc.instr_stencil_starts[ip + 1] - 1
+        end
+        view(mc.buf, start:stop)
     end
     cpjit_code_native!(io, title, buf; kwargs...)
     return
@@ -218,6 +255,10 @@ function annotate_code_native(menu::CopyAndPatchMenu, cursor::Int64)
     end
     code = annotate_code_native_instr_stencil!(tmpio, tmpioc, menu, ip)
     print(ioc, String(take!(tmpio)))
+    if isassigned(menu.mc.store_stencils, ip)
+        annotate_code_native_store_stencil!(tmpio, tmpioc, menu, ip)
+    end
+    print(ioc, String(take!(tmpio)))
     return String(take!(io))
 end
 function annotate_code_native_load_stencil!(
@@ -256,6 +297,24 @@ function annotate_code_native_instr_stencil!(
     )
     unpatched_code = String(take!(io))
     cpjit_code_native_instr_stencil!(ioc, menu.mc, ip; kwargs..., color = false)
+    uncolored_code = String(take!(io))
+    annotate_relocs!(io, ioc, code, uncolored_code, unpatched_code, st)
+    return
+end
+function annotate_code_native_store_stencil!(
+        io::IOBuffer, ioc::IOContext, menu::CopyAndPatchMenu, ip::Int64,
+    )
+    kwargs = (; syntax = menu.syntax, hex_for_imm = menu.hex_for_imm)
+    cpjit_code_native_store_stencil!(ioc, menu.mc, ip; kwargs...)
+    menu.print_relocs || return
+    code = String(take!(io))
+    st = menu.mc.store_stencils[ip]
+    cpjit_code_native_store_stencil!(
+        ioc, menu.mc, ip; kwargs..., color = false,
+        print_unpatched_stencil = true
+    )
+    unpatched_code = String(take!(io))
+    cpjit_code_native_store_stencil!(ioc, menu.mc, ip; kwargs..., color = false)
     uncolored_code = String(take!(io))
     annotate_relocs!(io, ioc, code, uncolored_code, unpatched_code, st)
     return
