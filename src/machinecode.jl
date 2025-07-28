@@ -10,12 +10,7 @@ mutable struct MachineCode
     instr_stencils::Vector{StencilData}
     load_stencils::Vector{Vector{StencilData}}
     store_stencils::Vector{StencilData}
-    # TODO remove
-    slots::Vector{Ptr{UInt64}}
-    ssas::Vector{Ptr{UInt64}}
-    static_prms::Vector{Any}
     gc_roots::Vector{Any}
-    ntmps::Int64
 
     function MachineCode(
             sz::Integer, @nospecialize(fn::Any),
@@ -44,14 +39,9 @@ mutable struct MachineCode
             ats
         end
         buf = Mmap.mmap(Vector{UInt8}, sz, shared = false, exec = true)
-        nslots = length(codeinfo.slotnames)
-        nssas = length(codeinfo.ssavaluetypes)
-        @assert nssas == length(codeinfo.code)
-        slots = zeros(UInt64, nslots)
-        ssas = zeros(UInt64, nssas)
         return new(
             fn, rt, ats, buf, codeinfo, instr_stencil_starts, load_stencils_starts, store_stencil_starts,
-            instr_stencils, load_stencils, store_stencils, slots, ssas, Any[], gc_roots, 0
+            instr_stencils, load_stencils, store_stencils, gc_roots
         )
     end
     function MachineCode(

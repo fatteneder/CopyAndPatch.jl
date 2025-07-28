@@ -673,7 +673,7 @@ end
 emit_loads!(mc::MachineCode, ctx::Context, ex::Core.PiNode) = emit_loads_generic!(mc, ctx)
 function emit_instr!(mc::MachineCode, ctx::Context, ex::Core.PiNode)
     # https://docs.julialang.org/en/v1/devdocs/ssair/#Phi-nodes-and-Pi-nodes
-    # PiNodes are ignored in the interpreter, so ours also only copy values into ssas[ip]
+    # PiNodes are ignored in the interpreter, so ours also only copy values into F->ssas[ip-1]
     st = ctx.instr_stencils[ctx.ip]
     copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
     continuation = get_continuation(mc, ctx.ip + 1)
@@ -918,7 +918,6 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif name == "ast_the_exception"
-        ret = pointer(mc.ssas, ctx.ip)
         continuation = get_continuation(mc, ctx.ip + 1)
         copyto!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.bvec, 1, length(st.bvec))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
