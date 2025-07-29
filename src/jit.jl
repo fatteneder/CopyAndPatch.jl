@@ -432,7 +432,20 @@ function select_stencils!(ctx::Context, ex, ip::Int64)
         # setup ContextForeigncall and update ctx.ncargs
         rettype = foreigncall_rettype(ex)
         argtypes = foreigncall_argtypes(ex)
-        cif = Ffi_cif(rettype, tuple(argtypes...))
+        for at in argtypes
+            isconcretetype(at) || continue
+            for il in 1:fieldcount(at)
+                ty = fieldtype(at, il)
+                if ty isa Union
+                    TODO("can't pass non-isbitstypes 'by-value', cf. issue #46786 and stencils/mwe_union.c")
+                end
+            end
+        end
+        conv = foreigncall_conv(ex)
+        @assert conv isa QuoteNode
+        @assert conv.value === :ccall || first(conv.value) === :ccall
+        nreq = foreigncall_nreq(ex)
+        @assert length(argtypes) ≥ nreq
         nargs = foreigncall_nargs(ex)
         # offsets for F->cargs usage in ast_foreigncall.c:
         # F->cargs[0:nargs-1] is the cargs array for ffi_call
@@ -456,6 +469,7 @@ function select_stencils!(ctx::Context, ex, ip::Int64)
             sz = Base.LLT_ALIGN(ffi_sizeof_argtype(at), sz_ptr)
             sz_cargs += sz
         end
+        cif = Ffi_cif(rettype, tuple(argtypes...))
         ctxf = ContextForeigncall(cif, cargs_starts, sz_cargs)
         ctx.ctxs_foreigncall[ip] = ctxf
         # TODO Replace ctx.ncargs with sz_cargs
@@ -824,13 +838,12 @@ function emit_loads!(mc::MachineCode, ctx::Context, ex::Expr)
             # mem addr in F->cargs, nargs to skip ffi arg vec, + 1 to skip ret val
             i_mem = ctxf.cargs_starts[nargs + 1 + i]
             copyto!(mc.buf, start, st.bvec, 1, length(st.bvec))
-            name = get_name(st)
             patch!(mc.buf, start, st.md.code, "_JIT_IP", Cint(ctx.ip), optional = true)
             patch!(mc.buf, start, st.md.code, "_JIT_I_TMPS", Cint(i + 1)) # + 1 to skip f
             patch!(mc.buf, start, st.md.code, "_JIT_I_CARGS", Cint(i))
             patch!(mc.buf, start, st.md.code, "_JIT_I_MEM", Cint(i_mem), optional = true)
             patch!(mc.buf, start, st.md.code, "_JIT_CONT", continuation)
-            rettype = foreigncall_rettype(ex)
+            name = get_name(st)
             if name == "ast_foreigncall_load_concretetype"
                 argtype_ptr = pointer_from_objref(argtype)
                 patch!(mc.buf, start, st.md.code, "_JIT_TY", argtype_ptr)
@@ -868,28 +881,9 @@ function emit_instr!(mc::MachineCode, ctx::Context, ex::Expr)
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_NARGS", UInt32(nargs))
         patch!(mc.buf, mc.instr_stencil_starts[ctx.ip], st.md.code, "_JIT_CONT", continuation)
     elseif name == "ast_foreigncall"
-        rettype = ex.args[2]
-        argtypes = ex.args[3]
-        nreq = ex.args[4]
-        @assert length(argtypes) ≥ nreq
-        conv = ex.args[5]
-        @assert conv isa QuoteNode
-        @assert conv.value === :ccall || first(conv.value) === :ccall
-        args = ex.args[6:(5 + length(ex.args[3]))]
-        nargs = length(args)
-        for at in argtypes
-            isconcretetype(at) || continue
-            for il in 1:fieldcount(at)
-                ty = fieldtype(at, il)
-                if ty isa Union
-                    TODO("non-isbitstypes passed 'by-value', cf. issue #46786 and stencils/mwe_union.c")
-                end
-            end
-        end
-        rettype_ptr = pointer_from_objref(rettype)
-        cif = Ffi_cif(rettype, tuple(argtypes...))
-        push!(mc.gc_roots, cif)
         ctxf = ctx.ctxs_foreigncall[ctx.ip]
+        cif = ctxf.cif
+        push!(mc.gc_roots, cif)
         nargs = foreigncall_nargs(ex)
         i_retval = ctxf.cargs_starts[nargs + 1]
         continuation = get_continuation_store(mc, ctx.ip)
