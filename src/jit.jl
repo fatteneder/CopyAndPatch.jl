@@ -12,7 +12,7 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
     code_size = length(only(st.md.code.body))
     instr_stencil_starts = zeros(Int64, ctx.nssas)
     load_stencil_starts = Vector{Vector{Int64}}(undef, ctx.nssas)
-    store_stencil_starts = Dict{Int64,Int64}() # ip -> start
+    store_stencil_starts = Dict{Int64, Int64}() # ip -> start
     for (ip, ex) in enumerate(codeinfo.code)
         select_stencils!(ctx, ex, ip)
         load_stencils = ctx.load_stencils[ip]
@@ -65,8 +65,8 @@ mutable struct Context
     roots::Vector{Vector{Any}}
     load_stencils::Vector{Vector{StencilData}}
     instr_stencils::Vector{StencilData}
-    store_stencils::Dict{Int64,StencilData} # ip -> stencil
-    ctxs_foreigncall::Dict{Int64,ContextForeigncall}
+    store_stencils::Dict{Int64, StencilData} # ip -> stencil
+    ctxs_foreigncall::Dict{Int64, ContextForeigncall}
 end
 function Context(codeinfo::Core.CodeInfo)
     nssas = length(codeinfo.code)
@@ -75,8 +75,8 @@ function Context(codeinfo::Core.CodeInfo)
     roots = Vector{Any}[ Any[] for _ in 1:nssas ]
     load_stencils = Vector{StencilData}[ StencilData[] for _ in 1:nssas ]
     instr_stencils = Vector{StencilData}(undef, nssas)
-    store_stencils = Dict{Int64,StencilData}()
-    ctxs_foreigncall = Dict{Int64,ContextForeigncall}()
+    store_stencils = Dict{Int64, StencilData}()
+    ctxs_foreigncall = Dict{Int64, ContextForeigncall}()
     return Context(
         codeinfo, ip, il, nssas, ntmps, nroots, ncargs,
         inputs, roots, load_stencils, instr_stencils, store_stencils,
@@ -451,7 +451,7 @@ function select_stencils!(ctx::Context, ex, ip::Int64)
         # F->cargs[0:nargs-1] is the cargs array for ffi_call
         # F->cargs[nargs] is the return value
         # F->cargs[nargs + 1:2*nargs] is the memory to which elements of F->cargs[0:nargs-1] point
-        n_cargs = 2*nargs + 1
+        n_cargs = 2 * nargs + 1
         cargs_starts = Vector{Int64}(undef, n_cargs)
         sz_ptr = sizeof(Ptr{Cvoid})
         sz_cargs = 0
@@ -771,7 +771,7 @@ function select_stencils!(ctx::Context, ex::Expr)
         resize!(ctx.load_stencils[ctx.ip], nloads + nargs)
         for i in 1:nargs
             at = foreigncall_argtypes(ex, i)
-            ctx.load_stencils[ctx.ip][nloads+i] = select_load_foreigncall_stencil(at)
+            ctx.load_stencils[ctx.ip][nloads + i] = select_load_foreigncall_stencil(at)
         end
         # select store stencils to box the result F->cargs[nargs] into F->ssas[ip-1]
         rettype = foreigncall_rettype(ex)
@@ -964,4 +964,5 @@ function emit_store!(mc::MachineCode, ctx::Context, ex::Expr)
         rettype_ptr = pointer_from_objref(rettype)
         patch!(mc.buf, mc.store_stencil_starts[ctx.ip], st.md.code, "_JIT_TY", rettype_ptr)
     end
+    return
 end

@@ -6,10 +6,10 @@ mutable struct MachineCode
     codeinfo::Core.CodeInfo
     instr_stencil_starts::Vector{Int64}
     load_stencils_starts::Vector{Vector{Int64}}
-    store_stencil_starts::Dict{Int64,Int64} # ip -> start
+    store_stencil_starts::Dict{Int64, Int64} # ip -> start
     instr_stencils::Vector{StencilData}
     load_stencils::Vector{Vector{StencilData}}
-    store_stencils::Dict{Int64,StencilData} # ip -> stencil
+    store_stencils::Dict{Int64, StencilData} # ip -> stencil
     gc_roots::Vector{Any}
 
     function MachineCode(
@@ -18,10 +18,10 @@ mutable struct MachineCode
             codeinfo::Core.CodeInfo,
             instr_stencil_starts::Vector{Int64},
             load_stencils_starts::Vector{Vector{Int64}},
-            store_stencil_starts::Dict{Int64,Int64},
+            store_stencil_starts::Dict{Int64, Int64},
             instr_stencils::Vector{StencilData},
             load_stencils::Vector{Vector{StencilData}},
-            store_stencils::Dict{Int64,StencilData},
+            store_stencils::Dict{Int64, StencilData},
             gc_roots::Vector{Any} = Any[]
         )
         rt = rettype <: Union{} ? Nothing : rettype
@@ -32,7 +32,7 @@ mutable struct MachineCode
             Any[]
         else
             ats = Vector{Any}(undef, nargs)
-            for i in 1:nargs-1
+            for i in 1:(nargs - 1)
                 ats[i] = argtypes[i]
             end
             ats[end] = codeinfo.isva ? argtypes[nargs:end] : argtypes[end]
@@ -50,10 +50,10 @@ mutable struct MachineCode
             codeinfo::Core.CodeInfo,
             instr_stencil_starts::Vector{Int64},
             load_stencils_starts::Vector{Vector{Int64}},
-            store_stencil_starts::Dict{Int64,Int64},
+            store_stencil_starts::Dict{Int64, Int64},
             instr_stencils::Vector{StencilData},
             load_stencils::Vector{Vector{StencilData}},
-            store_stencils::Dict{Int64,StencilData},
+            store_stencils::Dict{Int64, StencilData},
             gc_roots::Vector{Any} = Any[]
         )
         mc = MachineCode(
@@ -104,9 +104,9 @@ function (mc::MachineCode)(@nospecialize(args...))
         Any[]
     else
         if mc.codeinfo.isva
-            Any[ args[1:nargs-1]..., args[nargs:end] ]
+            Any[args[1:(nargs - 1)]..., args[nargs:end]]
         else
-            Any[ args... ]
+            Any[args...]
         end
     end
     ci = C_NULL # unused by us, but required for ci->invoke abi
@@ -120,7 +120,7 @@ function Base.show(io::IO, ::MIME"text/plain", mc::MachineCode)
     print(io, "MachineCode(")
     if length(mc.argtypes) > 0
         if mc.codeinfo.isva
-            print(io, "::", join(mc.argtypes[1:end-1], ",::"), ",::", join(mc.argtypes[end], ",::"))
+            print(io, "::", join(mc.argtypes[1:(end - 1)], ",::"), ",::", join(mc.argtypes[end], ",::"))
         else
             print(io, "::", join(mc.argtypes, ",::"))
         end

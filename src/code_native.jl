@@ -155,7 +155,7 @@ function cpjit_code_native_instr_stencil!(
             stop = if haskey(mc.store_stencils, ip)
                 mc.store_stencil_starts[ip] - 1
             elseif ip == nstarts
-                    length(mc.buf)
+                length(mc.buf)
             else
                 if length(mc.load_stencils_starts[ip + 1]) > 0
                     mc.load_stencils_starts[ip + 1][1] - 1
