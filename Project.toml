@@ -4,9 +4,11 @@ version = "0.1.0"
 authors = ["Florian Atteneder"]
 
 [deps]
+Clang_jll = "0ee61d77-7f21-5576-8119-9fcc46b10100"
 Compiler = "807dbc54-b67e-4c79-8afb-eafe4df6f2e1"
 InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+LLVM_jll = "86de99a1-58d6-5da7-8064-bd56ce2e322c"
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
 Libffi_jll = "e9f186c6-92d2-5b65-8a66-fee21dc1b490"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
@@ -14,10 +16,14 @@ Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 REPL = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 
+[sources]
+Compiler = {path = "/home/flo/newd/julia/Compiler/"}
+
 [compat]
-Compiler = "0.0.3"
+Compiler = "0.1.1"
 InteractiveUtils = "1.11.0"
 JSON = "0.21.4"
+LLVM_jll = "20.1.8"
 Libdl = "1.11.0"
 Libffi_jll = "3.4.6"
 Logging = "1.11.0"

@@ -5,7 +5,7 @@ if [ "$#" -ne 1 ]; then
 fi
 obj=$1
 
-cmd="llvm-objdump --disassemble --section=.text $obj"
+cmd="$OBJDUMP --disassemble --section=.text $obj"
 dis=$($cmd)
 start=$(echo "$dis" | awk '/_JIT_ENTRY/ {print FNR}')
 ninstr=$(echo "$dis" | tail -n +$start | wc -l)
