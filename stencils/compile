@@ -4,7 +4,7 @@ CFLAGS=$1
 SRCNAME=$2
 OBJNAME=$3
 
-clang -O3 \
+$CLANG -O3 \
       -c \
       -fno-asynchronous-unwind-tables \
       -fno-jump-tables \
@@ -15,9 +15,9 @@ clang -O3 \
       -std=gnu11 \
       -fintegrated-as \
       $CFLAGS \
+      -I"${JULIA_REPO_SRC}" \
       -I"${JULIA_INCLUDE}" \
       -I"${JULIA_INCLUDE}/julia" \
-      -I"${JULIA_INTERNAL_INCLUDE}" \
       -I"${LIBFFI_INCLUDE}" \
       -I"$(pwd)" \
       -o $OBJNAME \
