@@ -8,12 +8,16 @@ JSON=$(OBJ:.o=.json)
 SO=$(SRCLIBS:.c=.so)
 LL=$(SRC:.c=.ll)
 
-BINOBJ=$(addprefix bin/,$(OBJ))
-BINJSON=$(addprefix bin/,$(JSON))
-BINSO=$(addprefix bin/,$(SO))
-BINLL=$(addprefix bin/,$(LL))
+ifeq ($(BINDIR),)
+	BINDIR:=/tmp/cpjit-bin/
+endif
+$(shell mkdir -p $(BINDIR))
+$(info compiling into $(BINDIR) ...)
 
-$(shell mkdir -p bin)
+BINOBJ=$(addprefix $(BINDIR),$(OBJ))
+BINJSON=$(addprefix $(BINDIR),$(JSON))
+BINSO=$(addprefix $(BINDIR),$(SO))
+BINLL=$(addprefix $(BINDIR),$(LL))
 
 CFLAGS=
 CC=$(CLANG)
@@ -41,36 +45,36 @@ else
 all: $(BINJSON) $(BINSO) $(BINLL)
 endif
 
-bin/%.o: %.c compile common.h
-	./compile "$(CFLAGS)" $< bin/$*.o
+$(BINDIR)%.o: %.c compile common.h
+	./compile "$(CFLAGS)" $< $(BINDIR)$*.o
 
-bin/%.json: bin/%.o readobj
-	./readobj $< > bin/$*.json
+$(BINDIR)%.json: $(BINDIR)%.o readobj
+	./readobj $< > $(BINDIR)$*.json
 
-bin/%.ll: %.c compile common.h
-	./compile "$(CFLAGS) -S -emit-llvm" $< bin/$*.ll
+$(BINDIR)%.ll: %.c compile common.h
+	./compile "$(CFLAGS) -S -emit-llvm" $< $(BINDIR)$*.ll
 
-bin/libjuliahelpers.so: libjuliahelpers.c
+$(BINDIR)libjuliahelpers.so: libjuliahelpers.c
 	$(CC) -I'${JULIA_REPO_SRC}' -I'${JULIA_INCLUDE}' -I'${JULIA_INCLUDE}/julia' \
 			-L'${JULIA_LIB}' -L'${JULIA_LIB}/julia' \
 			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
 			-std=gnu11 -fPIC -ljulia -ljulia-internal -shared \
-			-o bin/libjuliahelpers.so libjuliahelpers.c
+			-o $(BINDIR)libjuliahelpers.so libjuliahelpers.c
 
-bin/libccalltest.so: libccalltest.c
+$(BINDIR)libccalltest.so: libccalltest.c
 	$(CC) -I'${JULIA_REPO_SRC}' -I'${JULIA_INCLUDE}' -I'${JULIA_INCLUDE}/julia' \
 			-L'${JULIA_LIB}' -L'${JULIA_LIB}/julia' \
 			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
 			-std=gnu11 -fPIC -ljulia -ljulia-internal -shared \
-			-o bin/libccalltest.so libccalltest.c
+			-o $(BINDIR)libccalltest.so libccalltest.c
 
-bin/libffihelpers.so: libffihelpers.c
+$(BINDIR)libffihelpers.so: libffihelpers.c
 	$(CC) -I'${LIBFFI_INCLUDE}' \
 			-std=gnu11 -fPIC -lffi -shared \
-			-o bin/libffihelpers.so libffihelpers.c
+			-o $(BINDIR)libffihelpers.so libffihelpers.c
 
 # TODO Remove
-bin/libmwes.so:
+$(BINDIR)libmwes.so:
 
 clean:
-	@rm -rf bin/
+	@rm -rf $(BINDIR)
