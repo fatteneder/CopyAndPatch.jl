@@ -1,4 +1,0 @@
-[submodule "julia"]
-	path = julia
-	url = git@github.com:fatteneder/julia.git
-	shallow = true
