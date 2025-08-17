@@ -8,27 +8,31 @@ import TOML
 
 nthreads = Sys.CPU_THREADS ÷ 2
 
-project_toml = joinpath(@__DIR__, "..", "Project.toml")
-manifest_toml = joinpath(@__DIR__, "..", "Manifest.toml")
+project_file = joinpath(@__DIR__, "..", "Project.toml")
+manifest_file = joinpath(@__DIR__, "..", "Manifest.toml")
 
-version = VersionNumber(TOML.parsefile(project_toml)["version"])
-isdeved = haskey(only(TOML.parsefile(manifest_toml)["deps"]["CopyAndPatch"]), "path")
+project_toml = TOML.parsefile(project_file)
+uuid = Base.UUID(project_toml["uuid"])
+version = VersionNumber(project_toml["version"])
+isdeved = haskey(only(TOML.parsefile(manifest_file)["deps"]["CopyAndPatch"]), "path")
 
-scratch_dir = Scratch.@get_scratch!("CopyAndPatch-$(version)")
+scratch_dir = Scratch.get_scratch!(uuid, "CopyAndPatch-$(version)")
 stencil_dir = joinpath(@__DIR__, "..", "stencils")
 vendored_julia_dir = joinpath(Sys.BINDIR, "..")
 julia_repo_artifact_dir = Artifacts.artifact"julia_repo"
+bin_dir = joinpath(scratch_dir, "cpjit-bin", "")
 
 # copy the julia_repo dir into a scratch dir, as we need to download some dependencies in there too
 julia_repo_dir = joinpath(scratch_dir, "julia_repo")
+mkpath(julia_repo_dir)
 if isempty(readdir(julia_repo_dir))
-    cp(julia_repo_artifact_dir, julia_repo_dir)
-    # download julia's dependencies, needed for including julia internal headers in stencils
+    cp(julia_repo_artifact_dir, julia_repo_dir, force=true)
+    julia_repo_dir = joinpath(julia_repo_dir, only(readdir(julia_repo_dir)))
+    # install julia's dependencies, needed to be able to include julia_internal.h in stencils
     run(Cmd(`make -C $(julia_repo_dir)/deps -j$(nthreads)`))
 else
     julia_repo_dir = joinpath(julia_repo_dir, only(readdir(julia_repo_dir)))
 end
-julia_repo_dir = joinpath(julia_repo_dir, only(readdir(julia_repo_dir)))
 
 # extract LD_LIBRARY list needed for clang cmd
 clang_cmd = Clang_jll.clang()
@@ -47,6 +51,7 @@ make_env["READOBJ"] = joinpath(LLVM_jll.artifact_dir, "tools", "llvm-readobj")
 make_env["OBJDUMP"] = joinpath(LLVM_jll.artifact_dir, "tools", "llvm-objdump")
 make_env["CLANG"] = joinpath(Clang_jll.clang_path)
 make_env["LD_LIBRARY_PATH"] = ld_library_path
+make_env["BINDIR"] = bin_dir
 
 # merge with current env
 env = copy(ENV)
