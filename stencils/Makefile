@@ -1,7 +1,7 @@
 SRCLIBS=$(wildcard lib*.c)
+SRCMWES=$(wildcard mwe_*.c)
 SRC=$(wildcard *.c)
-SRC+=$(wildcard mwes/*.c)
-SRC:=$(filter-out $(SRCLIBS),$(SRC))
+SRC:=$(filter-out $(SRCLIBS) $(SRCMWES),$(SRC))
 
 OBJ=$(SRC:.c=.o)
 JSON=$(OBJ:.o=.json)
@@ -74,7 +74,12 @@ $(BINDIR)libffihelpers.so: libffihelpers.c
 			-o $(BINDIR)libffihelpers.so libffihelpers.c
 
 # TODO Remove
-$(BINDIR)libmwes.so:
+$(BINDIR)libmwes.so: libmwes.c
+	$(CC) -I'${JULIA_INCLUDE}/julia' -I'${LIBFFI_INCLUDE}' \
+			-L'${JULIA_LIB}' \
+			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
+			-std=gnu11 -fPIC -ljulia -ljulia-internal -lffi -shared \
+			-o $(BINDIR)libmwes.so libmwes.c
 
 clean:
 	@rm -rf $(BINDIR)
