@@ -24,9 +24,6 @@ Scratch = "6c6a2e73-6563-6170-7368-637461726353"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 Tar = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
 
-[sources]
-Compiler = {path = "/home/flo/newd/julia4/Compiler/"}
-
 [compat]
 Artifacts = "1.11.0"
 Downloads = "1.7.0"
