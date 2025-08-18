@@ -6,42 +6,35 @@ CopyAndPatch.jl
 </h1>
 
 
-## Preparing stencils
+## Prequisites
 
-Prerequisites for stencil generation
-- `clang`: compiler
-- `llvm-readobj`: exe
-- `libffi`: library and headers
-- `llvm-mc`: exe (for `code_native` implementation)
-- `llvm-objdump`: exe (optional for debugging stencils)
-- `julia`: exe, library and headers; need a local build of [this](https://github.com/fatteneder/julia/tree/cpjit-mmap-v3) tag which implements `exec` option for `mmap`
+- `julia`: need a local build of [this](https://github.com/fatteneder/julia/tree/cpjit-mmap-v3) tag which implements `exec` option for `mmap`
 
-`clang, llvm-readobj, llvm-objdump` should be from the same `LLVM` version (and at least `LLVM 17+`).
+## Development
 
-- You can download prebuild binaries from https://github.com/llvm/llvm-project/releases/tag/llvmorg-17.0.6
-
-> Using prebuild binaries can cause warnings like `clang: /lib64/libtinfo.so.6: no version information available (required by clang)`
-> These have not been of harm yet to my tests.
-
-- On an `apt` powered OS use `apt install clang-17 llvm-17 llvm-17-tools libffi-dev`.
-
-Compile stencils and helpers:
 ```
-$ cd stencils
-$ source setup.sh # need to update this to your local installation
-$ make
-$ cd ..
-$ julia --project
-julia> using Pkg; Pkg.dev("/path/to/local-julia-build/Compiler"); Pkg.instantiate()
-```
-
-Test:
-```
-$ julia --project=CopyAndPatch
+$ /path/to/julia-build/julia --project
+julia> import Pkg
+julia> Pkg.develop("/path/to/julia-build/Compiler")
+julia> Pkg.build() # this can take a while, as it downloads julia's LLVM dependencies
 julia> include("test/runtests.jl")
 ```
 
+- If the build command fails, check the `deps/build.log` output.
+- To change the julia-repo artifact update the download url in `deps/generate_artifacts.toml`,
+  run the script and rebuild.
+- To recompile all stencils run `import Scratch; Scratch.clear_scratchspaces!()` and rebuild.
+
 ## Dev notes
+
+The first `Pkg.build()` run creates a script `stencils/setup.sh` with env variables needed
+for the build process. You can use it as follows
+```
+cd stencils
+sourc setup.sh
+make -j4 # rebuild stencils outside julia
+cd $CPJIT_SCRATCH_DIR # inspect scratch space setup etc
+```
 
 `make` options:
 - `debug=1`: enable stencil's DEBUGSTMT output
