@@ -3,6 +3,7 @@ import Clang_jll
 import Downloads
 import Libffi_jll
 import LLVM_jll
+import Preferences
 import Scratch
 import TOML
 
@@ -52,6 +53,11 @@ make_env["OBJDUMP"] = joinpath(LLVM_jll.artifact_dir, "tools", "llvm-objdump")
 make_env["CLANG"] = joinpath(Clang_jll.clang_path)
 make_env["LD_LIBRARY_PATH"] = ld_library_path
 make_env["BINDIR"] = bin_dir
+# Makefile options
+make_env["MAKE_DEBUG"] = Preferences.load_preference(uuid, "debug", 0)
+make_env["MAKE_USE_GHC_CC"] = Preferences.load_preference(uuid, "use_ghc_cc", 0)
+make_env["MAKE_EMIT_LLVM"] = Preferences.load_preference(uuid, "emit_llvm",  0)
+
 
 # merge with current env
 env = copy(ENV)
@@ -59,9 +65,10 @@ for (k,v) in pairs(make_env)
     if k == "LD_LIBRARY_PATH"
         env[k] = "$(get!(env, k, "")):$(v)"
     else
-        env[k] = v
+        env[k] = string(v)
     end
 end
+
 
 if isdeved
     # store the make variables in a local shell script to allow building stencils manually

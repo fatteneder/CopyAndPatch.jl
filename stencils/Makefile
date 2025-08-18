@@ -12,7 +12,7 @@ ifeq ($(BINDIR),)
 	BINDIR:=/tmp/cpjit-bin/
 endif
 $(shell mkdir -p $(BINDIR))
-$(info compiling into $(BINDIR) ...)
+$(info working directory is $(BINDIR) ...)
 
 BINOBJ=$(addprefix $(BINDIR),$(OBJ))
 BINJSON=$(addprefix $(BINDIR),$(JSON))
@@ -23,17 +23,17 @@ CFLAGS=
 CC=$(CLANG)
 
 # makefile options
-debug?=0
+debug?=$(MAKE_DEBUG)
 ifeq ($(debug),1)
 CFLAGS+=-DJITDEBUG
 endif
 
-use_ghc_cc?=0
+use_ghc_cc?=$(MAKE_USE_GHC_CC)
 ifeq ($(use_ghc_cc),1)
 CFLAGS+=-DUSE_GHC_CC
 endif
 
-emit_llvm?=0
+emit_llvm?=$(MAKE_EMIT_LLVM)
 
 # targets
 
