@@ -157,7 +157,7 @@ end
     @test unsafe_string(result) == expected
 
     # some of the ccall.jl tests
-    handle = Libdl.dlopen(joinpath(@__DIR__, "..", "stencils", "bin", "libccalltest.so"))
+    handle = Libdl.dlopen(libccalltest)
 
     cif = CP.Ffi_cif(Ptr{Int64}, (Any,))
     fn = Libdl.dlsym(handle, :test_echo_p)

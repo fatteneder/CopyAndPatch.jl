@@ -20,6 +20,9 @@ else
     const CC = Core.Compiler
 end
 import Core.OptimizedGenerics.CompilerPlugins as CCPlugins
+import Scratch
+import TOML
+
 
 
 include("utils.jl")
@@ -39,8 +42,7 @@ const MAGICNR = 0xDEADBEEFDEADBEEF
 
 
 function init_stencils()
-    stencildir = joinpath(@__DIR__, "..", "stencils", "bin")
-    files = readdir(stencildir, join = true)
+    files = readdir(STENCIL_DIR[], join = true)
     filter!(files) do f
         endswith(f, ".json")
     end
@@ -110,10 +112,18 @@ const LIBJULIA = Ref{Ptr{Cvoid}}(0)
 const LIBJULIAINTERNAL = Ref{Ptr{Cvoid}}(0)
 const LIBC = Ref{Ptr{Cvoid}}(0)
 const LIBJULIAHELPERS = Ref{Ptr{Cvoid}}(0)
+const SCRATCH_DIR = Ref{String}("")
+const STENCIL_DIR = Ref{String}("")
 function __init__()
-    LIBJULIAHELPERS_PATH[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libjuliahelpers.so"))
-    LIBFFIHELPERS_PATH[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libffihelpers.so"))
-    LIBMWES_PATH[] = normpath(joinpath(@__DIR__, "..", "stencils", "bin", "libmwes.so"))
+    project_file = joinpath(@__DIR__, "..", "Project.toml")
+    project_toml = TOML.parsefile(project_file)
+    uuid = Base.UUID(project_toml["uuid"])
+    version = VersionNumber(project_toml["version"])
+    SCRATCH_DIR[] = Scratch.get_scratch!(uuid, "CopyAndPatch-$(version)")
+    STENCIL_DIR[] = joinpath(SCRATCH_DIR[], "cpjit-bin")
+    LIBJULIAHELPERS_PATH[] = normpath(joinpath(STENCIL_DIR[], "libjuliahelpers.so"))
+    LIBFFIHELPERS_PATH[] = normpath(joinpath(STENCIL_DIR[], "libffihelpers.so"))
+    LIBMWES_PATH[] = normpath(joinpath(STENCIL_DIR[], "libmwes.so"))
     LIBJULIA[] = Libdl.dlopen(Libdl.dlpath("libjulia.so"))
     LIBJULIAINTERNAL[] = Libdl.dlopen(Libdl.dlpath("libjulia-internal.so"))
     LIBC[] = Libdl.dlopen(Libdl.dlpath("libc.so.6"))

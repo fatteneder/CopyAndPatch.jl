@@ -24,16 +24,16 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 Tar = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
 
 [sources]
-Compiler = {path = "/home/flo/newd/julia/Compiler/"}
+Compiler = {path = "/home/flo/newd/julia4/Compiler/"}
 
 [compat]
 Artifacts = "1.11.0"
-Compiler = "0.1.1"
+# Compiler = "0.0.3"
 Downloads = "1.7.0"
 Inflate = "0.1.5"
 InteractiveUtils = "1.11.0"
 JSON = "0.21.4"
-LLVM_jll = "20.1.8"
+# LLVM_jll = "20.1.8"
 Libdl = "1.11.0"
 Libffi_jll = "3.4.6"
 Logging = "1.11.0"

@@ -78,5 +78,12 @@ if isdeved
     end
 end
 
+# The pkg needs the llvm-mc artifact. To avoid loading LLVM_jll, we symlink it into the scratch dir.
+llvm_mc = joinpath(LLVM_jll.artifact_dir, "tools", "llvm-mc")
+sym_llvm_mc = joinpath(scratch_dir, "llvm-mc")
+if !islink(sym_llvm_mc)
+    symlink(llvm_mc, sym_llvm_mc)
+end
+
 # compile our stencils
 run(Cmd(`make -C $(stencil_dir) -j$(nthreads)`; env))

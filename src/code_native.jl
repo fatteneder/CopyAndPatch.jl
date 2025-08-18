@@ -50,15 +50,15 @@ function code_native(
     end
     codestr = join(Iterators.map(string, code), ' ')
     out, err = Pipe(), Pipe()
-    # TODO src/disasm.cpp also exports a disassembler which is based on llvm-mc
-    # jl_value_t *jl_dump_fptr_asm_impl(uint64_t fptr, char emit_mc, const char* asm_variant, const char *debuginfo, char binary)
-    # maybe we can repurpose that to avoid the extra llvm-mc dependency?
+    llvm_mc = joinpath(SCRATCH_DIR[], "llvm-mc")
     if hex_for_imm
-        cmd = `llvm-mc --disassemble --output-asm-variant=$variant --print-imm-hex`
+        cmd = `$(llvm_mc) --disassemble --output-asm-variant=$variant --print-imm-hex`
     else
-        cmd = `llvm-mc --disassemble --output-asm-variant=$variant`
+        cmd = `$(llvm_mc) --disassemble --output-asm-variant=$variant`
     end
-    pipe = pipeline(cmd, stdout = out, stderr = err)
+    libLLVM = Libdl.dlpath("libLLVM.so") # required to run llvm-mc
+    env = copy(ENV); env["LD_LIBRARY_PATH"] = dirname(libLLVM)
+    pipe = pipeline(Cmd(cmd; env), stdout = out, stderr = err)
     open(pipe, "w", stdin) do p
         println(p, codestr)
     end
