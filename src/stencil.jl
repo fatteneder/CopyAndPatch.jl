@@ -280,10 +280,14 @@ function StencilGroup(json::Vector{Any}, name::String)
 end
 
 
-patch!(b::ByteVector, h::Hole, val; kwargs...) = patch!(b, 0, h, val; kwargs...)
-
 patch!(b::ByteVector, start::Integer, h::Hole, val; kwargs...) =
     b[start #=1-based=# + h.offset] = val
+
+patch!(b::ByteVector, start::Integer, h::Hole, val::Ptr; kwargs...) =
+    b[start #=1-based=# + h.offset] = Ptr{Cvoid}(Ptr{UInt8}(val) + h.addend)
+
+patch!(b::ByteVector, h::Hole, val; kwargs...) = patch!(b, 0, h, val; kwargs...)
+
 patch!(bvec::ByteVector, st::Stencil, symbol::String, val; kwargs...) =
     patch!(bvec, 0, st, symbol, val, kwargs...)
 
@@ -310,6 +314,7 @@ function patch!(
     end
     return
 end
+
 function patch!(
         vec::AbstractVector{<:UInt8}, offset::Integer, st::Stencil, symbol::String, val;
         kwargs...
