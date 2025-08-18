@@ -280,19 +280,22 @@ function StencilGroup(json::Vector{Any}, name::String)
 end
 
 
-patch!(b::ByteVector, start::Integer, h::Hole, val; kwargs...) =
-    b[start #=1-based=# + h.offset] = val
+function patch!(b::ByteVector, start::Integer, offset::Integer, addend::Integer, val)
+    @assert addend == 0
+    b[start #=1-based=# + offset] = val
+    return
+end
 
-patch!(b::ByteVector, start::Integer, h::Hole, val::Ptr; kwargs...) =
-    b[start #=1-based=# + h.offset] = Ptr{Cvoid}(Ptr{UInt8}(val) + h.addend)
-
-patch!(b::ByteVector, h::Hole, val; kwargs...) = patch!(b, 0, h, val; kwargs...)
+function patch!(b::ByteVector, start::Integer, offset::Integer, addend::Integer, val::Ptr)
+    b[start #=1-based=# + offset] = Ptr{Cvoid}(Ptr{UInt8}(val) + addend)
+    return
+end
 
 patch!(bvec::ByteVector, st::Stencil, symbol::String, val; kwargs...) =
     patch!(bvec, 0, st, symbol, val, kwargs...)
 
 function patch!(
-        bvec::ByteVector, offset::Integer, st::Stencil, symbol::String, val;
+        bvec::ByteVector, start::Integer, st::Stencil, symbol::String, val;
         optional::Bool = false
     )
     holes = st.relocations
@@ -300,12 +303,12 @@ function patch!(
     for h in holes
         if h.symbol == symbol
             if h.kind == "R_X86_64_64"
-                # zero hole
-                patch!(bvec, offset, h, 0)
+                # zero out the hole
+                patch!(bvec, start, h.offset, 0#=addend=#, UInt64(0))
             else
                 TODO(h.kind)
             end
-            patch!(bvec, offset, h, val)
+            patch!(bvec, start, h.offset, h.addend, val)
             anyfound = true
         end
     end
