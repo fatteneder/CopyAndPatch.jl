@@ -73,7 +73,6 @@ $(BINDIR)libffihelpers.so: libffihelpers.c
 			-std=gnu11 -fPIC -lffi -shared \
 			-o $(BINDIR)libffihelpers.so libffihelpers.c
 
-# TODO Remove
 $(BINDIR)libmwes.so: libmwes.c
 	$(CC) -I'${JULIA_INCLUDE}/julia' -I'${LIBFFI_INCLUDE}' \
 			-L'${JULIA_LIB}' \
