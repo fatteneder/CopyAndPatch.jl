@@ -5,34 +5,34 @@ baremodule HoleValues
     @enum HoleValue CODE CONTINUE DATA EXECUTOR GOT OPARG OPERAND TARGET TOP ZERO
     export HoleValue
 end
+using .HoleValues
 
 
 mutable struct Hole
     offset::Int64
-    kind
-    value
-    symbol
+    kind::String
+    value::HoleValue
+    symbol::Union{String,Nothing}
     addend::Int64
 end
 
 
 mutable struct Stencil
     parent::Any # the StencilGroup the stencil is contained in
-    const body
-    const holes
-    const disassembly
-    const symbols
-    const offsets
-    const relocations
+    const body::Vector{UInt8}
+    const holes::Vector{Hole}
+    const symbols::Dict{String,Any}
+    const offsets::Dict{Int64,Int64}
+    const relocations::Vector{Hole}
 end
-Stencil() = Stencil(nothing, [], [], [], Dict(), Dict(), [])
+Stencil() = Stencil(nothing, UInt8[], Hole[], Dict{String,Any}(), Dict{Int64,Int64}(), Hole[])
 
 
 mutable struct StencilGroup
     const name::String
     const code::Stencil # actual machine code (with holes)
     const data::Stencil # needed to build a header file
-    const global_offset_table
+    const global_offset_table::Dict{String,Any}
     isIntrinsicFunction::Bool
 end
 
@@ -40,7 +40,7 @@ end
 struct StencilData
     md::StencilGroup # stencil meta data
     bvec::ByteVector # _JIT_ENTRY section
-    bvecs_data::Vector{ByteVector}
+    bvec_data::ByteVector # .rodata and similar
 end
 
 
@@ -54,9 +54,9 @@ get_name(st::StencilData) = st.md.name
 
 
 function handle_section(section, group::StencilGroup)
-    section_type = section["Type"]["Name"] # build.py uses Value instead of Name, why?
+    section_type = section["Type"]["Name"]
     flags = [ flag["Name"] for flag in section["Flags"]["Flags"] ]
-    if section_type == "SHT_RELA"
+    if section_type == "SHT_RELA" # relocation entries with addends
         @assert "SHF_INFO_LINK" in flags flags
         @assert getkey(section, "Symbols", nothing) !== nothing
         if section["Info"] in keys(group.code.offsets)
@@ -67,44 +67,43 @@ function handle_section(section, group::StencilGroup)
         base = stencil.offsets[section["Info"]]
         for wrapped_relocation in section["Relocations"]
             relocation = wrapped_relocation["Relocation"]
-            hole = handle_relocation(base, relocation, stencil.body)
+            hole = handle_relocation(base, relocation)
             push!(stencil.relocations, hole)
         end
-    elseif section_type == "SHT_PROGBITS"
+    elseif section_type == "SHT_PROGBITS" # .text (exec code), .data (init data), .rodata (read-only data)
         if !("SHF_ALLOC" in flags)
             return
         end
         if "SHF_EXECINSTR" in flags
             stencil = group.code
-        else # ???
+        else
             stencil = group.data
         end
-        stencil.offsets[section["Index"]] = length(stencil.body)
-        for wrapped_symbol in section["Symbols"]
-            symbol = wrapped_symbol["Symbol"]
+        if length(section["Symbols"]) > 0
+            symbol = only(section["Symbols"])["Symbol"]
+            stencil.offsets[section["Index"]] = length(stencil.body)
             offset = length(stencil.body) + symbol["Value"]
             name = symbol["Name"]["Name"]
-            # name = name.removeprefix(self.prefix) # TODO needed? it's either "_" or ""
-            # @assert !(name in stencil.symbols)
             @assert !haskey(stencil.symbols, name)
             stencil.symbols[name] = offset
+            stencil.offsets[section["Index"]] = length(stencil.body)
+            bytes = section["SectionData"]["Bytes"]
+            @assert length(bytes) > 0 && length(stencil.body) == 0
+            append!(stencil.body, UInt8.(bytes))
+            @assert section["Relocations"] !== nothing
         end
-        section_data = section["SectionData"]
-        push!(stencil.body, section_data["Bytes"])
-        @assert section["Relocations"] !== nothing
     elseif section_type == "SHT_X86_64_UNWIND"
         error("Found section 'SHT_X86_64_UNWIND. Did you compile with -fno-asynchronous-unwind-table?")
     else
         @assert section_type in (
-            "SHT_GROUP",
-            "SHT_LLVM_ADDRSIG",
-            "SHT_NULL",
-            "SHT_STRTAB",
-            "SHT_SYMTAB",
-            # "SHT_NOBITS" # added by me; this a section header for section that does not contain actual data
-            # # (e.g. uninitialized global and static vars) -- ref: gemini
+            "SHT_GROUP", # groupped section, has no actual data or code
+            "SHT_LLVM_ADDRSIG", # llvm specific for LTO
+            "SHT_NULL", # unused or inactive section
+            "SHT_STRTAB", # sections with null-terminated strings referenced somewhere else
+            "SHT_SYMTAB", # symbol table, e.g. function names and global variables
         ) section_type
     end
+    # TODO Move to SHT_PROGBITS?
     if section["Name"]["Name"] == ".data"
         for sym in section["Symbols"]
             s = get(sym, "Symbol", nothing); s === nothing && continue
@@ -119,7 +118,7 @@ function handle_section(section, group::StencilGroup)
 end
 
 
-function handle_relocation(base, relocation, raw)
+function handle_relocation(base, relocation)
     offset = get(relocation, "Offset", nothing)
     isnothing(offset) && error(relocation)
     type = get(relocation, "Type", nothing)
@@ -136,17 +135,6 @@ function handle_relocation(base, relocation, raw)
     # TODO Remove prefix from s?
     value, symbol = symbol_to_value(s)
     return Hole(offset, kind, value, symbol, addend)
-end
-
-
-function pad!(s::Stencil, alignment::Int64)
-    offset = length(s.body)
-    # TODO Is max-ing here ok?
-    padding = max(-offset % alignment, 0)
-    push!(s.disassembly, "$(UInt8(offset)): $(join(("00" for _ in 1:padding), ' '))")
-    return if padding > 0
-        push!(s.disassembly, repeat([UInt8(0)], padding))
-    end
 end
 
 function process_relocations(stencil::Stencil, group::StencilGroup)
@@ -226,33 +214,22 @@ function emit_global_offset_table!(group)
                 value_part *= " + "
             end
         end
-        @show(value_part)
-        @show(addend_part)
-        push!(group.data.disassembly, "$(UInt8(length(group.data.body))): $(value_part)$(addend_part)")
+        TODO("padding")
         push!(group.data.body, repeat([UInt8(0)], padding))
     end
     return
 end
 
 
-StencilGroup(path::AbstractString, name::String) = StencilGroup(JSON.parsefile(string(path)), name)
-function StencilGroup(json::Vector{Any}, name::String)
+StencilGroup(path::AbstractString, name::String) = StencilGroup(only(JSON.parsefile(string(path))), name)
+function StencilGroup(json::Dict, name::String)
     group = StencilGroup(name, Stencil(), Stencil(), Dict(), false)
     group.code.parent = group
     group.data.parent = group
-    for sec in json[1]["Sections"]
+
+    for sec in json["Sections"]
         handle_section(sec["Section"], group)
     end
-
-    @assert group.code.symbols["_JIT_ENTRY"] == 0
-    if length(group.data.body) > 0
-        # @assert length(group.data.body) == 1
-        body = UInt8.(group.data.body[1])
-        line = "0: $(join(Printf.format.(Ref(HEXFMT), body), ' '))"
-        push!(group.data.disassembly, line)
-    end
-
-    pad!(group.data, 8)
 
     process_relocations(group.code, group)
 

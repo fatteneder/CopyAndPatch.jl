@@ -9,7 +9,7 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
     # compute total number of bytes and stencil offsets
     # abi stencil is handled separately from the AST instructions
     st = get_stencil("abi")
-    code_size = length(only(st.md.code.body))
+    code_size = length(st.md.code.body)
     instr_stencil_starts = zeros(Int64, ctx.nssas)
     load_stencil_starts = Vector{Vector{Int64}}(undef, ctx.nssas)
     store_stencil_starts = Dict{Int64, Int64}() # ip -> start
@@ -19,15 +19,15 @@ function jit(codeinfo::Core.CodeInfo, @nospecialize(fn), @nospecialize(rettype),
         load_stencil_starts[ip] = zeros(Int64, length(load_stencils))
         for (il, st) in enumerate(load_stencils)
             load_stencil_starts[ip][il] = 1 + code_size
-            code_size += length(only(st.md.code.body))
+            code_size += length(st.md.code.body)
         end
         st = ctx.instr_stencils[ip]
         instr_stencil_starts[ip] = 1 + code_size
-        code_size += length(only(st.md.code.body))
+        code_size += length(st.md.code.body)
         if haskey(ctx.store_stencils, ip)
             st = ctx.store_stencils[ip]
             store_stencil_starts[ip] = 1 + code_size
-            code_size += length(only(st.md.code.body))
+            code_size += length(st.md.code.body)
         end
     end
 
