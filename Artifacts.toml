@@ -1,0 +1,7 @@
+[julia_repo]
+git-tree-sha1 = "1d2b6395f9e6675b89c70fa95fed73987b6abc72"
+
+    [[julia_repo.download]]
+    url = "https://github.com/fatteneder/julia/tarball/43e596c119f7e32ee22b5531b793af6a1a7f03b4"
+    sha256 = "70a139dbfaa559e2707f2e26b5b40e68381ea4030f7fdf50611529481b57a1cf"
+

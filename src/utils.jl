@@ -8,18 +8,6 @@ TODO(prefix, msg) = error(prefix, msg)
 is_little_endian() = ENDIAN_BOM == 0x04030201
 
 
-# from stencils/libjuliahelpers.c
-is_method_instance(mi) = @ccall LIBJULIAHELPERS_PATH[].is_method_instance(mi::Any)::Cint
-function is_bool(b)
-    p = box(b)
-    return GC.@preserve b @ccall LIBJULIAHELPERS_PATH[].is_bool(p::Ptr{Cvoid})::Cint
-end
-is_concrete_immutable(x::DataType) =
-    @ccall LIBJULIAHELPERS_PATH[].jl_is_concrete_immutable(x::Any)::Bool
-is_pointerfree(x::DataType) =
-    @ccall LIBJULIAHELPERS_PATH[].jl_is_pointerfree(x::Any)::Bool
-
-
 # @nospecialize is needed here to return the desired pointer also for immutables.
 # IIUC without it jl_value_ptr will not see the immutable container and instead
 # return a pointer to the first field in x.

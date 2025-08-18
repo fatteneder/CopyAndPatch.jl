@@ -1,5 +1,3 @@
-const libccalltest = joinpath(@__DIR__, "..", "stencils", "bin", "libccalltest.so")
-
 #### These tests were crafted by me to figure things out
 
 function mimic_test(x)
@@ -861,17 +859,15 @@ verbose && Libc.flush_cstdio()
 # TODO Skipping cfunction_closure tests for now, because I don't understand them
 
 # issue 13031
+foo13031(x) = Cint(1)
 # a simplified version to develop loading the foreign function from the SSA array,
 # e.g. avoids the Ref{Tuple{}} argtype appearing below
-foo13031(x) = Cint(1)
 simple_foo13031p = @cfunction(foo13031, Cint, (Cint,))
 simple_test_foo13031p(x) = ccall(simple_foo13031p, Cint, (Cint,), x)
 let
     @test @cpjit(simple_test_foo13031p, (Cint(1),)) == Cint(1)
 end
-
-# issue 13031
-foo13031(x) = Cint(1)
+# normal version
 foo13031p = @cfunction(foo13031, Cint, (Ref{Tuple{}},))
 test_foo13031p() = ccall(foo13031p, Cint, (Ref{Tuple{}},), ())
 let

@@ -81,16 +81,20 @@ function handle_section(section, group::StencilGroup)
         end
         if length(section["Symbols"]) > 0
             symbol = only(section["Symbols"])["Symbol"]
-            stencil.offsets[section["Index"]] = length(stencil.body)
-            offset = length(stencil.body) + symbol["Value"]
             name = symbol["Name"]["Name"]
-            @assert !haskey(stencil.symbols, name)
-            stencil.symbols[name] = offset
-            stencil.offsets[section["Index"]] = length(stencil.body)
-            bytes = section["SectionData"]["Bytes"]
-            @assert length(bytes) > 0 && length(stencil.body) == 0
-            append!(stencil.body, UInt8.(bytes))
-            @assert section["Relocations"] !== nothing
+            if name == "isIntrinsicFunction"
+                group.isIntrinsicFunction = true
+            else
+                stencil.offsets[section["Index"]] = length(stencil.body)
+                offset = length(stencil.body) + symbol["Value"]
+                @assert !haskey(stencil.symbols, name)
+                stencil.symbols[name] = offset
+                stencil.offsets[section["Index"]] = length(stencil.body)
+                bytes = section["SectionData"]["Bytes"]
+                @assert length(bytes) > 0 && length(stencil.body) == 0 name
+                append!(stencil.body, UInt8.(bytes))
+                @assert section["Relocations"] !== nothing
+            end
         end
     elseif section_type == "SHT_X86_64_UNWIND"
         error("Found section 'SHT_X86_64_UNWIND. Did you compile with -fno-asynchronous-unwind-table?")
@@ -102,17 +106,6 @@ function handle_section(section, group::StencilGroup)
             "SHT_STRTAB", # sections with null-terminated strings referenced somewhere else
             "SHT_SYMTAB", # symbol table, e.g. function names and global variables
         ) section_type
-    end
-    # TODO Move to SHT_PROGBITS?
-    if section["Name"]["Name"] == ".data"
-        for sym in section["Symbols"]
-            s = get(sym, "Symbol", nothing); s === nothing && continue
-            name = get(s, "Name", nothing); name === nothing && continue
-            if name["Name"] == "isIntrinsicFunction"
-                group.isIntrinsicFunction = true
-            end
-            break
-        end
     end
     return section
 end

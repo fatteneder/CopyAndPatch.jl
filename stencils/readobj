@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-llvm-readobj --elf-output-style=JSON \
+$READOBJ --elf-output-style=JSON \
              --expand-relocs \
              --section-data \
              --section-relocations \

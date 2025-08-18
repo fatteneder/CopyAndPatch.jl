@@ -1,10 +1,14 @@
 using Test
 
-import CopyAndPatch as CP
 import Base.Libc
+import CopyAndPatch as CP
+import InteractiveUtils
 import Libdl
 import Random
-import InteractiveUtils
+
+
+const libccalltest = joinpath(CP.STENCIL_DIR[], "libccalltest.so")
+
 
 # TODO Maybe move to src/ and utilize @invokelatest syntax (only need Base.destruct_callex)
 macro cpjit(f, args, types::Union{Expr,Symbol,Nothing}=nothing)

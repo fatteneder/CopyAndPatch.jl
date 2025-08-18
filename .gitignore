@@ -1,0 +1,7 @@
+Manifest.toml
+LocalPreferences.toml
+deps/build.log
+stencils/bin
+stencils/clang_version.txt
+stencils/compile_flags.txt
+stencils/setup.sh

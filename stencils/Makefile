@@ -1,97 +1,84 @@
 SRCLIBS=$(wildcard lib*.c)
 SRCMWES=$(wildcard mwe_*.c)
 SRC=$(wildcard *.c)
-SRC+=$(wildcard mwes/*.c)
 SRC:=$(filter-out $(SRCLIBS) $(SRCMWES),$(SRC))
 
 OBJ=$(SRC:.c=.o)
 JSON=$(OBJ:.o=.json)
 SO=$(SRCLIBS:.c=.so)
-MWES=$(SRCMWES:.c=)
 LL=$(SRC:.c=.ll)
 
-BINOBJ=$(addprefix bin/,$(OBJ))
-BINJSON=$(addprefix bin/,$(JSON))
-BINSO=$(addprefix bin/,$(SO))
-BINMWES=$(addprefix bin/,$(MWES))
-BINLL=$(addprefix bin/,$(LL))
+ifeq ($(BINDIR),)
+	BINDIR:=/tmp/cpjit-bin/
+endif
+$(shell mkdir -p $(BINDIR))
+$(info working directory is $(BINDIR) ...)
 
-$(shell mkdir -p bin/mwes)
+BINOBJ=$(addprefix $(BINDIR),$(OBJ))
+BINJSON=$(addprefix $(BINDIR),$(JSON))
+BINSO=$(addprefix $(BINDIR),$(SO))
+BINLL=$(addprefix $(BINDIR),$(LL))
 
 CFLAGS=
-CC=clang
+CC=$(CLANG)
 
 # makefile options
-debug?=0
+debug?=$(MAKE_DEBUG)
 ifeq ($(debug),1)
 CFLAGS+=-DJITDEBUG
 endif
 
-use_ghc_cc?=0
+use_ghc_cc?=$(MAKE_USE_GHC_CC)
 ifeq ($(use_ghc_cc),1)
 CFLAGS+=-DUSE_GHC_CC
 endif
 
-emit_llvm?=0
+emit_llvm?=$(MAKE_EMIT_LLVM)
 
 # targets
 
 ifeq ($(emit_llvm),0)
 .SECONDARY:
-all: $(BINJSON) $(BINSO) $(BINMWES)
+all: $(BINJSON) $(BINSO)
 else
 .SECONDARY:
-all: $(BINJSON) $(BINSO) $(BINMWES) $(BINLL)
+all: $(BINJSON) $(BINSO) $(BINLL)
 endif
 
-bin/%.o: %.c compile common.h
-	./compile "$(CFLAGS)" $< bin/$*.o
+$(BINDIR)%.o: %.c compile common.h
+	./compile "$(CFLAGS)" $< $(BINDIR)$*.o
 
-bin/%.json: bin/%.o readobj
-	./readobj $< > bin/$*.json
+$(BINDIR)%.json: $(BINDIR)%.o readobj
+	./readobj $< > $(BINDIR)$*.json
 
-bin/%.ll: %.c compile common.h
-	./compile "$(CFLAGS) -S -emit-llvm" $< bin/$*.ll
+$(BINDIR)%.ll: %.c compile common.h
+	./compile "$(CFLAGS) -S -emit-llvm" $< $(BINDIR)$*.ll
 
-bin/libjuliahelpers.so: libjuliahelpers.c
-	$(CC) -I'${JULIA_INCLUDE}' -I'${JULIA_INCLUDE}/julia' -I'${JULIA_INTERNAL_INCLUDE}' \
-			-L'${JULIA_LIB}' \
+$(BINDIR)libjuliahelpers.so: libjuliahelpers.c
+	$(CC) -I'${JULIA_REPO_SRC}' -I'${JULIA_INCLUDE}' -I'${JULIA_INCLUDE}/julia' \
+			-L'${JULIA_LIB}' -L'${JULIA_LIB}/julia' \
 			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
 			-std=gnu11 -fPIC -ljulia -ljulia-internal -shared \
-			-o bin/libjuliahelpers.so libjuliahelpers.c
+			-o $(BINDIR)libjuliahelpers.so libjuliahelpers.c
 
-bin/libffihelpers.so: libffihelpers.c
+$(BINDIR)libccalltest.so: libccalltest.c
+	$(CC) -I'${JULIA_REPO_SRC}' -I'${JULIA_INCLUDE}' -I'${JULIA_INCLUDE}/julia' \
+			-L'${JULIA_LIB}' -L'${JULIA_LIB}/julia' \
+			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
+			-std=gnu11 -fPIC -ljulia -ljulia-internal -shared \
+			-o $(BINDIR)libccalltest.so libccalltest.c
+
+$(BINDIR)libffihelpers.so: libffihelpers.c
 	$(CC) -I'${LIBFFI_INCLUDE}' \
 			-std=gnu11 -fPIC -lffi -shared \
-			-o bin/libffihelpers.so libffihelpers.c
+			-o $(BINDIR)libffihelpers.so libffihelpers.c
 
-bin/libmwes.so: libmwes.c
+$(BINDIR)libmwes.so: libmwes.c
 	$(CC) -I'${JULIA_INCLUDE}/julia' -I'${LIBFFI_INCLUDE}' \
 			-L'${JULIA_LIB}' \
 			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
 			-std=gnu11 -fPIC -ljulia -ljulia-internal -lffi -shared \
-			-o bin/libmwes.so libmwes.c
-
-bin/libccalltest.so: libccalltest.c
-	$(CC) -I'${JULIA_INCLUDE}/julia' \
-			-L'${JULIA_LIB}' \
-			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
-			-std=gnu11 -fPIC -ljulia -ljulia-internal -shared \
-			-o bin/libccalltest.so libccalltest.c
-
-bin/mwe_libffi: mwe_libffi.c
-	$(CC) -I'${JULIA_INCLUDE}/julia' -I'${LIBFFI_INCLUDE}' \
-			-L'${JULIA_LIB}' \
-			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
-			-std=gnu11 -fPIC -ljulia -ljulia-internal -lffi \
-			-o bin/mwe_libffi mwe_libffi.c
-
-bin/mwe_union: mwe_union.c
-	$(CC) -I'${JULIA_INCLUDE}/julia' \
-			-L'${JULIA_LIB}' \
-			-Wl,--export-dynamic -Wl,-rpath,'${JULIA_LIB}' -Wl,-rpath,'${JULIA_LIB}/julia' \
-			-std=gnu11 -fPIC -ljulia -ljulia-internal \
-			-o bin/mwe_union mwe_union.c
+			-o $(BINDIR)libmwes.so libmwes.c
 
 clean:
-	@rm -rf bin/
+	@rm -rf $(BINDIR)
